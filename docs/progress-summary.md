@@ -6,6 +6,8 @@ Date: 2026-04-20
 
 Phase: `research and architecture`
 
+Research depth: `stage 2`
+
 ## Completed work
 
 - created the project workspace
@@ -20,6 +22,11 @@ Phase: `research and architecture`
   - equity-aware strict mode
   - parameter ownership map
   - architecture blueprint
+- deepened:
+  - broker execution variance research
+  - MT5 validation/anti-overfitting protocol
+  - strategy family prioritization
+  - parameter governance for low-overfit systems
 
 ## Key decisions already made
 
@@ -37,6 +44,7 @@ Turn the blueprint into code scaffolding:
 2. symbol/account introspection module
 3. execution module
 4. one baseline strategy
+5. validation harness and test logging
 
 ## What another host needs to resume
 

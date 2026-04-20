@@ -34,8 +34,14 @@ The repository currently contains:
   - high-level project purpose and structure
 - `research/2026-04-20-market-and-platform-research.md`
   - consolidated research on MT5 APIs, risk concepts, slippage, session behavior, and baseline design choices
+- `research/2026-04-20-stage-2-deep-research.md`
+  - deeper research on execution variance, validation robustness, parameter governance, and strategy-family prioritization
 - `docs/ea-bot-blueprint.md`
   - target architecture and subsystem design
+- `docs/mt5-validation-protocol.md`
+  - concrete validation order for backtest, forward, walk-forward, cost stress, and demo
+- `docs/strategy-candidates.md`
+  - practical candidate strategy families with guardrails and priority order
 - `config/parameter-map.md`
   - separation between user parameters, MT5-derived parameters, and tuned parameters
 - `data/README.md`
@@ -86,8 +92,11 @@ Read in this order:
 
 1. `README.md`
 2. `research/2026-04-20-market-and-platform-research.md`
-3. `docs/ea-bot-blueprint.md`
-4. `config/parameter-map.md`
+3. `research/2026-04-20-stage-2-deep-research.md`
+4. `docs/ea-bot-blueprint.md`
+5. `docs/mt5-validation-protocol.md`
+6. `docs/strategy-candidates.md`
+7. `config/parameter-map.md`
 
 ### 3. Recommended next implementation steps
 
