@@ -107,6 +107,20 @@ class FakeAdapter:
         return None
 
 
+class BrokenIPCAdapter(FakeAdapter):
+    def __init__(self, *, fail_account_info: bool = False) -> None:
+        self.fail_account_info = fail_account_info
+        self.shutdown_calls = 0
+
+    def load_account_snapshot(self) -> AccountSnapshot:
+        if self.fail_account_info:
+            raise RuntimeError("MT5 account_info() failed: (-10004, 'No IPC connection')")
+        return super().load_account_snapshot()
+
+    def shutdown(self) -> None:
+        self.shutdown_calls += 1
+
+
 class FakeCodexEngine:
     def __init__(self, **_: object) -> None:
         pass
@@ -235,6 +249,47 @@ class DesktopRuntimeCoordinatorTests(unittest.TestCase):
                 pending = coordinator.approve_pending_live_order()
                 self.assertEqual(pending.symbol, "EURUSD")
                 self.assertIsNotNone(coordinator.pending_approval)
+            finally:
+                coordinator.stop()
+
+    def test_runtime_reconnects_after_transient_mt5_ipc_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            adapters: list[BrokenIPCAdapter] = []
+
+            def adapter_factory() -> BrokenIPCAdapter:
+                adapter = BrokenIPCAdapter(fail_account_info=len(adapters) == 0)
+                adapters.append(adapter)
+                return adapter
+
+            coordinator = DesktopRuntimeCoordinator(
+                adapter_factory=adapter_factory,
+                codex_engine_factory=FakeCodexEngine,
+                risk_policy=RiskPolicy(base_risk_pct=1.0, max_total_open_risk_pct=2.0, daily_loss_limit_pct=3.0),
+            )
+            config = DesktopRuntimeConfig(
+                symbol="EURUSD",
+                timeframe="M5",
+                trading_style=TradingStyle.INTRADAY,
+                stop_distance_points=20.0,
+                capital_allocation=CapitalAllocation(mode=CapitalAllocationMode.FIXED_CASH, value=1000.0),
+                db_path=str(Path(tmpdir) / "runtime.db"),
+                poll_interval_seconds=1,
+            )
+
+            try:
+                coordinator.start(config)
+                deadline = time.time() + 4.0
+                seen_kinds: list[str] = []
+                while time.time() < deadline and "runtime_cycle" not in seen_kinds:
+                    for event in coordinator.drain_events():
+                        seen_kinds.append(event.kind)
+                    time.sleep(0.05)
+                self.assertIn("runtime_started", seen_kinds)
+                self.assertIn("runtime_recovering", seen_kinds)
+                self.assertIn("runtime_cycle", seen_kinds)
+                self.assertNotIn("runtime_error", seen_kinds)
+                self.assertGreaterEqual(len(adapters), 2)
+                self.assertEqual(adapters[0].shutdown_calls, 1)
             finally:
                 coordinator.stop()
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -85,14 +85,18 @@ class BotEaWebSocketService:
         name = str(request.get("name") or "")
         params = request.get("params") or {}
         if name == "probe_mt5":
+            self._require_runtime_idle(name)
             result = await asyncio.to_thread(self.runtime_coordinator.probe_mt5, **self._probe_kwargs(params))
         elif name == "probe_codex":
             result = await asyncio.to_thread(self.runtime_coordinator.probe_codex, **self._codex_kwargs(params))
         elif name == "refresh_manual":
+            self._require_runtime_idle(name)
             result = await asyncio.to_thread(self._build_manual_preview, params)
         elif name == "preflight_manual":
+            self._require_runtime_idle(name)
             result = await asyncio.to_thread(self._preflight_manual, params)
         elif name == "execute_manual":
+            self._require_runtime_idle(name)
             result = await asyncio.to_thread(self._execute_manual, params)
         elif name == "start_runtime":
             result = await asyncio.to_thread(self.runtime_coordinator.start, self._runtime_config(params))
@@ -136,8 +140,7 @@ class BotEaWebSocketService:
     def _build_manual_preview(self, params: dict[str, Any]) -> dict[str, Any]:
         adapter = self.adapter_factory()
         try:
-            provider = self._provider(adapter, params)
-            snapshot = provider.get_snapshot()
+            snapshot = self._load_manual_snapshot(adapter, params)
             manual = self._manual_order_snapshot(snapshot, params, adapter)
             sizing = self.risk_engine.compute_position_size(
                 PositionSizeRequest(
@@ -150,18 +153,7 @@ class BotEaWebSocketService:
                 )
             )
             return {
-                "snapshot": {
-                    "symbol": snapshot.symbol,
-                    "bid": snapshot.bid,
-                    "ask": snapshot.ask,
-                    "spread_points": snapshot.spread_points,
-                    "equity": snapshot.account.equity,
-                    "free_margin": snapshot.account.free_margin,
-                    "stops_level_points": snapshot.symbol_snapshot.stops_level_points,
-                    "trade_mode": snapshot.symbol_snapshot.trade_mode,
-                    "execution_mode": snapshot.symbol_snapshot.execution_mode,
-                    "filling_mode": snapshot.symbol_snapshot.filling_mode,
-                },
+                "snapshot": self._snapshot_payload(snapshot),
                 "manual_order_snapshot": manual,
                 "risk_sizing_snapshot": {
                     "accepted": sizing.accepted,
@@ -179,14 +171,19 @@ class BotEaWebSocketService:
     def _preflight_manual(self, params: dict[str, Any]) -> dict[str, Any]:
         adapter = self.adapter_factory()
         try:
-            provider = self._provider(adapter, params)
-            snapshot = provider.get_snapshot()
+            snapshot = self._load_manual_snapshot(adapter, params)
             manual = self._manual_order_snapshot(snapshot, params, adapter)
             if not manual["accepted"]:
-                return {"status": "REJECTED", "detail": manual["why_blocked"], "manual_order_snapshot": manual}
+                return {
+                    "status": "REJECTED",
+                    "detail": manual["why_blocked"],
+                    "snapshot": self._snapshot_payload(snapshot),
+                    "manual_order_snapshot": manual,
+                }
             runtime = MT5ExecutionRuntime(adapter=adapter, allow_live_orders=False)
             size_result = self._manual_size_result(manual, params)
             result = runtime.preflight(snapshot, self._intent(snapshot, params, "manual preflight"), size_result)
+            result["snapshot"] = self._snapshot_payload(snapshot)
             result["manual_order_snapshot"] = manual
             return result
         finally:
@@ -195,14 +192,19 @@ class BotEaWebSocketService:
     def _execute_manual(self, params: dict[str, Any]) -> dict[str, Any]:
         adapter = self.adapter_factory()
         try:
-            provider = self._provider(adapter, params)
-            snapshot = provider.get_snapshot()
+            snapshot = self._load_manual_snapshot(adapter, params)
             manual = self._manual_order_snapshot(snapshot, params, adapter)
             if not manual["accepted"]:
-                return {"status": "REJECTED", "detail": manual["why_blocked"], "manual_order_snapshot": manual}
+                return {
+                    "status": "REJECTED",
+                    "detail": manual["why_blocked"],
+                    "snapshot": self._snapshot_payload(snapshot),
+                    "manual_order_snapshot": manual,
+                }
             runtime = MT5ExecutionRuntime(adapter=adapter, allow_live_orders=bool(params.get("live_enabled")))
             size_result = self._manual_size_result(manual, params)
             result = runtime.execute(snapshot, self._intent(snapshot, params, "manual execute"), size_result)
+            result["snapshot"] = self._snapshot_payload(snapshot)
             result["manual_order_snapshot"] = manual
             return result
         finally:
@@ -251,6 +253,22 @@ class BotEaWebSocketService:
             warnings=[],
         )
 
+    @staticmethod
+    def _snapshot_payload(snapshot) -> dict[str, Any]:
+        return {
+            "symbol": snapshot.symbol,
+            "bid": snapshot.bid,
+            "ask": snapshot.ask,
+            "spread_points": snapshot.spread_points,
+            "equity": snapshot.account.equity,
+            "free_margin": snapshot.account.free_margin,
+            "stops_level_points": snapshot.symbol_snapshot.stops_level_points,
+            "trade_mode": snapshot.symbol_snapshot.trade_mode,
+            "execution_mode": snapshot.symbol_snapshot.execution_mode,
+            "filling_mode": snapshot.symbol_snapshot.filling_mode,
+            "tick_time": snapshot.context.get("tick_time"),
+        }
+
     def _intent(self, snapshot, params: dict[str, Any], reason: str) -> AIIntent:
         side = str(params["side"])
         return AIIntent(
@@ -272,6 +290,36 @@ class BotEaWebSocketService:
             capital_allocation=self._allocation(params),
             session_state="manual",
             news_state="unknown",
+        )
+
+    def _load_manual_snapshot(self, adapter, params: dict[str, Any]):
+        snapshot = self._provider(adapter, params).get_snapshot()
+        return self._refresh_snapshot_tick(snapshot, adapter)
+
+    @staticmethod
+    def _refresh_snapshot_tick(snapshot, adapter):
+        tick = adapter.load_price_tick(snapshot.symbol)
+        bid = float(tick.bid or snapshot.bid or snapshot.symbol_snapshot.bid or 0.0)
+        ask = float(tick.ask or snapshot.ask or snapshot.symbol_snapshot.ask or 0.0)
+        symbol_snapshot = replace(
+            snapshot.symbol_snapshot,
+            bid=bid,
+            ask=ask,
+            price=ask or bid or snapshot.symbol_snapshot.price,
+        )
+        spread_points = snapshot.spread_points
+        point = float(symbol_snapshot.point or 0.0)
+        if point > 0 and ask > 0 and bid > 0:
+            spread_points = (ask - bid) / point
+        context = dict(snapshot.context)
+        context["tick_time"] = tick.time
+        return replace(
+            snapshot,
+            bid=bid,
+            ask=ask,
+            spread_points=spread_points,
+            symbol_snapshot=symbol_snapshot,
+            context=context,
         )
 
     def _stop_distance(self, snapshot, params: dict[str, Any]) -> float:
@@ -382,6 +430,34 @@ class BotEaWebSocketService:
             "stop_distance_points": float(params["stop_distance_points"]),
             "capital_allocation": self._allocation(params),
         }
+
+    def _runtime_config(self, params: dict[str, Any]) -> DesktopRuntimeConfig:
+        poll_interval = int(float(params.get("poll_interval_seconds") or 30))
+        return DesktopRuntimeConfig(
+            symbol=str(params["symbol"]),
+            timeframe=str(params["timeframe"]),
+            trading_style=TradingStyle(str(params["trading_style"])),
+            stop_distance_points=float(params["stop_distance_points"]),
+            capital_allocation=CapitalAllocation(
+                mode=CapitalAllocationMode(str(params["capital_mode"])),
+                value=float(params["capital_value"]),
+            ),
+            db_path=str(Path(str(params["db_path"])).expanduser()),
+            codex_executable=str(params.get("codex_command") or "codex"),
+            codex_model=params.get("model"),
+            codex_cwd=params.get("codex_cwd"),
+            codex_timeout_seconds=int(params.get("codex_timeout_seconds") or 60),
+            poll_interval_seconds=poll_interval,
+            session_state=str(params.get("session_state") or "desktop_runtime"),
+            news_state=str(params.get("news_state") or "unknown"),
+            run_id=str(params["run_id"]) if params.get("run_id") else None,
+        )
+
+    def _require_runtime_idle(self, command_name: str) -> None:
+        if self.runtime_coordinator.is_running:
+            raise RuntimeError(
+                f"{command_name} is disabled while runtime is running; stop runtime before manual MT5 actions"
+            )
 
     def _codex_kwargs(self, params: dict[str, Any]) -> dict[str, Any]:
         return {

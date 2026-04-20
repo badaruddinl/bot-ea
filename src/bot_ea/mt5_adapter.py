@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
@@ -305,7 +306,7 @@ class LiveMT5Adapter:
 
     def load_account_snapshot(self) -> AccountSnapshot:
         mt5 = self._ensure_initialized()
-        account_info = mt5.account_info()
+        account_info = self._call_mt5(lambda module: module.account_info(), retry_on_none=True)
         if account_info is None:
             raise RuntimeError(f"MT5 account_info() failed: {mt5.last_error()}")
         return build_account_snapshot(account_info)
@@ -323,7 +324,7 @@ class LiveMT5Adapter:
     def load_price_tick(self, symbol: str) -> PriceTickSnapshot:
         mt5 = self._ensure_initialized()
         self._prepare_symbol(symbol)
-        tick = mt5.symbol_info_tick(symbol)
+        tick = self._call_mt5(lambda module: module.symbol_info_tick(symbol), retry_on_none=True)
         if tick is None:
             raise RuntimeError(f"MT5 symbol_info_tick({symbol}) failed: {mt5.last_error()}")
         return PriceTickSnapshot(
@@ -349,10 +350,10 @@ class LiveMT5Adapter:
 
     def load_terminal_status(self) -> TerminalStatusSnapshot:
         mt5 = self._ensure_initialized()
-        terminal_info = mt5.terminal_info()
+        terminal_info = self._call_mt5(lambda module: module.terminal_info(), retry_on_none=True)
         if terminal_info is None:
             raise RuntimeError(f"MT5 terminal_info() failed: {mt5.last_error()}")
-        account_info = mt5.account_info()
+        account_info = self._call_mt5(lambda module: module.account_info(), retry_on_none=True)
         if account_info is None:
             raise RuntimeError(f"MT5 account_info() failed: {mt5.last_error()}")
         return TerminalStatusSnapshot(
@@ -369,7 +370,7 @@ class LiveMT5Adapter:
 
     def load_available_symbols(self) -> list[str]:
         mt5 = self._ensure_initialized()
-        symbols = mt5.symbols_get()
+        symbols = self._call_mt5(lambda module: module.symbols_get(), retry_on_none=True)
         if symbols is None:
             raise RuntimeError(f"MT5 symbols_get() failed: {mt5.last_error()}")
         return sorted(
@@ -387,7 +388,10 @@ class LiveMT5Adapter:
         symbol_info = self._prepare_symbol(symbol)
         price_to_use = price if price > 0 else self._market_price(mt5, symbol, order_type)
         mt5_order_type = self._resolve_order_type(mt5, order_type)
-        margin = mt5.order_calc_margin(mt5_order_type, symbol, volume, price_to_use)
+        margin = self._call_mt5(
+            lambda module: module.order_calc_margin(mt5_order_type, symbol, volume, price_to_use),
+            retry_on_none=True,
+        )
         if margin is None:
             return MarginEstimate(required_margin=0.0, success=False, detail=f"order_calc_margin failed: {mt5.last_error()}")
         return MarginEstimate(
@@ -403,7 +407,7 @@ class LiveMT5Adapter:
             return OrderValidationResult(accepted=False, detail="symbol missing", retcode=None)
         symbol_info = self._prepare_symbol(symbol_name)
         order_request = self._build_trade_request(mt5, symbol_info, request)
-        result = mt5.order_check(order_request)
+        result = self._call_mt5(lambda module: module.order_check(order_request), retry_on_none=True)
         if result is None:
             return OrderValidationResult(
                 accepted=False,
@@ -427,7 +431,7 @@ class LiveMT5Adapter:
             return OrderSendResult(accepted=False, detail="symbol missing", retcode=None)
         symbol_info = self._prepare_symbol(symbol_name)
         trade_request = self._build_trade_request(mt5, symbol_info, request)
-        result = mt5.order_send(trade_request)
+        result = self._call_mt5(lambda module: module.order_send(trade_request), retry_on_none=True)
         if result is None:
             return OrderSendResult(
                 accepted=False,
@@ -491,17 +495,61 @@ class LiveMT5Adapter:
 
     def _prepare_symbol(self, symbol: str):
         mt5 = self._ensure_initialized()
-        symbol_info = mt5.symbol_info(symbol)
+        symbol_info = self._call_mt5(lambda module: module.symbol_info(symbol), retry_on_none=True)
         if symbol_info is None:
             raise RuntimeError(f"MT5 symbol_info({symbol}) failed: {mt5.last_error()}")
         visible = bool(getattr(symbol_info, "visible", False))
-        if not visible and not mt5.symbol_select(symbol, True):
+        if not visible and not self._call_mt5(lambda module: module.symbol_select(symbol, True), retry_on_false=True):
             raise RuntimeError(f"MT5 symbol_select({symbol}, True) failed: {mt5.last_error()}")
         if not visible:
-            symbol_info = mt5.symbol_info(symbol)
+            symbol_info = self._call_mt5(lambda module: module.symbol_info(symbol), retry_on_none=True)
             if symbol_info is None:
                 raise RuntimeError(f"MT5 symbol_info({symbol}) failed after select: {mt5.last_error()}")
         return symbol_info
+
+    def _call_mt5(
+        self,
+        operation,
+        *,
+        retry_on_none: bool = False,
+        retry_on_false: bool = False,
+    ):
+        mt5 = self._ensure_initialized()
+        result = operation(mt5)
+        if not self._should_retry_ipc_failure(
+            mt5,
+            result,
+            retry_on_none=retry_on_none,
+            retry_on_false=retry_on_false,
+        ):
+            return result
+        self._reset_connection(mt5)
+        mt5 = self._ensure_initialized()
+        return operation(mt5)
+
+    def _should_retry_ipc_failure(
+        self,
+        mt5,
+        result,
+        *,
+        retry_on_none: bool,
+        retry_on_false: bool,
+    ) -> bool:
+        failed = (retry_on_none and result is None) or (retry_on_false and result is False)
+        return failed and self._is_ipc_error(mt5.last_error())
+
+    def _reset_connection(self, mt5) -> None:
+        with contextlib.suppress(Exception):
+            mt5.shutdown()
+        self._initialized = False
+
+    @staticmethod
+    def _is_ipc_error(error: Any) -> bool:
+        if isinstance(error, tuple) and len(error) >= 2:
+            message = str(error[1] or "")
+        else:
+            message = str(error or "")
+        return "no ipc connection" in message.lower()
 
     def _build_trade_request(self, mt5, symbol_info, request: dict) -> dict[str, Any]:
         order_type_raw = str(request.get("order_type", "buy") or "buy").lower()
@@ -591,7 +639,7 @@ class LiveMT5Adapter:
         return getattr(mt5, "ORDER_FILLING_RETURN", getattr(mt5, "ORDER_FILLING_FOK"))
 
     def _market_price(self, mt5, symbol: str, order_type: str) -> float:
-        tick = mt5.symbol_info_tick(symbol)
+        tick = self._call_mt5(lambda module: module.symbol_info_tick(symbol), retry_on_none=True)
         if tick is None:
             raise RuntimeError(f"MT5 symbol_info_tick({symbol}) failed: {mt5.last_error()}")
         if order_type == "sell":

@@ -17,5 +17,23 @@ else {
 
 Write-Host "Launching bot-ea Qt desktop GUI from $repoRoot"
 Write-Host "PYTHONPATH=$env:PYTHONPATH"
+Write-Host "Expected startup order: start scripts/run-websocket-service.ps1 first, then launch this Qt GUI."
+Write-Host "If the websocket service is not running yet, stop here and start it in a separate PowerShell window first."
 
-python -m bot_ea.qt_app
+$pythonCommand = $null
+foreach ($candidate in @("python3.14", "python")) {
+    try {
+        $pythonCommand = (Get-Command $candidate -ErrorAction Stop).Source
+        break
+    }
+    catch {
+        continue
+    }
+}
+
+if (-not $pythonCommand) {
+    throw "No Python interpreter found. Install Python 3.14 or ensure python is on PATH."
+}
+
+Write-Host "Python=$pythonCommand"
+& $pythonCommand -m bot_ea.qt_app

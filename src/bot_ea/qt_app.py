@@ -1,10 +1,17 @@
 from __future__ import annotations
 
+import asyncio
+import contextlib
+import json
+import queue
+import threading
+import uuid
 from pathlib import Path
-from types import SimpleNamespace
+from typing import Any
 
+import websockets
 from PySide6.QtCore import QTimer, Qt
-from PySide6.QtGui import QAction
+from PySide6.QtGui import QAction, QCloseEvent
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
@@ -26,13 +33,288 @@ from PySide6.QtWidgets import (
 )
 
 from .desktop_runtime import DesktopRuntimeConfig, DesktopRuntimeCoordinator
-from .models import CapitalAllocation, CapitalAllocationMode, OperatingMode, PositionSizeRequest, RiskPolicy, TradingStyle
+from .models import CapitalAllocation, CapitalAllocationMode, RiskPolicy, TradingStyle
 from .mt5_adapter import LiveMT5Adapter
-from .mt5_execution_runtime import MT5ExecutionRuntime
-from .polling_runtime import AIIntent, DecisionAction, MT5SnapshotProvider
 from .risk_engine import RiskEngine
-from .runtime_store import RuntimeStore
-from .validation import build_runtime_validation_report
+from .websocket_service import BotEaWebSocketService
+
+
+class QtBotEaWebSocketService(BotEaWebSocketService):
+    def _runtime_config(self, params: dict[str, Any]) -> DesktopRuntimeConfig:
+        poll_interval = int(float(params.get("poll_interval_seconds") or 30))
+        return DesktopRuntimeConfig(
+            symbol=str(params["symbol"]),
+            timeframe=str(params["timeframe"]),
+            trading_style=TradingStyle(str(params["trading_style"])),
+            stop_distance_points=float(params["stop_distance_points"]),
+            capital_allocation=CapitalAllocation(
+                mode=CapitalAllocationMode(str(params["capital_mode"])),
+                value=float(params["capital_value"]),
+            ),
+            db_path=str(Path(str(params["db_path"])).expanduser()),
+            codex_executable=str(params.get("codex_command") or "codex"),
+            codex_model=params.get("model"),
+            codex_cwd=params.get("codex_cwd"),
+            codex_timeout_seconds=int(params.get("codex_timeout_seconds") or 60),
+            poll_interval_seconds=poll_interval,
+            session_state=str(params.get("session_state") or "desktop_runtime"),
+            news_state=str(params.get("news_state") or "unknown"),
+            run_id=str(params["run_id"]) if params.get("run_id") else None,
+        )
+
+
+class QtBotEaLocalServiceRunner:
+    def __init__(self, service: BotEaWebSocketService) -> None:
+        self._service = service
+        self._thread: threading.Thread | None = None
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._started = threading.Event()
+        self._stop_requested = threading.Event()
+        self._start_error: Exception | None = None
+
+    def start(self, timeout: float = 5.0) -> None:
+        if self._thread is not None and self._thread.is_alive():
+            return
+        self._started.clear()
+        self._stop_requested.clear()
+        self._start_error = None
+        self._thread = threading.Thread(target=self._run, name="bot-ea-qt-service", daemon=True)
+        self._thread.start()
+        if not self._started.wait(timeout):
+            raise RuntimeError("websocket service start timed out")
+        if self._start_error is not None:
+            raise self._start_error
+
+    def stop(self, timeout: float = 5.0) -> None:
+        self._stop_requested.set()
+        if self._loop is not None:
+            self._loop.call_soon_threadsafe(lambda: None)
+        if self._thread is not None:
+            self._thread.join(timeout=timeout)
+        self._thread = None
+        self._loop = None
+
+    def _run(self) -> None:
+        loop = asyncio.new_event_loop()
+        self._loop = loop
+        asyncio.set_event_loop(loop)
+
+        async def serve() -> None:
+            await self._service.start()
+            self._started.set()
+            try:
+                while not self._stop_requested.is_set():
+                    await asyncio.sleep(0.1)
+            finally:
+                await self._service.stop()
+
+        try:
+            loop.run_until_complete(serve())
+        except Exception as exc:  # pragma: no cover - startup failures are surfaced to caller
+            self._start_error = exc
+            self._started.set()
+        finally:
+            pending = asyncio.all_tasks(loop)
+            for task in pending:
+                task.cancel()
+            with contextlib.suppress(Exception):
+                if pending:
+                    loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+            loop.close()
+
+
+class QtBotEaWebSocketClient:
+    def __init__(self, url: str) -> None:
+        self._url = url
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._thread: threading.Thread | None = None
+        self._ready = threading.Event()
+        self._event_queue: queue.Queue[dict[str, Any]] = queue.Queue()
+        self._pending: dict[str, asyncio.Future] = {}
+        self._connect_lock = threading.Lock()
+        self._websocket = None
+        self._reader_task: asyncio.Task | None = None
+        self._service_ready_future: asyncio.Future | None = None
+        self._connected = False
+        self._service_info: dict[str, Any] | None = None
+
+    def connect(self, url: str | None = None, timeout: float = 5.0) -> dict[str, Any]:
+        if url is not None:
+            self._url = url
+        self._ensure_thread()
+        with self._connect_lock:
+            future = asyncio.run_coroutine_threadsafe(self._connect_async(timeout), self._loop)
+            return future.result(timeout + 1)
+
+    def request(self, name: str, params: dict[str, Any], timeout: float = 15.0) -> Any:
+        self.connect(timeout=min(timeout, 5.0))
+        future = asyncio.run_coroutine_threadsafe(self._request_async(name, params, timeout), self._loop)
+        return future.result(timeout + 1)
+
+    def drain_events(self) -> list[dict[str, Any]]:
+        events: list[dict[str, Any]] = []
+        while True:
+            try:
+                events.append(self._event_queue.get_nowait())
+            except queue.Empty:
+                return events
+
+    def close(self) -> None:
+        if self._loop is None:
+            return
+        future = asyncio.run_coroutine_threadsafe(self._disconnect_async(), self._loop)
+        with contextlib.suppress(Exception):
+            future.result(5)
+        self._loop.call_soon_threadsafe(self._loop.stop)
+        if self._thread is not None:
+            self._thread.join(timeout=5)
+        self._loop = None
+        self._thread = None
+        self._ready.clear()
+        self._connected = False
+        self._service_info = None
+
+    def _ensure_thread(self) -> None:
+        if self._thread is not None and self._thread.is_alive():
+            return
+        self._ready.clear()
+        self._thread = threading.Thread(target=self._run_loop, name="bot-ea-qt-ws-client", daemon=True)
+        self._thread.start()
+        if not self._ready.wait(5):
+            raise RuntimeError("websocket client loop failed to start")
+
+    def _run_loop(self) -> None:
+        loop = asyncio.new_event_loop()
+        self._loop = loop
+        asyncio.set_event_loop(loop)
+        self._ready.set()
+        try:
+            loop.run_forever()
+        finally:
+            pending = asyncio.all_tasks(loop)
+            for task in pending:
+                task.cancel()
+            with contextlib.suppress(Exception):
+                if pending:
+                    loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+            loop.close()
+
+    async def _connect_async(self, timeout: float) -> dict[str, Any]:
+        if self._websocket is not None and self._connected:
+            return self._service_info or {}
+        await self._disconnect_async()
+        self._service_ready_future = self._loop.create_future()
+        self._websocket = await websockets.connect(self._url)
+        self._reader_task = asyncio.create_task(self._reader_loop())
+        info = await asyncio.wait_for(self._service_ready_future, timeout=timeout)
+        self._connected = True
+        self._service_info = dict(info)
+        return self._service_info
+
+    async def _disconnect_async(self) -> None:
+        websocket = self._websocket
+        self._websocket = None
+        self._connected = False
+        self._service_info = None
+        self._service_ready_future = None
+        reader_task = self._reader_task
+        self._reader_task = None
+        if websocket is not None:
+            with contextlib.suppress(Exception):
+                await websocket.close()
+        if reader_task is not None:
+            reader_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await reader_task
+        self._fail_pending(RuntimeError("websocket service disconnected"))
+
+    async def _reader_loop(self) -> None:
+        websocket = self._websocket
+        if websocket is None:
+            return
+        try:
+            async for raw_message in websocket:
+                message = json.loads(raw_message)
+                if message.get("type") == "response":
+                    response_id = str(message.get("id") or "")
+                    future = self._pending.pop(response_id, None)
+                    if future is not None and not future.done():
+                        future.set_result(message)
+                    continue
+                if message.get("type") != "event":
+                    continue
+                if message.get("name") == "service_ready":
+                    future = self._service_ready_future
+                    if future is not None and not future.done():
+                        future.set_result(message.get("payload") or {})
+                    continue
+                self._event_queue.put(message)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            self._fail_pending(exc)
+        finally:
+            self._connected = False
+            self._websocket = None
+
+    async def _request_async(self, name: str, params: dict[str, Any], timeout: float) -> Any:
+        websocket = self._websocket
+        if websocket is None:
+            raise RuntimeError("websocket service is not connected")
+        request_id = uuid.uuid4().hex
+        future = self._loop.create_future()
+        self._pending[request_id] = future
+        await websocket.send(json.dumps({"type": "command", "id": request_id, "name": name, "params": params}, default=str))
+        try:
+            response = await asyncio.wait_for(future, timeout=timeout)
+        finally:
+            self._pending.pop(request_id, None)
+        if not response.get("ok"):
+            raise RuntimeError(str(response.get("error") or f"{name} failed"))
+        return response.get("result")
+
+    def _fail_pending(self, exc: Exception) -> None:
+        for future in self._pending.values():
+            if not future.done():
+                future.set_exception(exc)
+        self._pending.clear()
+
+
+class QtBotEaWebSocketBackend:
+    def __init__(
+        self,
+        *,
+        host: str = "127.0.0.1",
+        port: int = 8765,
+        adapter: LiveMT5Adapter | None = None,
+        runtime_coordinator: DesktopRuntimeCoordinator | None = None,
+        risk_engine: RiskEngine | None = None,
+        risk_policy: RiskPolicy | None = None,
+    ) -> None:
+        self.host = host
+        self.port = port
+        self.risk_policy = risk_policy or RiskPolicy(
+            base_risk_pct=1.0,
+            max_total_open_risk_pct=2.0,
+            daily_loss_limit_pct=3.0,
+        )
+        self._client = QtBotEaWebSocketClient(self._url(host, port))
+
+    def connect(self, url: str) -> dict[str, Any]:
+        return self._client.connect(url)
+
+    def request(self, name: str, params: dict[str, Any], timeout: float = 15.0) -> Any:
+        return self._client.request(name, params, timeout=timeout)
+
+    def drain_events(self) -> list[dict[str, Any]]:
+        return self._client.drain_events()
+
+    def close(self) -> None:
+        self._client.close()
+
+    @staticmethod
+    def _url(host: str, port: int) -> str:
+        return f"ws://{host}:{port}"
 
 
 class BotEaQtWindow(QMainWindow):
@@ -58,24 +340,37 @@ class BotEaQtWindow(QMainWindow):
         runtime_coordinator: DesktopRuntimeCoordinator | None = None,
         risk_engine: RiskEngine | None = None,
         risk_policy: RiskPolicy | None = None,
+        backend: Any | None = None,
     ) -> None:
         super().__init__()
         self.setWindowTitle("bot-ea Qt Desktop Runtime")
         self.resize(1500, 920)
 
-        self.adapter = adapter or LiveMT5Adapter()
+        self.adapter = adapter
         self.risk_engine = risk_engine or RiskEngine()
         self.risk_policy = risk_policy or RiskPolicy(
             base_risk_pct=1.0,
             max_total_open_risk_pct=2.0,
             daily_loss_limit_pct=3.0,
         )
-        self.runtime_coordinator = runtime_coordinator or DesktopRuntimeCoordinator(risk_policy=self.risk_policy)
+        self.runtime_coordinator = runtime_coordinator
+        self.backend = backend or QtBotEaWebSocketBackend(
+            adapter=adapter,
+            runtime_coordinator=runtime_coordinator,
+            risk_engine=self.risk_engine,
+            risk_policy=self.risk_policy,
+        )
 
-        self.snapshot = None
-        self.size_result = None
-        self.manual_order_snapshot: dict[str, float | str | bool] | None = None
+        self.snapshot: dict[str, Any] | None = None
+        self.size_result: dict[str, Any] | None = None
+        self.manual_order_snapshot: dict[str, Any] | None = None
         self._field_guard = False
+        self._service_connected = False
+        self._runtime_running = False
+        self._live_enabled = False
+        self._pending_approval: dict[str, Any] | None = None
+        self._preview_debounce_ms = 150
+        self._preview_refresh_inflight = False
 
         self._build_ui()
         self._wire_events()
@@ -83,6 +378,13 @@ class BotEaQtWindow(QMainWindow):
         self.event_timer = QTimer(self)
         self.event_timer.timeout.connect(self._pump_runtime_events)
         self.event_timer.start(250)
+        self.preview_timer = QTimer(self)
+        self.preview_timer.setSingleShot(True)
+        self.preview_timer.timeout.connect(self._refresh_preview_state)
+        self.preview_poll_timer = QTimer(self)
+        self.preview_poll_timer.timeout.connect(self._refresh_preview_tick)
+        self.preview_poll_timer.start(1000)
+        QTimer.singleShot(0, lambda: self.connect_service(show_errors=False))
 
     def _build_ui(self) -> None:
         central = QWidget(self)
@@ -108,6 +410,14 @@ class BotEaQtWindow(QMainWindow):
         right_layout = QVBoxLayout(right_panel)
         splitter.addWidget(right_panel)
         splitter.setSizes([480, 980])
+
+        self.service_group = QGroupBox("Backend Service", self)
+        service_form = QFormLayout(self.service_group)
+        self.service_host_input = QLineEdit("127.0.0.1", self)
+        self.service_port_input = QLineEdit("8765", self)
+        service_form.addRow("Host", self.service_host_input)
+        service_form.addRow("Port", self.service_port_input)
+        left_layout.addWidget(self.service_group)
 
         self.trade_group = QGroupBox("Trade Setup", self)
         trade_form = QFormLayout(self.trade_group)
@@ -162,6 +472,7 @@ class BotEaQtWindow(QMainWindow):
 
         self.action_group = QGroupBox("Actions", self)
         action_layout = QGridLayout(self.action_group)
+        self.connect_service_button = QPushButton("Connect Service", self)
         self.check_mt5_button = QPushButton("Check MT5", self)
         self.load_codex_button = QPushButton("Load Codex", self)
         self.refresh_button = QPushButton("Refresh", self)
@@ -175,6 +486,7 @@ class BotEaQtWindow(QMainWindow):
         self.load_telemetry_button = QPushButton("Load Telemetry", self)
         for idx, button in enumerate(
             [
+                self.connect_service_button,
                 self.check_mt5_button,
                 self.load_codex_button,
                 self.refresh_button,
@@ -194,21 +506,24 @@ class BotEaQtWindow(QMainWindow):
 
         self.status_group = QGroupBox("Readiness", self)
         status_grid = QGridLayout(self.status_group)
+        self.service_status = QLabel("Service disconnected", self)
         self.mt5_status = QLabel("MT5 unchecked", self)
         self.codex_status = QLabel("codex-cli unchecked", self)
         self.runtime_status = QLabel("Runtime stopped", self)
         self.run_id_status = QLabel("-", self)
         self.approval_status = QLabel("No pending live approval", self)
-        status_grid.addWidget(QLabel("MT5"), 0, 0)
-        status_grid.addWidget(self.mt5_status, 0, 1)
-        status_grid.addWidget(QLabel("Codex"), 1, 0)
-        status_grid.addWidget(self.codex_status, 1, 1)
-        status_grid.addWidget(QLabel("Runtime"), 2, 0)
-        status_grid.addWidget(self.runtime_status, 2, 1)
-        status_grid.addWidget(QLabel("Run ID"), 3, 0)
-        status_grid.addWidget(self.run_id_status, 3, 1)
-        status_grid.addWidget(QLabel("Approval"), 4, 0)
-        status_grid.addWidget(self.approval_status, 4, 1)
+        status_grid.addWidget(QLabel("Service"), 0, 0)
+        status_grid.addWidget(self.service_status, 0, 1)
+        status_grid.addWidget(QLabel("MT5"), 1, 0)
+        status_grid.addWidget(self.mt5_status, 1, 1)
+        status_grid.addWidget(QLabel("Codex"), 2, 0)
+        status_grid.addWidget(self.codex_status, 2, 1)
+        status_grid.addWidget(QLabel("Runtime"), 3, 0)
+        status_grid.addWidget(self.runtime_status, 3, 1)
+        status_grid.addWidget(QLabel("Run ID"), 4, 0)
+        status_grid.addWidget(self.run_id_status, 4, 1)
+        status_grid.addWidget(QLabel("Approval"), 5, 0)
+        status_grid.addWidget(self.approval_status, 5, 1)
         right_layout.addWidget(self.status_group)
 
         summary_row = QHBoxLayout()
@@ -233,8 +548,8 @@ class BotEaQtWindow(QMainWindow):
         right_layout.addWidget(self.tabs)
 
         self.hint_label = QLabel(
-            "Lot Mode=manual berarti lot Anda dicek lalu di-resize turun jika terlalu besar. "
-            "Stop loss minimum broker akan otomatis diterapkan setelah Check MT5 / Refresh.",
+            "Qt app memakai websocket backend service untuk probe, preview, preflight, execute, runtime, dan telemetry. "
+            "Lot Mode=manual akan dinormalisasi mengikuti batas broker/capital dari service.",
             self,
         )
         self.hint_label.setWordWrap(True)
@@ -253,6 +568,7 @@ class BotEaQtWindow(QMainWindow):
         return {"frame": frame, "text": text}
 
     def _wire_events(self) -> None:
+        self.connect_service_button.clicked.connect(self.connect_service)
         self.check_mt5_button.clicked.connect(self.check_mt5)
         self.load_codex_button.clicked.connect(self.load_codex)
         self.refresh_button.clicked.connect(self.refresh_snapshot)
@@ -270,9 +586,6 @@ class BotEaQtWindow(QMainWindow):
             self.stop_input,
             self.capital_input,
             self.manual_lot_input,
-            self.codex_command_input,
-            self.codex_cwd_input,
-            self.poll_interval_input,
         ):
             if widget is not None:
                 widget.textChanged.connect(self._schedule_live_preview)
@@ -283,49 +596,84 @@ class BotEaQtWindow(QMainWindow):
             self.capital_mode_combo,
             self.lot_mode_combo,
             self.side_combo,
-            self.model_combo,
         ):
             combo.currentTextChanged.connect(self._schedule_live_preview)
 
-    def _schedule_live_preview(self) -> None:
-        if self._field_guard or self.snapshot is None:
+    def closeEvent(self, event: QCloseEvent) -> None:
+        self.event_timer.stop()
+        self.preview_timer.stop()
+        self.preview_poll_timer.stop()
+        self.backend.close()
+        super().closeEvent(event)
+
+    def connect_service(self, checked: bool = False, *, show_errors: bool = True) -> bool:
+        _ = checked
+        try:
+            info = self.backend.connect(self._service_url())
+        except Exception as exc:
+            detail = self._format_exception_detail(exc)
+            self._service_connected = False
+            self.service_status.setText(detail)
+            self._append_log([f"service_error: {detail}"])
+            self._sync_button_states()
+            if show_errors:
+                QMessageBox.warning(self, "Service connection failed", detail)
+            return False
+        host = str(info.get("host") or self.service_host_input.text().strip())
+        port = str(info.get("port") or self.service_port_input.text().strip())
+        self._service_connected = True
+        self.service_status.setText(f"Connected {host}:{port}")
+        self._append_log([f"service_connected ws://{host}:{port}"])
+        self._sync_button_states()
+        return True
+
+    def _schedule_live_preview(self, *_args: object) -> None:
+        if self._field_guard:
             self._sync_button_states()
             return
-        QTimer.singleShot(150, self._refresh_preview_state)
+        self.preview_timer.start(self._preview_debounce_ms)
 
     def _refresh_preview_state(self) -> None:
-        if self.snapshot is None:
+        if self._field_guard or self._preview_refresh_inflight or not self._service_connected:
             self._sync_button_states()
             return
-        try:
-            if self.snapshot.symbol != self.symbol_combo.currentText().strip() or self.snapshot.timeframe != self.timeframe_combo.currentText().strip():
-                self.snapshot = self._provider().get_snapshot()
-            self._apply_realtime_constraints()
-            self.size_result = self._size_result()
-            self.manual_order_snapshot = self._manual_order_snapshot()
-            self._update_summary_cards()
+        symbol = self.symbol_combo.currentText().strip()
+        if not symbol:
             self._sync_button_states()
+            return
+        self._preview_refresh_inflight = True
+        try:
+            result = self._send_backend_command("refresh_manual", self._manual_preview_params(), timeout=10.0)
         except Exception:
             self._sync_button_states()
+            return
+        finally:
+            self._preview_refresh_inflight = False
+        self._apply_refresh_result(result)
+
+    def _refresh_preview_tick(self) -> None:
+        if not self._service_connected or not self.isVisible() or self._runtime_running:
+            return
+        if self.snapshot is None:
+            return
+        self._refresh_preview_state()
 
     def check_mt5(self) -> None:
         try:
-            result = self.runtime_coordinator.probe_mt5(
-                symbol=self.symbol_combo.currentText().strip(),
-                timeframe=self.timeframe_combo.currentText().strip(),
-                trading_style=TradingStyle(self.style_combo.currentText()),
-                stop_distance_points=self._current_stop_distance_value(),
-                capital_allocation=self._capital_allocation(),
-            )
+            result = self._send_backend_command("probe_mt5", self._probe_params())
         except Exception as exc:
-            self.mt5_status.setText(self._format_exception_detail(exc))
-            self._append_log([f"MT5 error: {self._format_exception_detail(exc)}"])
+            detail = self._format_exception_detail(exc)
+            self.mt5_status.setText(detail)
+            self._append_log([f"MT5 error: {detail}"])
             return
         terminal = result["terminal"]
         snapshot = result["snapshot"]
         self.mt5_status.setText("MT5 ready")
         self._set_symbol_choices(result.get("symbols") or [])
         self._sync_stop_distance_from_probe(snapshot)
+        self.snapshot = {**(self.snapshot or {}), **dict(snapshot)}
+        self._update_summary_cards()
+        self._schedule_live_preview()
         self._append_log(
             [
                 "mt5_probe:",
@@ -340,15 +688,13 @@ class BotEaQtWindow(QMainWindow):
 
     def load_codex(self) -> None:
         try:
-            version = self.runtime_coordinator.probe_codex(
-                executable=self.codex_command_input.text().strip(),
-                model=self._optional_str(self.model_combo.currentText()),
-                cwd=self._optional_str(self.codex_cwd_input.text()),
-            )
+            result = self._send_backend_command("probe_codex", self._codex_params())
         except Exception as exc:
-            self.codex_status.setText(self._format_exception_detail(exc))
-            self._append_log([f"Codex error: {self._format_exception_detail(exc)}"])
+            detail = self._format_exception_detail(exc)
+            self.codex_status.setText(detail)
+            self._append_log([f"Codex error: {detail}"])
             return
+        version = str(result)
         self.codex_status.setText(version)
         self._append_log(
             [
@@ -362,15 +708,11 @@ class BotEaQtWindow(QMainWindow):
 
     def refresh_snapshot(self) -> None:
         try:
-            self.snapshot = self._provider().get_snapshot()
-            self._sync_stop_distance_from_symbol_snapshot(self.snapshot.symbol_snapshot)
-            self.size_result = self._size_result()
-            self.manual_order_snapshot = self._manual_order_snapshot()
+            result = self._send_backend_command("refresh_manual", self._manual_preview_params(), timeout=10.0)
         except Exception as exc:
             self._append_log([f"Snapshot error: {self._format_exception_detail(exc)}"])
             return
-        self._update_summary_cards()
-        self._sync_button_states()
+        self._apply_refresh_result(result)
 
     def preflight(self) -> None:
         if self.snapshot is None:
@@ -378,29 +720,27 @@ class BotEaQtWindow(QMainWindow):
         if self.snapshot is None:
             return
         try:
-            self.size_result = self._size_result()
-            self.manual_order_snapshot = self._manual_order_snapshot()
-            runtime = MT5ExecutionRuntime(adapter=self.adapter, allow_live_orders=False)
-            preview_size = SimpleNamespace(
-                accepted=True,
-                mode=OperatingMode.RECOMMEND,
-                capital_base_cash=float((self.manual_order_snapshot or {}).get("allocation_cap_usd") or 0.0),
-                recommended_minimum_allocation_cash=0.0,
-                effective_risk_pct=0.0,
-                risk_cash_budget=0.0,
-                normalized_volume=float((self.manual_order_snapshot or {}).get("final_lot") or 0.0),
-                estimated_loss_cash=0.0,
-                stop_distance_points=self._current_stop_distance_value(),
-                rejection_reason=None,
-                warnings=[],
-            )
-            if not self.manual_order_snapshot or not bool(self.manual_order_snapshot.get("accepted")):
-                self._append_log(self._manual_snapshot_lines() + ["status=REJECTED", f"detail={self.manual_order_snapshot.get('why_blocked') if self.manual_order_snapshot else 'manual lot blocked'}"])
-            else:
-                result = runtime.preflight(self.snapshot, self._intent("manual preflight"), preview_size)
-                self._append_log(self._manual_snapshot_lines() + [f"status={result['status']}", f"detail={result['detail']}", f"retcode={result.get('retcode')}"])
+            result = self._send_backend_command("preflight_manual", self._manual_preview_params(), timeout=10.0)
         except Exception as exc:
             self._append_log([f"Preflight error: {self._format_exception_detail(exc)}"])
+            return
+        self._apply_refresh_result(
+            {
+                "snapshot": result.get("snapshot"),
+                "manual_order_snapshot": result.get("manual_order_snapshot"),
+                "risk_sizing_snapshot": self.size_result,
+            }
+        )
+        self._append_log(
+            self._snapshot_lines()
+            + self._manual_snapshot_lines()
+            + [
+                f"status={result.get('status')}",
+                f"detail={result.get('detail')}",
+                f"retcode={result.get('retcode')}",
+                f"projected_margin_free={result.get('projected_margin_free')}",
+            ]
+        )
         self._update_summary_cards()
         self._sync_button_states()
 
@@ -409,109 +749,114 @@ class BotEaQtWindow(QMainWindow):
             self.refresh_snapshot()
         if self.snapshot is None:
             return
-        self.manual_order_snapshot = self._manual_order_snapshot()
-        if not self.manual_order_snapshot or not bool(self.manual_order_snapshot.get("accepted")):
-            self._append_log(self._manual_snapshot_lines() + ["status=REJECTED", f"detail={self.manual_order_snapshot.get('why_blocked') if self.manual_order_snapshot else 'manual lot blocked'}"])
-            self._sync_button_states()
-            return
         try:
-            live_enabled = self.live_button.text() == "Disable Live"
-            runtime = MT5ExecutionRuntime(adapter=self.adapter, allow_live_orders=live_enabled)
-            manual_size_result = SimpleNamespace(
-                accepted=True,
-                mode=OperatingMode.RECOMMEND,
-                capital_base_cash=float(self.manual_order_snapshot.get("allocation_cap_usd") or 0.0),
-                recommended_minimum_allocation_cash=0.0,
-                effective_risk_pct=0.0,
-                risk_cash_budget=0.0,
-                normalized_volume=float(self.manual_order_snapshot.get("final_lot") or 0.0),
-                estimated_loss_cash=0.0,
-                stop_distance_points=self._current_stop_distance_value(),
-                rejection_reason=None,
-                warnings=[],
-            )
-            result = runtime.execute(self.snapshot, self._intent("manual execute"), manual_size_result)
-            self._append_log(
-                self._manual_snapshot_lines()
-                + [
-                    f"execution_mode={'LIVE' if live_enabled else 'DRY_RUN'}",
-                    "live_hint=Klik Enable Live dulu jika ingin order sungguhan." if not live_enabled else "live_hint=Live order path active",
-                    f"status={result.get('status')}",
-                    f"detail={result.get('detail')}",
-                    f"retcode={result.get('retcode')}",
-                    f"order={result.get('order')}",
-                    f"deal={result.get('deal')}",
-                ]
+            result = self._send_backend_command(
+                "execute_manual",
+                {**self._manual_preview_params(), "live_enabled": self._live_enabled},
+                timeout=10.0,
             )
         except Exception as exc:
             self._append_log([f"Execute error: {self._format_exception_detail(exc)}"])
+            return
+        self._apply_refresh_result(
+            {
+                "snapshot": result.get("snapshot"),
+                "manual_order_snapshot": result.get("manual_order_snapshot"),
+                "risk_sizing_snapshot": self.size_result,
+            }
+        )
+        self._append_log(
+            self._snapshot_lines()
+            + self._manual_snapshot_lines()
+            + [
+                f"execution_mode={'LIVE' if self._live_enabled else 'DRY_RUN'}",
+                "live_hint=Klik Enable Live dulu jika ingin order sungguhan."
+                if not self._live_enabled
+                else "live_hint=Live order path active",
+                f"status={result.get('status')}",
+                f"detail={result.get('detail')}",
+                f"retcode={result.get('retcode')}",
+                f"order={result.get('order')}",
+                f"deal={result.get('deal')}",
+            ]
+        )
+        self._update_summary_cards()
+        self._sync_button_states()
 
     def play_runtime(self) -> None:
         try:
             self.load_codex()
             self.check_mt5()
-            config = self._desktop_runtime_config()
-            run_id = self.runtime_coordinator.start(config)
-            self.run_id_status.setText(run_id)
-            self.runtime_status.setText(f"Starting run {run_id}")
-            self._append_log([f"runtime_starting run_id={run_id}", f"db_path={config.db_path}"])
+            run_id = str(self._send_backend_command("start_runtime", self._runtime_params(), timeout=15.0))
         except Exception as exc:
             self._append_log([f"Runtime start error: {self._format_exception_detail(exc)}"])
+            return
+        self._runtime_running = True
+        self.run_id_status.setText(run_id)
+        self.runtime_status.setText(f"Starting run {run_id}")
+        self.approval_status.setText("No pending live approval")
+        self._append_log([f"runtime_starting run_id={run_id}", f"db_path={self._runtime_params().get('db_path')}"])
         self._sync_button_states()
 
     def stop_runtime(self) -> None:
-        self.runtime_coordinator.stop()
+        try:
+            self._send_backend_command("stop_runtime", {}, timeout=10.0)
+        except Exception as exc:
+            self._append_log([f"Runtime stop error: {self._format_exception_detail(exc)}"])
+            return
+        self._runtime_running = False
         self.runtime_status.setText("Runtime stopped")
         self._sync_button_states()
 
     def toggle_live(self) -> None:
-        enable_live = self.live_button.text() == "Enable Live"
+        enable_live = not self._live_enabled
         try:
-            self.runtime_coordinator.set_live_enabled(enable_live)
+            result = self._send_backend_command("set_live_enabled", {"enabled": enable_live}, timeout=10.0)
         except Exception as exc:
             self._append_log([f"Live toggle error: {self._format_exception_detail(exc)}"])
             return
-        self.live_button.setText("Disable Live" if enable_live else "Enable Live")
+        self._live_enabled = bool(result.get("live_enabled"))
+        self.live_button.setText("Disable Live" if self._live_enabled else "Enable Live")
+        self.runtime_status.setText("Live orders enabled" if self._live_enabled else "Live orders disabled")
         self._sync_button_states()
 
     def approve_pending(self) -> None:
         try:
-            pending = self.runtime_coordinator.approve_pending_live_order()
-            self.approval_status.setText(f"Approved {pending.symbol} {pending.side} {pending.volume}")
-            self._append_log([f"approval_armed: {pending.symbol} {pending.side} {pending.volume}"])
+            pending = self._send_backend_command("approve_pending", {}, timeout=10.0)
         except Exception as exc:
             self._append_log([f"Approval error: {self._format_exception_detail(exc)}"])
+            return
+        self._pending_approval = None
+        self.approval_status.setText(f"Approved {pending.get('symbol')} {pending.get('side')} {pending.get('volume')}")
+        self._append_log([f"approval_armed: {pending.get('symbol')} {pending.get('side')} {pending.get('volume')}"])
         self._sync_button_states()
 
     def reject_pending(self) -> None:
         try:
-            pending = self.runtime_coordinator.reject_pending_live_order()
-            self.approval_status.setText("No pending live approval")
-            self._append_log([f"approval_rejected: {pending.symbol} {pending.side} {pending.volume}"])
+            pending = self._send_backend_command("reject_pending", {}, timeout=10.0)
         except Exception as exc:
             self._append_log([f"Reject error: {self._format_exception_detail(exc)}"])
+            return
+        self._pending_approval = None
+        self.approval_status.setText("No pending live approval")
+        self._append_log([f"approval_rejected: {pending.get('symbol')} {pending.get('side')} {pending.get('volume')}"])
         self._sync_button_states()
 
     def load_telemetry(self) -> None:
-        db_path = Path(self.db_input.text().strip())
-        if not db_path.exists():
-            self._append_log([f"runtime_db_missing={db_path}"])
+        try:
+            result = self._send_backend_command("load_telemetry", self._telemetry_params(), timeout=10.0)
+        except Exception as exc:
+            self._append_log([f"Telemetry error: {self._format_exception_detail(exc)}"])
             return
-        store = RuntimeStore(str(db_path))
-        run_id = self.run_id_status.text().strip() or self.runtime_coordinator.run_id
-        overview = store.fetch_latest_run_overview(run_id=run_id or None) or store.fetch_latest_run_overview()
+        overview = result.get("overview")
         if overview is None:
             self._append_log(["no runtime runs found"])
             return
         run_id = str(overview.get("run_id") or "")
+        health = result.get("health") or {}
+        validation = result.get("validation") or {}
+        lifecycle_rows = result.get("lifecycle_rows") or []
         self.run_id_status.setText(run_id)
-        health = store.fetch_execution_health_summary(run_id=run_id, limit=50)
-        inputs = store.fetch_runtime_validation_inputs(run_id=run_id)
-        report = build_runtime_validation_report(
-            inputs["position_events"],
-            inputs["execution_events"],
-            starting_equity=float(inputs.get("starting_equity") or 0.0),
-        )
         self.runtime_text.setPlainText(
             "\n".join(
                 [
@@ -521,22 +866,22 @@ class BotEaQtWindow(QMainWindow):
                     f"spread_points={overview.get('spread_points')}",
                     f"equity={overview.get('equity')}",
                     f"free_margin={overview.get('free_margin')}",
-                    f"reject_rate={health.get('reject_rate', 0.0):.2%}",
+                    f"reject_rate={self._float_value(health.get('reject_rate')):.2%}",
                     f"filled_events={health.get('filled_events')}",
                     f"dry_run_events={health.get('dry_run_events')}",
                 ]
             )
         )
+        warnings = list(validation.get("warnings") or [])
         self.validation_text.setPlainText(
             "\n".join(
                 [
-                    f"total_trades={report.validation_summary.total_trades}",
-                    f"win_rate={report.validation_summary.win_rate:.2%}",
-                    f"profit_factor={report.validation_summary.profit_factor:.3f}",
-                    f"expectancy_r={report.validation_summary.expectancy_r:.3f}",
-                    f"total_pnl_cash={report.validation_summary.total_pnl_cash:.2f}",
+                    f"total_trades={validation.get('total_trades')}",
+                    f"win_rate={self._float_value(validation.get('win_rate')):.2%}",
+                    f"profit_factor={self._float_value(validation.get('profit_factor')):.3f}",
+                    f"expectancy_r={self._float_value(validation.get('expectancy_r')):.3f}",
                     "",
-                    *[f"- {warning}" for warning in report.validation_summary.warnings + report.execution_quality.warnings],
+                    *[f"- {warning}" for warning in warnings],
                 ]
             )
         )
@@ -544,9 +889,70 @@ class BotEaQtWindow(QMainWindow):
             "\n".join(
                 self._manual_snapshot_lines()
                 + [""]
-                + [f"- {trade.get('symbol')} {trade.get('side')} pnl={trade.get('realized_pnl_cash')}" for trade in inputs["lifecycle_rows"][:10]]
+                + [f"- {row.get('symbol')} {row.get('side')} pnl={row.get('realized_pnl_cash')}" for row in lifecycle_rows[:10]]
             )
         )
+
+    def _probe_params(self) -> dict[str, Any]:
+        return {
+            "symbol": self.symbol_combo.currentText().strip(),
+            "timeframe": self.timeframe_combo.currentText().strip(),
+            "trading_style": self.style_combo.currentText(),
+            "stop_distance_points": self._current_stop_distance_value(),
+            "capital_mode": self.capital_mode_combo.currentText(),
+            "capital_value": self._capital_allocation().value,
+        }
+
+    def _manual_preview_params(self) -> dict[str, Any]:
+        params = self._probe_params()
+        params.update(
+            {
+                "lot_mode": self.lot_mode_combo.currentText().strip() or "auto_max",
+                "manual_lot": self._float_or_default(self.manual_lot_input.text(), default=0.0),
+                "side": self.side_combo.currentText(),
+                "db_path": str(Path(self.db_input.text().strip()).expanduser()),
+            }
+        )
+        return params
+
+    def _codex_params(self) -> dict[str, Any]:
+        return {
+            "codex_command": self.codex_command_input.text().strip() or "codex",
+            "model": self._optional_str(self.model_combo.currentText()),
+            "codex_cwd": self._optional_str(self.codex_cwd_input.text()),
+            "timeout_seconds": 60,
+        }
+
+    def _runtime_params(self) -> dict[str, Any]:
+        config = self._desktop_runtime_config()
+        return {
+            "symbol": config.symbol,
+            "timeframe": config.timeframe,
+            "trading_style": config.trading_style.value,
+            "stop_distance_points": config.stop_distance_points,
+            "capital_mode": config.capital_allocation.mode.value,
+            "capital_value": config.capital_allocation.value,
+            "db_path": config.db_path,
+            "codex_command": config.codex_executable,
+            "model": config.codex_model,
+            "codex_cwd": config.codex_cwd,
+            "codex_timeout_seconds": config.codex_timeout_seconds,
+            "poll_interval_seconds": config.poll_interval_seconds,
+            "session_state": config.session_state,
+            "news_state": config.news_state,
+            "run_id": config.run_id,
+        }
+
+    def _telemetry_params(self) -> dict[str, Any]:
+        return {
+            "db_path": str(Path(self.db_input.text().strip()).expanduser()),
+            "run_id": self._optional_str(self.run_id_status.text()),
+        }
+
+    def _send_backend_command(self, name: str, params: dict[str, Any], *, timeout: float = 15.0) -> Any:
+        if not self._service_connected and not self.connect_service(show_errors=False):
+            raise RuntimeError("websocket service is not connected")
+        return self.backend.request(name, params, timeout=timeout)
 
     def _desktop_runtime_config(self) -> DesktopRuntimeConfig:
         poll_interval = int(float(self.poll_interval_input.text()))
@@ -565,44 +971,72 @@ class BotEaQtWindow(QMainWindow):
             poll_interval_seconds=poll_interval,
         )
 
-    def _provider(self) -> MT5SnapshotProvider:
-        return MT5SnapshotProvider(
-            adapter=self.adapter,
-            symbol=self.symbol_combo.currentText().strip(),
-            timeframe=self.timeframe_combo.currentText().strip(),
-            risk_policy=self.risk_policy,
-            trading_style=TradingStyle(self.style_combo.currentText()),
-            stop_distance_points=self._current_stop_distance_value(),
-            capital_allocation=self._capital_allocation(),
-            session_state="manual",
-            news_state="unknown",
-        )
-
     def _pump_runtime_events(self) -> None:
-        events = self.runtime_coordinator.drain_events()
-        for event in events:
-            if event.kind == "runtime_started":
-                self.runtime_status.setText(event.message)
-                if isinstance(event.payload.get("run_id"), str):
-                    self.run_id_status.setText(str(event.payload["run_id"]))
-            elif event.kind == "runtime_cycle":
-                self.runtime_status.setText(self._short(event.message))
-            elif event.kind in {"runtime_error", "runtime_halted", "runtime_stopped"}:
-                self.runtime_status.setText(self._short(event.message))
-                self._append_log([f"{event.kind}: {event.message}"])
-            elif event.kind == "approval_pending":
+        for event in self.backend.drain_events():
+            name = str(event.get("name") or "")
+            payload = dict(event.get("payload") or {})
+            message = str(payload.get("message") or "")
+            if name == "service_ready":
+                self._service_connected = True
+                self.service_status.setText(
+                    f"Connected {payload.get('host', self.service_host_input.text().strip())}:{payload.get('port', self.service_port_input.text().strip())}"
+                )
+            elif name == "runtime_started":
+                self._runtime_running = True
+                self.runtime_status.setText(message)
+                if payload.get("run_id"):
+                    self.run_id_status.setText(str(payload["run_id"]))
+            elif name == "runtime_cycle":
+                self.runtime_status.setText(self._short(message))
+            elif name in {"runtime_error", "runtime_halted", "runtime_stopped"}:
+                self._runtime_running = False
+                self.runtime_status.setText(self._short(message))
+                self._append_log([f"{name}: {message}"])
+            elif name == "approval_pending":
+                self._pending_approval = payload
                 self.approval_status.setText("Pending approval")
-                self._append_log([f"approval_pending: {event.payload}"])
-            elif event.kind in {"approval_armed", "approval_status", "approval_rejected"}:
-                self.approval_status.setText(self._short(event.message))
-            elif event.kind == "mt5_ready":
+                self._append_log([f"approval_pending: {payload}"])
+            elif name in {"approval_armed", "approval_status"}:
+                self.approval_status.setText(self._short(message))
+            elif name == "approval_rejected":
+                self._pending_approval = None
+                self.approval_status.setText(self._short(message))
+            elif name == "mt5_ready":
                 self.mt5_status.setText("MT5 ready")
-            elif event.kind == "codex_ready":
-                self.codex_status.setText(str(event.payload.get("version") or event.message))
-            elif event.kind == "live_toggle":
-                enabled = bool(event.payload.get("enabled"))
-                self.live_button.setText("Disable Live" if enabled else "Enable Live")
+            elif name == "codex_ready":
+                self.codex_status.setText(str(payload.get("version") or message))
+            elif name == "live_toggle":
+                self._live_enabled = bool(payload.get("enabled"))
+                self.live_button.setText("Disable Live" if self._live_enabled else "Enable Live")
         self._sync_button_states()
+
+    def _apply_refresh_result(self, result: dict[str, Any]) -> None:
+        snapshot = result.get("snapshot")
+        if isinstance(snapshot, dict):
+            self.snapshot = snapshot
+            self._apply_stop_distance_floor(self._float_value(snapshot.get("stops_level_points")))
+        manual_snapshot = result.get("manual_order_snapshot")
+        if isinstance(manual_snapshot, dict):
+            self.manual_order_snapshot = manual_snapshot
+        size_result = result.get("risk_sizing_snapshot")
+        if isinstance(size_result, dict):
+            self.size_result = size_result
+        self._apply_manual_preview_constraints()
+        self._update_summary_cards()
+        self._sync_button_states()
+
+    def _apply_manual_preview_constraints(self) -> None:
+        if self.manual_order_snapshot is None or self.lot_mode_combo.currentText().strip() != "manual":
+            return
+        requested = self._float_or_default(self.manual_lot_input.text(), default=0.0)
+        final_lot = self._float_value(self.manual_order_snapshot.get("final_lot"))
+        resized = bool(self.manual_order_snapshot.get("resized_down"))
+        if resized and final_lot > 0 and abs(requested - final_lot) > 1e-9:
+            self._field_guard = True
+            try:
+                self.manual_lot_input.setText(f"{final_lot:.2f}")
+            finally:
+                self._field_guard = False
 
     def _update_summary_cards(self) -> None:
         self.market_card["text"].setPlainText("\n".join(self._snapshot_lines()) if self.snapshot is not None else "No snapshot")
@@ -613,130 +1047,17 @@ class BotEaQtWindow(QMainWindow):
         if self.snapshot is None:
             return ["No snapshot"]
         return [
-            f"symbol={self.snapshot.symbol}",
-            f"bid={self.snapshot.bid}",
-            f"ask={self.snapshot.ask}",
-            f"spread_points={self.snapshot.spread_points:.2f}",
-            f"equity={self.snapshot.account.equity}",
-            f"free_margin={self.snapshot.account.free_margin}",
-            f"trade_mode={self.snapshot.symbol_snapshot.trade_mode}",
-            f"execution_mode={self.snapshot.symbol_snapshot.execution_mode}",
-            f"filling_mode={self.snapshot.symbol_snapshot.filling_mode}",
+            f"symbol={self.snapshot.get('symbol')}",
+            f"bid={self.snapshot.get('bid')}",
+            f"ask={self.snapshot.get('ask')}",
+            f"spread_points={self._float_value(self.snapshot.get('spread_points')):.2f}",
+            f"tick_time={self.snapshot.get('tick_time') or 'n/a'}",
+            f"equity={self.snapshot.get('equity')}",
+            f"free_margin={self.snapshot.get('free_margin')}",
+            f"trade_mode={self.snapshot.get('trade_mode')}",
+            f"execution_mode={self.snapshot.get('execution_mode')}",
+            f"filling_mode={self.snapshot.get('filling_mode')}",
         ]
-
-    def _manual_order_limits(self) -> dict[str, float] | None:
-        if self.snapshot is None:
-            return None
-        symbol = self.snapshot.symbol_snapshot
-        side = self.side_combo.currentText()
-        order_price = float(self.snapshot.ask if side == "buy" else self.snapshot.bid)
-        allocation_cap = self._allocation_capital_basis()
-        min_lot = float(symbol.volume_min or 0.0)
-        max_lot = float(symbol.volume_max or 0.0)
-        step = float(symbol.volume_step or 0.0)
-        available_budget = min(allocation_cap, float(self.snapshot.account.free_margin))
-        if min_lot <= 0 or max_lot <= 0 or step <= 0 or order_price <= 0:
-            return None
-        margin_min = self.adapter.estimate_margin(self.snapshot.symbol, min_lot, side, order_price)
-        if not margin_min.success:
-            return None
-        affordable_max_lot = 0.0
-        margin_for_affordable_max = 0.0
-        if margin_min.required_margin <= available_budget:
-            affordable_max_lot = min_lot
-            margin_for_affordable_max = margin_min.required_margin
-            current = min_lot
-            max_steps = int(round((max_lot - min_lot) / step)) + 1
-            for _ in range(max_steps):
-                next_lot = round(current + step, 8)
-                if next_lot > max_lot + 1e-9:
-                    break
-                margin = self.adapter.estimate_margin(self.snapshot.symbol, next_lot, side, order_price)
-                if not margin.success or margin.required_margin > available_budget:
-                    break
-                affordable_max_lot = next_lot
-                margin_for_affordable_max = margin.required_margin
-                current = next_lot
-        return {
-            "allocation_cap_usd": allocation_cap,
-            "available_margin_cap_usd": available_budget,
-            "broker_min_lot": min_lot,
-            "broker_max_lot": max_lot,
-            "broker_lot_step": step,
-            "order_price": order_price,
-            "margin_for_min_lot_usd": margin_min.required_margin,
-            "affordable_max_lot": affordable_max_lot,
-            "margin_for_affordable_max_lot_usd": margin_for_affordable_max,
-        }
-
-    def _manual_order_snapshot(self) -> dict[str, float | str | bool] | None:
-        limits = self._manual_order_limits()
-        if limits is None:
-            return None
-        lot_mode = self.lot_mode_combo.currentText().strip() or "auto_max"
-        allocation_cap = limits["allocation_cap_usd"]
-        if allocation_cap <= 0:
-            return {"accepted": False, "final_lot": 0.0, "lot_mode": lot_mode, "why_blocked": "capital allocation must be positive"}
-        min_lot = limits["broker_min_lot"]
-        max_lot = limits["broker_max_lot"]
-        step = limits["broker_lot_step"]
-        order_price = limits["order_price"]
-        available_budget = limits["available_margin_cap_usd"]
-        margin_for_min = limits["margin_for_min_lot_usd"]
-        final_lot = limits["affordable_max_lot"]
-        margin_for_final = limits["margin_for_affordable_max_lot_usd"]
-        if margin_for_min > available_budget or final_lot <= 0:
-            return {
-                "accepted": False,
-                "final_lot": 0.0,
-                "lot_mode": lot_mode,
-                "allocation_cap_usd": allocation_cap,
-                "available_margin_cap_usd": available_budget,
-                "broker_min_lot": min_lot,
-                "broker_max_lot": max_lot,
-                "broker_lot_step": step,
-                "margin_for_min_lot_usd": margin_for_min,
-                "why_blocked": "allocation cannot cover broker minimum lot margin",
-            }
-        requested_lot = 0.0
-        resized = False
-        why_blocked = "n/a"
-        if lot_mode == "manual":
-            try:
-                requested_lot = float(self.manual_lot_input.text())
-            except ValueError:
-                return {"accepted": False, "final_lot": 0.0, "lot_mode": lot_mode, "why_blocked": "manual lot must be a valid number"}
-            if requested_lot <= 0:
-                return {"accepted": False, "final_lot": 0.0, "lot_mode": lot_mode, "why_blocked": "manual lot must be positive"}
-            normalized_requested = round((int(max(requested_lot, min_lot) / step) * step), 8)
-            if normalized_requested < min_lot:
-                normalized_requested = min_lot
-            if normalized_requested > final_lot:
-                resized = True
-                why_blocked = "manual lot resized down to max allowed by capital, margin, and broker"
-            elif abs(normalized_requested - requested_lot) > 1e-9:
-                resized = True
-                why_blocked = "manual lot normalized to broker minimum / step"
-            final_lot = min(normalized_requested, final_lot)
-            margin = self.adapter.estimate_margin(self.snapshot.symbol, final_lot, self.side_combo.currentText(), order_price)
-            if margin.success:
-                margin_for_final = margin.required_margin
-        return {
-            "accepted": final_lot > 0,
-            "lot_mode": lot_mode,
-            "allocation_cap_usd": allocation_cap,
-            "available_margin_cap_usd": available_budget,
-            "broker_min_lot": min_lot,
-            "broker_max_lot": max_lot,
-            "broker_lot_step": step,
-            "order_price": order_price,
-            "requested_lot": requested_lot,
-            "resized_down": resized,
-            "final_lot": final_lot,
-            "margin_for_min_lot_usd": margin_for_min,
-            "margin_for_final_lot_usd": margin_for_final,
-            "why_blocked": why_blocked if final_lot > 0 else "allocation cannot cover broker minimum lot margin",
-        }
 
     def _manual_snapshot_lines(self) -> list[str]:
         if self.manual_order_snapshot is None:
@@ -745,59 +1066,36 @@ class BotEaQtWindow(QMainWindow):
         return [
             "manual_order_snapshot:",
             f"- lot_mode={snap.get('lot_mode') or 'auto_max'}",
-            f"- requested_lot={float(snap.get('requested_lot') or 0.0):.4f}",
+            f"- requested_lot={self._float_value(snap.get('requested_lot')):.4f}",
             f"- manual_lot_field_used={snap.get('lot_mode') == 'manual'}",
-            f"- final_lot={float(snap.get('final_lot') or 0.0):.4f}",
-            f"- capital_basis_usd={float(snap.get('allocation_cap_usd') or 0.0):.2f}",
-            f"- free_margin_cap_usd={float(snap.get('available_margin_cap_usd') or 0.0):.2f}",
-            f"- broker_min_lot={float(snap.get('broker_min_lot') or 0.0):.4f}",
-            f"- broker_max_lot={float(snap.get('broker_max_lot') or 0.0):.4f}",
-            f"- broker_lot_step={float(snap.get('broker_lot_step') or 0.0):.4f}",
-            f"- margin_for_min_lot_usd={float(snap.get('margin_for_min_lot_usd') or 0.0):.2f}",
-            f"- margin_for_final_lot_usd={float(snap.get('margin_for_final_lot_usd') or 0.0):.2f}",
-            f"- order_price={float(snap.get('order_price') or 0.0):.5f}",
+            f"- final_lot={self._float_value(snap.get('final_lot')):.4f}",
+            f"- capital_basis_usd={self._float_value(snap.get('allocation_cap_usd')):.2f}",
+            f"- free_margin_cap_usd={self._float_value(snap.get('available_margin_cap_usd')):.2f}",
+            f"- broker_min_lot={self._float_value(snap.get('broker_min_lot')):.4f}",
+            f"- broker_max_lot={self._float_value(snap.get('broker_max_lot')):.4f}",
+            f"- broker_lot_step={self._float_value(snap.get('broker_lot_step')):.4f}",
+            f"- margin_for_min_lot_usd={self._float_value(snap.get('margin_for_min_lot_usd')):.2f}",
+            f"- margin_for_final_lot_usd={self._float_value(snap.get('margin_for_final_lot_usd')):.2f}",
+            f"- order_price={self._float_value(snap.get('order_price')):.5f}",
             f"- resized_down={bool(snap.get('resized_down'))}",
             f"- manual_order_result={'ok' if bool(snap.get('accepted')) else 'blocked'}",
             f"- why_blocked={snap.get('why_blocked') or 'n/a'}",
         ]
 
     def _risk_snapshot_lines(self) -> list[str]:
-        if self.snapshot is None or self.size_result is None:
+        if self.size_result is None:
             return ["sizing_snapshot=unavailable"]
         size = self.size_result
-        symbol = self.snapshot.symbol_snapshot
-        lot_at_min = symbol.volume_min if symbol.volume_min > 0 else 0.0
-        min_lot_risk_cash = lot_at_min * size.loss_per_lot if lot_at_min > 0 and size.loss_per_lot > 0 else 0.0
-        risk_pct_of_capital = ((size.risk_cash_budget / size.capital_base_cash) * 100.0) if size.capital_base_cash > 0 else 0.0
         return [
             "sizing_snapshot:",
-            f"- final_lot={size.normalized_volume:.4f}",
-            f"- raw_lot_before_broker_rounding={size.raw_volume:.6f}",
-            f"- broker_min_lot={size.volume_min:.4f}",
-            f"- broker_max_lot={size.volume_max:.4f}",
-            f"- broker_lot_step={size.volume_step:.4f}",
-            f"- capital_basis_usd={size.capital_base_cash:.2f}",
-            f"- effective_risk_pct={size.effective_risk_pct:.2f}%",
-            f"- risk_cash_budget_usd={size.risk_cash_budget:.2f}",
-            f"- estimated_loss_at_final_lot_usd={size.estimated_loss_cash:.2f}",
-            f"- estimated_loss_at_min_lot_usd={min_lot_risk_cash:.2f}",
-            f"- broker_minimum_capital_hint_usd={size.recommended_minimum_allocation_cash:.2f}",
-            f"- risk_budget_as_pct_of_capital={risk_pct_of_capital:.2f}%",
-            f"- sizing_result={'ok' if size.accepted else 'blocked'}",
-            f"- why_blocked={size.rejection_reason or 'n/a'}",
+            f"- final_lot={self._float_value(size.get('final_lot')):.4f}",
+            f"- raw_lot_before_broker_rounding={self._float_value(size.get('raw_lot_before_broker_rounding')):.6f}",
+            f"- effective_risk_pct={self._float_value(size.get('effective_risk_pct')):.2f}%",
+            f"- risk_cash_budget_usd={self._float_value(size.get('risk_cash_budget_usd')):.2f}",
+            f"- estimated_loss_at_final_lot_usd={self._float_value(size.get('estimated_loss_at_final_lot_usd')):.2f}",
+            f"- sizing_result={'ok' if bool(size.get('accepted')) else 'blocked'}",
+            f"- why_blocked={size.get('why_blocked') or 'n/a'}",
         ]
-
-    def _size_result(self):
-        return self.risk_engine.compute_position_size(
-            PositionSizeRequest(
-                account=self.snapshot.account,
-                symbol=self.snapshot.symbol_snapshot,
-                policy=self.snapshot.risk_policy,
-                stop_distance_points=self._current_stop_distance_value(),
-                trading_style=TradingStyle(self.style_combo.currentText()),
-                capital_allocation=self._capital_allocation(),
-            )
-        )
 
     def _capital_allocation(self) -> CapitalAllocation:
         mode = CapitalAllocationMode(self.capital_mode_combo.currentText())
@@ -810,87 +1108,33 @@ class BotEaQtWindow(QMainWindow):
             raw_value = max(raw_value, 0.0)
         return CapitalAllocation(mode=mode, value=raw_value)
 
-    def _allocation_capital_basis(self) -> float:
-        if self.snapshot is None:
-            return 0.0
-        account_equity = max(self.snapshot.account.equity, 0.0)
-        allocation = self._capital_allocation()
-        if allocation.mode is CapitalAllocationMode.FULL_EQUITY:
-            return account_equity
-        if allocation.mode is CapitalAllocationMode.PERCENT_EQUITY:
-            return account_equity * (min(max(allocation.value, 0.0), 100.0) / 100.0)
-        return min(max(allocation.value, 0.0), account_equity)
-
     def _sync_stop_distance_from_probe(self, snapshot: dict[str, object]) -> None:
-        stop_min = float(snapshot.get("stops_level_points") or 0.0)
-        self._apply_stop_distance_floor(stop_min)
-
-    def _sync_stop_distance_from_symbol_snapshot(self, symbol_snapshot) -> None:
-        stop_min = float(getattr(symbol_snapshot, "stops_level_points", 0.0) or 0.0)
+        stop_min = self._float_value(snapshot.get("stops_level_points"))
         self._apply_stop_distance_floor(stop_min)
 
     def _apply_stop_distance_floor(self, stop_min: float) -> None:
         self.stop_label.setText(
             f"Stop Loss Distance (points, min {stop_min:.0f})" if stop_min > 0 else "Stop Loss Distance (points)"
         )
-        try:
-            current = float(self.stop_input.text())
-        except ValueError:
-            current = stop_min
+        current = self._float_or_default(self.stop_input.text(), default=stop_min)
         if stop_min > 0 and current < stop_min:
-            self.stop_input.setText(f"{stop_min:.0f}")
-
-    def _apply_manual_lot_realtime_bounds(self) -> None:
-        if self.snapshot is None or self.lot_mode_combo.currentText().strip() != "manual":
-            return
-        limits = self._manual_order_limits()
-        if limits is None:
-            return
-        min_lot = float(limits["broker_min_lot"])
-        step = float(limits["broker_lot_step"])
-        affordable_max_lot = float(limits["affordable_max_lot"])
-        try:
-            requested = float(self.manual_lot_input.text())
-        except ValueError:
-            return
-        if requested <= 0:
-            return
-        clamped = max(requested, min_lot)
-        normalized = round((int(clamped / step) * step), 8)
-        if normalized < min_lot:
-            normalized = min_lot
-        if affordable_max_lot > 0 and normalized > affordable_max_lot:
-            normalized = affordable_max_lot
-        if abs(normalized - requested) > 1e-9:
-            self.manual_lot_input.setText(f"{normalized:.2f}")
-
-    def _apply_realtime_constraints(self) -> None:
-        self._field_guard = True
-        try:
-            self._sync_stop_distance_from_symbol_snapshot(self.snapshot.symbol_snapshot)
-            self._apply_manual_lot_realtime_bounds()
-        finally:
-            self._field_guard = False
+            self._field_guard = True
+            try:
+                self.stop_input.setText(f"{stop_min:.0f}")
+            finally:
+                self._field_guard = False
 
     def _current_stop_distance_value(self) -> float:
         current = float(self.stop_input.text())
-        if self.snapshot is None:
-            return current
-        stop_min = float(self.snapshot.symbol_snapshot.stops_level_points or 0.0)
+        stop_min = self._float_value((self.snapshot or {}).get("stops_level_points"))
         if stop_min > 0 and current < stop_min:
-            self.stop_input.setText(f"{stop_min:.0f}")
+            self._field_guard = True
+            try:
+                self.stop_input.setText(f"{stop_min:.0f}")
+            finally:
+                self._field_guard = False
             return stop_min
         return current
-
-    def _intent(self, reason: str) -> AIIntent:
-        side = self.side_combo.currentText()
-        return AIIntent(
-            action=DecisionAction.OPEN,
-            side=side,
-            reason=reason,
-            stop_distance_points=self._current_stop_distance_value(),
-            entry_price=self.snapshot.ask if side == "buy" else self.snapshot.bid,
-        )
 
     def _set_symbol_choices(self, symbols: list[str]) -> None:
         current = self.symbol_combo.currentText().strip()
@@ -901,25 +1145,67 @@ class BotEaQtWindow(QMainWindow):
             self.symbol_combo.setCurrentText(current)
         self.symbol_combo.blockSignals(False)
 
+    def _service_url(self) -> str:
+        host = self.service_host_input.text().strip() or "127.0.0.1"
+        port = int(self.service_port_input.text().strip() or "8765")
+        return f"ws://{host}:{port}"
+
     def _sync_button_states(self) -> None:
-        running = self.runtime_coordinator.is_running
-        pending = self.runtime_coordinator.pending_approval is not None
+        connected = self._service_connected
         manual_execute_allowed = bool(
             self.manual_order_snapshot
             and bool(self.manual_order_snapshot.get("accepted"))
-            and float(self.manual_order_snapshot.get("final_lot") or 0.0) > 0
+            and self._float_value(self.manual_order_snapshot.get("final_lot")) > 0
         )
-        self.play_button.setEnabled(not running)
-        self.stop_button.setEnabled(running)
-        self.approve_button.setEnabled(pending)
-        self.reject_button.setEnabled(pending)
-        self.execute_button.setEnabled(manual_execute_allowed)
-        self.manual_lot_input.setEnabled(self.lot_mode_combo.currentText().strip() == "manual")
+        pending = self._pending_approval is not None
+        for button in (
+            self.load_codex_button,
+            self.play_button,
+            self.live_button,
+            self.approve_button,
+            self.reject_button,
+            self.load_telemetry_button,
+        ):
+            button.setEnabled(connected)
+        self.check_mt5_button.setEnabled(connected and not self._runtime_running)
+        self.refresh_button.setEnabled(connected and not self._runtime_running)
+        self.preflight_button.setEnabled(connected and not self._runtime_running)
+        self.stop_button.setEnabled(connected and self._runtime_running)
+        self.play_button.setEnabled(connected and not self._runtime_running)
+        self.execute_button.setEnabled(connected and not self._runtime_running and manual_execute_allowed)
+        self.approve_button.setEnabled(connected and pending)
+        self.reject_button.setEnabled(connected and pending)
+        self.live_button.setText("Disable Live" if self._live_enabled else "Enable Live")
+        trade_setup_enabled = not self._runtime_running
+        for widget in (
+            self.symbol_combo,
+            self.timeframe_combo,
+            self.style_combo,
+            self.stop_input,
+            self.capital_mode_combo,
+            self.capital_input,
+            self.lot_mode_combo,
+            self.side_combo,
+            self.db_input,
+        ):
+            widget.setEnabled(trade_setup_enabled)
+        self.manual_lot_input.setEnabled(trade_setup_enabled and self.lot_mode_combo.currentText().strip() == "manual")
 
     def _append_log(self, lines: list[str]) -> None:
         current = self.events_text.toPlainText().strip()
         merged = "\n".join(filter(None, [current, *lines]))
         self.events_text.setPlainText(merged)
+
+    @staticmethod
+    def _float_or_default(value: Any, *, default: float) -> float:
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return default
+
+    @classmethod
+    def _float_value(cls, value: Any) -> float:
+        return cls._float_or_default(value, default=0.0)
 
     @staticmethod
     def _short(message: str, limit: int = 140) -> str:

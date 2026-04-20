@@ -17,5 +17,23 @@ else {
 
 Write-Host "Launching bot-ea websocket service from $repoRoot"
 Write-Host "PYTHONPATH=$env:PYTHONPATH"
+Write-Host "Startup order: run this websocket service first and keep this window open."
+Write-Host "After the service is ready, open another PowerShell window and run scripts/run-qt-gui.ps1."
 
-python -m bot_ea.websocket_service
+$pythonCommand = $null
+foreach ($candidate in @("python3.14", "python")) {
+    try {
+        $pythonCommand = (Get-Command $candidate -ErrorAction Stop).Source
+        break
+    }
+    catch {
+        continue
+    }
+}
+
+if (-not $pythonCommand) {
+    throw "No Python interpreter found. Install Python 3.14 or ensure python is on PATH."
+}
+
+Write-Host "Python=$pythonCommand"
+& $pythonCommand -m bot_ea.websocket_service

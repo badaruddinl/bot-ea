@@ -17,8 +17,29 @@ from bot_ea.models import (  # noqa: E402
     TradingStyle,
 )
 from bot_ea.mt5_adapter import MockMT5Adapter  # noqa: E402
+from bot_ea.mt5_adapter import PriceTickSnapshot  # noqa: E402
 from bot_ea.mt5_execution_runtime import MT5ExecutionRuntime  # noqa: E402
 from bot_ea.polling_runtime import AIIntent, DecisionAction, RuntimeSnapshot  # noqa: E402
+
+
+class RefreshingMockMT5Adapter(MockMT5Adapter):
+    def __init__(self, *args, tick_bid: float, tick_ask: float, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self._tick_bid = tick_bid
+        self._tick_ask = tick_ask
+        self.validated_requests: list[dict] = []
+        self.sent_requests: list[dict] = []
+
+    def load_price_tick(self, symbol: str) -> PriceTickSnapshot:
+        return PriceTickSnapshot(symbol=symbol, bid=self._tick_bid, ask=self._tick_ask, time="2026-04-21T00:00:01+00:00")
+
+    def validate_order(self, request: dict):
+        self.validated_requests.append(dict(request))
+        return super().validate_order(request)
+
+    def send_order(self, request: dict):
+        self.sent_requests.append(dict(request))
+        return super().send_order(request)
 
 
 class MT5ExecutionRuntimeTests(unittest.TestCase):
@@ -113,3 +134,33 @@ class MT5ExecutionRuntimeTests(unittest.TestCase):
         result = runtime.execute(self.snapshot, self.intent, self.size_result)
         self.assertEqual(result["status"], "FILLED")
         self.assertTrue(result["live_order_submitted"])
+
+    def test_execute_live_refreshes_price_before_revalidation_and_send(self) -> None:
+        adapter = RefreshingMockMT5Adapter(
+            account_info={"equity": 1000.0, "balance": 1000.0, "margin_free": 900.0, "margin_level": 400.0},
+            symbols={
+                "EURUSD": {
+                    "name": "EURUSD",
+                    "point": 0.0001,
+                    "trade_tick_size": 0.0001,
+                    "trade_tick_value": 10.0,
+                    "volume_min": 0.01,
+                    "volume_max": 10.0,
+                    "volume_step": 0.01,
+                    "spread": 2,
+                    "trade_stops_level": 10,
+                    "trade_freeze_level": 0,
+                    "visible": True,
+                    "bid": 1.1000,
+                    "ask": 1.1002,
+                }
+            },
+            tick_bid=1.1010,
+            tick_ask=1.1013,
+        )
+        runtime = MT5ExecutionRuntime(adapter=adapter, allow_live_orders=True)
+        result = runtime.execute(self.snapshot, self.intent, self.size_result)
+        self.assertEqual(result["status"], "FILLED")
+        self.assertEqual(result["request"]["price"], 1.1013)
+        self.assertEqual(adapter.validated_requests[-1]["price"], 1.1013)
+        self.assertEqual(adapter.sent_requests[-1]["price"], 1.1013)

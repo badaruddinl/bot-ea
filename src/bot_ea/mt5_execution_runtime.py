@@ -47,10 +47,26 @@ class MT5ExecutionRuntime:
             preflight["swap_cash"] = None
             return preflight
 
+        live_request = self._refresh_live_request(snapshot, preflight["request"])
+        live_validation = self.adapter.validate_order(live_request)
+        if not live_validation.accepted:
+            return {
+                "status": "PRECHECK_REJECTED",
+                "detail": live_validation.detail,
+                "retcode": str(live_validation.retcode or ""),
+                "projected_margin_free": live_validation.projected_margin_free,
+                "projected_margin_level": live_validation.projected_margin_level,
+                "guard_checks": preflight["guard_checks"],
+                "request": live_request,
+                "live_order_submitted": False,
+                "preflight_status": "PRECHECK_REJECTED",
+                "preflight_detail": live_validation.detail,
+            }
+
         started = perf_counter()
-        send_result = self.adapter.send_order(preflight["request"])
+        send_result = self.adapter.send_order(live_request)
         latency_ms = (perf_counter() - started) * 1000.0
-        quoted_price = float(preflight["request"]["price"] or 0.0)
+        quoted_price = float(live_request["price"] or 0.0)
         realized_price = float(send_result.price or quoted_price or 0.0)
         point = float(snapshot.symbol_snapshot.point or 0.0)
         slippage_points = abs(realized_price - quoted_price) / point if point > 0 and quoted_price > 0 else 0.0
@@ -67,7 +83,7 @@ class MT5ExecutionRuntime:
             "request_id": send_result.request_id,
             "retcode_external": send_result.retcode_external,
             "live_order_submitted": True,
-            "request": preflight["request"],
+            "request": live_request,
             "guard_checks": preflight["guard_checks"],
             "quoted_price": quoted_price,
             "realized_price": realized_price,
@@ -124,6 +140,15 @@ class MT5ExecutionRuntime:
             "magic": self.magic,
             "comment": f"{self.comment_prefix}: {(intent.reason or 'execution')[:24]}",
         }
+
+    def _refresh_live_request(self, snapshot, request: dict) -> dict:
+        refreshed = dict(request)
+        side = str(refreshed.get("order_type") or "buy")
+        tick = self.adapter.load_price_tick(snapshot.symbol)
+        refreshed_price = float(tick.ask if side == "buy" else tick.bid or 0.0)
+        if refreshed_price > 0:
+            refreshed["price"] = refreshed_price
+        return refreshed
 
     @staticmethod
     def _first_failed_check(guard_result) -> str:

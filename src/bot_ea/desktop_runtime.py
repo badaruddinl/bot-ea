@@ -166,6 +166,8 @@ class SupervisedExecutionRuntime:
 
 
 class DesktopRuntimeCoordinator:
+    _MAX_MT5_IPC_RECOVERY_ATTEMPTS = 2
+
     def __init__(
         self,
         *,
@@ -323,6 +325,7 @@ class DesktopRuntimeCoordinator:
     def _run_loop(self, config: DesktopRuntimeConfig) -> None:
         store: RuntimeStore | None = None
         adapter: Any | None = None
+        runtime: PollingRuntime | None = None
         halted = False
         try:
             store = self.runtime_store_factory(config.db_path)
@@ -345,62 +348,50 @@ class DesktopRuntimeCoordinator:
                     "stop_distance_points": config.stop_distance_points,
                 },
             )
-            adapter = self.adapter_factory()
-            self._adapter = adapter
-            live_execution_runtime = MT5ExecutionRuntime(
-                adapter=adapter,
-                allow_live_orders=True,
-            )
-            dry_execution_runtime = MT5ExecutionRuntime(
-                adapter=adapter,
-                allow_live_orders=False,
-            )
-            supervised_runtime = SupervisedExecutionRuntime(
-                dry_runtime=dry_execution_runtime,
-                live_runtime=live_execution_runtime,
-                event_callback=self._emit,
-            )
-            supervised_runtime.run_id = config.run_id or ""
-            supervised_runtime.set_live_enabled(self._desired_live_enabled)
-            self._execution_runtime = live_execution_runtime
-            self._supervised_runtime = supervised_runtime
-            runtime = PollingRuntime(
-                store=store,
-                snapshot_provider=self._build_provider(
-                    adapter=adapter,
-                    symbol=config.symbol,
-                    timeframe=config.timeframe,
-                    trading_style=config.trading_style,
-                    stop_distance_points=config.stop_distance_points,
-                    capital_allocation=config.capital_allocation,
-                    session_state=config.session_state,
-                    news_state=config.news_state,
-                ),
-                decision_engine=self.codex_engine_factory(
-                    executable=config.codex_executable,
-                    model=config.codex_model,
-                    cwd=config.codex_cwd,
-                    timeout_seconds=config.codex_timeout_seconds,
-                ),
-                execution_runtime=supervised_runtime,
-                risk_engine=self.risk_engine_factory(),
-                stop_policy=self.stop_policy_factory(),
-                config=PollingConfig(poll_interval_seconds=config.poll_interval_seconds),
-            )
+            adapter, runtime = self._build_runtime(config, store)
             self._emit(
                 "runtime_started",
                 "desktop runtime started",
                 {
                     "run_id": config.run_id,
                     "db_path": config.db_path,
-                    "live_enabled": supervised_runtime.live_enabled,
+                    "live_enabled": bool(self._supervised_runtime and self._supervised_runtime.live_enabled),
                 },
             )
 
+            ipc_recovery_attempts = 0
             while self._stop_event is not None and not self._stop_event.is_set():
-                result = runtime.run_cycle(run_id=config.run_id or "", performance=SessionPerformance())
+                assert runtime is not None
+                try:
+                    result = runtime.run_cycle(run_id=config.run_id or "", performance=SessionPerformance())
+                except Exception as exc:
+                    if self._is_transient_mt5_ipc_error(exc) and ipc_recovery_attempts < self._MAX_MT5_IPC_RECOVERY_ATTEMPTS:
+                        ipc_recovery_attempts += 1
+                        if config.run_id is not None:
+                            store.record_log(
+                                run_id=config.run_id,
+                                cycle_id=None,
+                                level="WARNING",
+                                message=(
+                                    "transient MT5 IPC failure detected; "
+                                    f"reconnecting attempt {ipc_recovery_attempts}/{self._MAX_MT5_IPC_RECOVERY_ATTEMPTS}: {exc}"
+                                ),
+                            )
+                        self._emit(
+                            "runtime_recovering",
+                            (
+                                "transient MT5 IPC connection lost; "
+                                f"retrying ({ipc_recovery_attempts}/{self._MAX_MT5_IPC_RECOVERY_ATTEMPTS})"
+                            ),
+                            {"run_id": config.run_id, "error": str(exc), "db_path": config.db_path},
+                        )
+                        adapter, runtime = self._reconnect_runtime(config, store, adapter)
+                        continue
+                    raise
+                ipc_recovery_attempts = 0
                 overview = store.fetch_latest_run_overview()
                 health = store.fetch_execution_health_summary(run_id=config.run_id, limit=20)
+                supervised_runtime = self._supervised_runtime
                 self._emit(
                     "runtime_cycle",
                     f"{result.action}: {result.detail}",
@@ -455,6 +446,55 @@ class DesktopRuntimeCoordinator:
             self._thread = None
             self._stop_event = None
 
+    def _build_runtime(self, config: DesktopRuntimeConfig, store: RuntimeStore) -> tuple[Any, PollingRuntime]:
+        adapter = self.adapter_factory()
+        self._adapter = adapter
+        live_execution_runtime = MT5ExecutionRuntime(
+            adapter=adapter,
+            allow_live_orders=True,
+        )
+        dry_execution_runtime = MT5ExecutionRuntime(
+            adapter=adapter,
+            allow_live_orders=False,
+        )
+        supervised_runtime = SupervisedExecutionRuntime(
+            dry_runtime=dry_execution_runtime,
+            live_runtime=live_execution_runtime,
+            event_callback=self._emit,
+        )
+        supervised_runtime.run_id = config.run_id or ""
+        supervised_runtime.set_live_enabled(self._desired_live_enabled)
+        self._execution_runtime = live_execution_runtime
+        self._supervised_runtime = supervised_runtime
+        runtime = PollingRuntime(
+            store=store,
+            snapshot_provider=self._build_provider(
+                adapter=adapter,
+                symbol=config.symbol,
+                timeframe=config.timeframe,
+                trading_style=config.trading_style,
+                stop_distance_points=config.stop_distance_points,
+                capital_allocation=config.capital_allocation,
+                session_state=config.session_state,
+                news_state=config.news_state,
+            ),
+            decision_engine=self.codex_engine_factory(
+                executable=config.codex_executable,
+                model=config.codex_model,
+                cwd=config.codex_cwd,
+                timeout_seconds=config.codex_timeout_seconds,
+            ),
+            execution_runtime=supervised_runtime,
+            risk_engine=self.risk_engine_factory(),
+            stop_policy=self.stop_policy_factory(),
+            config=PollingConfig(poll_interval_seconds=config.poll_interval_seconds),
+        )
+        return adapter, runtime
+
+    def _reconnect_runtime(self, config: DesktopRuntimeConfig, store: RuntimeStore, adapter: Any) -> tuple[Any, PollingRuntime]:
+        self._shutdown_adapter(adapter)
+        return self._build_runtime(config, store)
+
     def _build_provider(
         self,
         *,
@@ -482,6 +522,11 @@ class DesktopRuntimeCoordinator:
 
     def _emit(self, kind: str, message: str, payload: dict[str, Any] | None = None) -> None:
         self._events.put(DesktopRuntimeEvent(kind=kind, message=message, payload=payload or {}))
+
+    @staticmethod
+    def _is_transient_mt5_ipc_error(exc: Exception) -> bool:
+        message = " ".join(str(exc).split()).lower()
+        return "no ipc connection" in message and "account_info() failed" in message
 
     @staticmethod
     def _shutdown_adapter(adapter: Any | None) -> None:

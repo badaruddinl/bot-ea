@@ -57,6 +57,15 @@ Research-first workspace for an autonomous MetaTrader trading bot with strict ri
 - `tests/test_risk_engine.py`
   - smoke tests for the first risk-engine slice
 
+## Desktop startup order
+
+For the Qt desktop runtime, start components in this order:
+
+1. Run `scripts/run-websocket-service.ps1` and keep that PowerShell session open.
+2. After the websocket backend is running, open a second PowerShell session and run `scripts/run-qt-gui.ps1`.
+
+The Qt GUI depends on the local websocket backend, so do not start the GUI first.
+
 ## Research stance
 
 - Facts from official docs are separated from design recommendations

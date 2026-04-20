@@ -297,6 +297,70 @@ class LiveMT5AdapterTests(unittest.TestCase):
         self.assertEqual(result.order, 123456)
         self.assertEqual(result.retcode, 10009)
 
+    def test_live_adapter_reinitializes_after_no_ipc_on_account_info(self) -> None:
+        class IPCFlakyAccountMT5(FakeMT5Module):
+            def __init__(self) -> None:
+                super().__init__()
+                self.shutdown_calls = 0
+                self._fail_next_account_info = True
+                self._last_error = (0, "ok")
+
+            def shutdown(self):
+                self.shutdown_calls += 1
+                return None
+
+            def last_error(self):
+                return self._last_error
+
+            def account_info(self):
+                if self._fail_next_account_info:
+                    self._fail_next_account_info = False
+                    self._last_error = (-10004, "No IPC connection")
+                    return None
+                self._last_error = (0, "ok")
+                return super().account_info()
+
+        fake_mt5 = IPCFlakyAccountMT5()
+        adapter = LiveMT5Adapter(mt5_module=fake_mt5)
+
+        account = adapter.load_account_snapshot()
+
+        self.assertEqual(account.equity, 1200.0)
+        self.assertEqual(len(fake_mt5.initialize_calls), 2)
+        self.assertEqual(fake_mt5.shutdown_calls, 1)
+
+    def test_live_adapter_reinitializes_after_no_ipc_on_tick(self) -> None:
+        class IPCFlakyTickMT5(FakeMT5Module):
+            def __init__(self) -> None:
+                super().__init__()
+                self.shutdown_calls = 0
+                self._fail_next_tick = True
+                self._last_error = (0, "ok")
+
+            def shutdown(self):
+                self.shutdown_calls += 1
+                return None
+
+            def last_error(self):
+                return self._last_error
+
+            def symbol_info_tick(self, symbol):
+                if self._fail_next_tick:
+                    self._fail_next_tick = False
+                    self._last_error = (-10004, "No IPC connection")
+                    return None
+                self._last_error = (0, "ok")
+                return super().symbol_info_tick(symbol)
+
+        fake_mt5 = IPCFlakyTickMT5()
+        adapter = LiveMT5Adapter(mt5_module=fake_mt5)
+
+        tick = adapter.load_price_tick("EURUSD")
+
+        self.assertEqual(tick.ask, 1.1000)
+        self.assertEqual(len(fake_mt5.initialize_calls), 2)
+        self.assertEqual(fake_mt5.shutdown_calls, 1)
+
 
 if __name__ == "__main__":
     unittest.main()
