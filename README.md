@@ -21,17 +21,21 @@ Research-first workspace for an autonomous MetaTrader trading bot with strict ri
 - [research/2026-04-20-stage-2-deep-research.md](D:\luthfi\project\bot-ea\research\2026-04-20-stage-2-deep-research.md)
 - [research/2026-04-20-stage-3-decision-tree-and-candlestick-research.md](D:\luthfi\project\bot-ea\research\2026-04-20-stage-3-decision-tree-and-candlestick-research.md)
 - [research/2026-04-20-stage-4-implementation-and-live-research-notes.md](D:\luthfi\project\bot-ea\research\2026-04-20-stage-4-implementation-and-live-research-notes.md)
+- [research/2026-04-20-stage-5-subagent-integration-notes.md](D:\luthfi\project\bot-ea\research\2026-04-20-stage-5-subagent-integration-notes.md)
 - [docs/ea-bot-blueprint.md](D:\luthfi\project\bot-ea\docs\ea-bot-blueprint.md)
 - [docs/mt5-validation-protocol.md](D:\luthfi\project\bot-ea\docs\mt5-validation-protocol.md)
 - [docs/strategy-candidates.md](D:\luthfi\project\bot-ea\docs\strategy-candidates.md)
 - [docs/decision-tree-pseudorules.md](D:\luthfi\project\bot-ea\docs\decision-tree-pseudorules.md)
 - [docs/candlestick-patterns-assessment.md](D:\luthfi\project\bot-ea\docs\candlestick-patterns-assessment.md)
 - [docs/risk-engine-spec.md](D:\luthfi\project\bot-ea\docs\risk-engine-spec.md)
+- [docs/mt5-adapter-boundary.md](D:\luthfi\project\bot-ea\docs\mt5-adapter-boundary.md)
+- [docs/session-breakout-v1.md](D:\luthfi\project\bot-ea\docs\session-breakout-v1.md)
+- [docs/validation-harness-spec.md](D:\luthfi\project\bot-ea\docs\validation-harness-spec.md)
 - [docs/project-handoff.md](D:\luthfi\project\bot-ea\docs\project-handoff.md)
 - [docs/progress-summary.md](D:\luthfi\project\bot-ea\docs\progress-summary.md)
 - [config/parameter-map.md](D:\luthfi\project\bot-ea\config\parameter-map.md)
 - `src/bot_ea/`
-  - first Python scaffold for risk, execution guards, decision family selection, and MT5 adapter seams
+  - first Python scaffold for risk, execution guards, decision family selection, MT5 adapter seams, strategy baseline, and validation summaries
 - `tests/test_risk_engine.py`
   - smoke tests for the first risk-engine slice
 

@@ -6,7 +6,7 @@ Date: 2026-04-20
 
 Phase: `research, architecture, and initial scaffold`
 
-Research depth: `stage 4`
+Research depth: `stage 5`
 
 ## Completed work
 
@@ -37,6 +37,13 @@ Research depth: `stage 4`
   - MT5 snapshot builders for account and symbol normalization
 - added:
   - stage-4 implementation and live research notes
+  - MT5 adapter boundary notes
+  - session-breakout v1 notes
+  - validation harness spec
+  - stage-5 subagent integration notes
+  - mock MT5 adapter
+  - session-breakout strategy scaffold
+  - validation summary module
 
 ## Key decisions already made
 
@@ -50,11 +57,11 @@ Research depth: `stage 4`
 
 Turn the scaffold into MT5-aware integration modules:
 
-1. symbol/account introspection module
+1. real MT5-backed symbol/account introspection module
 2. MT5 adapter for margin/check/session snapshots
 3. execution module
-4. one baseline strategy
-5. validation harness and test logging
+4. broker-aware session/news state loading
+5. artifact writers for validation runs
 6. optional bar-structure confirmation layer
 
 ## What another host needs to resume

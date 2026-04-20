@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime
 from enum import Enum
 
 
@@ -41,6 +42,10 @@ class SymbolSnapshot:
     spread_points: float
     stops_level_points: float
     freeze_level_points: float
+    trade_mode: str = ""
+    order_mode: str = ""
+    execution_mode: str = ""
+    filling_mode: str = ""
     quote_session_active: bool = True
     trade_session_active: bool = True
     trade_allowed: bool = True
@@ -105,3 +110,21 @@ class ExecutionGateResult:
     allowed: bool
     checks: list[GateCheck] = field(default_factory=list)
 
+
+@dataclass(slots=True)
+class Bar:
+    time: datetime
+    open: float
+    high: float
+    low: float
+    close: float
+    tick_volume: float = 0.0
+    spread_points: float = 0.0
+
+    @property
+    def range_points(self) -> float:
+        return self.high - self.low
+
+    @property
+    def body_points(self) -> float:
+        return abs(self.close - self.open)

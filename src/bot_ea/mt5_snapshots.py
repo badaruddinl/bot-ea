@@ -27,10 +27,18 @@ def build_account_snapshot(account_info) -> AccountSnapshot:
 def build_symbol_snapshot(symbol_info, *, quote_session_active: bool, trade_session_active: bool, volatility_points: float | None = None) -> SymbolSnapshot:
     name = str(_read(symbol_info, "name", "") or "")
     instrument_class = infer_instrument_class(name)
+    trade_mode = str(_read(symbol_info, "trade_mode", "") or "")
+    trade_allowed = bool(_read(symbol_info, "visible", True))
+    if trade_mode:
+        trade_allowed = trade_allowed and trade_mode.lower() not in {"disabled", "closeonly"}
     return SymbolSnapshot(
         name=name,
         instrument_class=instrument_class,
         risk_weight=default_risk_weight(name),
+        trade_mode=trade_mode,
+        order_mode=str(_read(symbol_info, "order_mode", "") or ""),
+        execution_mode=str(_read(symbol_info, "trade_exemode", "") or ""),
+        filling_mode=str(_read(symbol_info, "filling_mode", "") or ""),
         point=float(_read(symbol_info, "point", 0.0) or 0.0),
         tick_size=float(_read(symbol_info, "trade_tick_size", 0.0) or 0.0),
         tick_value=float(_read(symbol_info, "trade_tick_value", 0.0) or 0.0),
@@ -42,6 +50,6 @@ def build_symbol_snapshot(symbol_info, *, quote_session_active: bool, trade_sess
         freeze_level_points=float(_read(symbol_info, "trade_freeze_level", 0.0) or 0.0),
         quote_session_active=quote_session_active,
         trade_session_active=trade_session_active,
-        trade_allowed=bool(_read(symbol_info, "visible", True)),
+        trade_allowed=trade_allowed,
         volatility_points=volatility_points,
     )

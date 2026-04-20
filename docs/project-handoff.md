@@ -41,6 +41,8 @@ The repository currently contains:
   - deeper research on practical decision trees, pseudo-rules, and whether candlestick patterns should be used
 - `research/2026-04-20-stage-4-implementation-and-live-research-notes.md`
   - latest implementation-focused research on MT5 capabilities, server-time handling, and live execution constraints
+- `research/2026-04-20-stage-5-subagent-integration-notes.md`
+  - latest parallel subagent findings integrated into the repo direction
 - `docs/ea-bot-blueprint.md`
   - target architecture and subsystem design
 - `docs/mt5-validation-protocol.md`
@@ -53,6 +55,12 @@ The repository currently contains:
   - explicit assessment of candlestick patterns as primary vs secondary signal logic
 - `docs/risk-engine-spec.md`
   - implementation contract for operating mode, sizing, and guardrails
+- `docs/mt5-adapter-boundary.md`
+  - practical separation between core logic, MT5 adapter, and mock provider
+- `docs/session-breakout-v1.md`
+  - narrow baseline strategy notes for the first strategy family
+- `docs/validation-harness-spec.md`
+  - artifact and metric contract for validation without MT5 dependency
 - `config/parameter-map.md`
   - separation between user parameters, MT5-derived parameters, and tuned parameters
 - `data/README.md`
@@ -79,6 +87,9 @@ The repository currently contains:
 - Python core scaffold added
 - Risk engine spec added
 - Initial risk-engine tests added
+- Mock MT5 adapter added
+- Session breakout strategy scaffold added
+- Validation harness module added
 
 ### Resolved design direction
 
@@ -94,7 +105,7 @@ The repository currently contains:
 - no MQL5 execution code yet
 - no backtest harness yet
 - no broker-specific symbol profiles yet
-- no strategy module beyond scaffold placeholders
+- no live execution workflow yet
 
 ## How to continue on another host
 
@@ -114,14 +125,18 @@ Read in this order:
 3. `research/2026-04-20-stage-2-deep-research.md`
 4. `research/2026-04-20-stage-3-decision-tree-and-candlestick-research.md`
 5. `research/2026-04-20-stage-4-implementation-and-live-research-notes.md`
-6. `docs/ea-bot-blueprint.md`
-7. `docs/mt5-validation-protocol.md`
-8. `docs/strategy-candidates.md`
-9. `docs/decision-tree-pseudorules.md`
-10. `docs/candlestick-patterns-assessment.md`
-11. `docs/risk-engine-spec.md`
-12. `config/parameter-map.md`
-13. `src/bot_ea/`
+6. `research/2026-04-20-stage-5-subagent-integration-notes.md`
+7. `docs/ea-bot-blueprint.md`
+8. `docs/mt5-validation-protocol.md`
+9. `docs/strategy-candidates.md`
+10. `docs/decision-tree-pseudorules.md`
+11. `docs/candlestick-patterns-assessment.md`
+12. `docs/risk-engine-spec.md`
+13. `docs/mt5-adapter-boundary.md`
+14. `docs/session-breakout-v1.md`
+15. `docs/validation-harness-spec.md`
+16. `config/parameter-map.md`
+17. `src/bot_ea/`
 
 ### 3. Recommended next implementation steps
 
