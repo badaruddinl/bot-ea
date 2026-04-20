@@ -294,6 +294,15 @@ class QtAppTests(unittest.TestCase):
             self.assertEqual(window.symbol_combo.currentText(), "EURUSD")
             self.assertEqual(window.timeframe_combo.currentText(), "M15")
             self.assertEqual(window.service_status.text(), "App-managed connected 127.0.0.1:8765")
+            self.assertEqual(window.hero_title.text(), "Obsidian Runtime Monitor")
+            self.assertEqual(window.market_card["title"].text(), "Market Snapshot")
+            self.assertEqual(window.manual_card["title"].text(), "Manual Order Envelope")
+            self.assertEqual(window.risk_card["title"].text(), "Risk Envelope")
+            self.assertEqual(window.tabs.tabText(0), "Runtime Feed")
+            self.assertEqual(window.tabs.tabText(1), "Risk Validation")
+            self.assertEqual(window.tabs.tabText(2), "Log Console")
+            self.assertIn("#0b0f10", window.styleSheet())
+            self.assertEqual(window.readiness_chips["service"]["value"].property("tone"), "ok")
             self.assertEqual(backend.connected_urls[-1], "ws://127.0.0.1:8765")
             self.assertEqual(backend.start_managed_calls, 1)
             self.assertTrue(window.preview_poll_timer.isActive())
@@ -354,6 +363,8 @@ class QtAppTests(unittest.TestCase):
             self.assertIn("manual_order_snapshot:", window.manual_card["text"].toPlainText())
             self.assertIn("sizing_snapshot:", window.risk_card["text"].toPlainText())
             self.assertEqual(window.run_id_status.text(), "run-123")
+            self.assertEqual(window.run_id_status.property("tone"), "idle")
+            self.assertEqual(window.readiness_chips["runtime"]["value"].property("tone"), "idle")
             self.assertIn("run_id=run-123", window.runtime_text.toPlainText())
             self.assertIn("total_trades=3", window.validation_text.toPlainText())
         finally:
@@ -401,6 +412,7 @@ class QtAppTests(unittest.TestCase):
             self.assertIn("tick_time=2026-04-21T00:00:01+00:00", window.market_card["text"].toPlainText())
             self.assertIn("final_lot=0.0100", window.manual_card["text"].toPlainText())
             self.assertTrue(window.execute_button.isEnabled())
+            self.assertEqual(window.readiness_chips["service"]["value"].property("tone"), "ok")
         finally:
             window.close()
 

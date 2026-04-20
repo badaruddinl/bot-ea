@@ -422,10 +422,219 @@ class BotEaQtWindow(QMainWindow):
         self.preview_poll_timer.start(1000)
         QTimer.singleShot(0, lambda: self.connect_service(show_errors=False))
 
+    def _apply_obsidian_theme(self) -> None:
+        self.setStyleSheet(
+            """
+            QMainWindow {
+                background-color: #0b0f10;
+                color: #e8e1d6;
+            }
+            QToolBar {
+                background: #11161a;
+                border: 1px solid #1f2a31;
+                spacing: 8px;
+                padding: 8px;
+            }
+            QToolButton {
+                color: #e8e1d6;
+                background: #141c20;
+                border: 1px solid #24323a;
+                border-radius: 10px;
+                padding: 8px 12px;
+                font: 600 11pt "Cascadia Mono";
+            }
+            QWidget#workspaceRoot {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #0b0f10, stop:1 #11171b);
+            }
+            QWidget#leftRail, QWidget#rightRail {
+                background: transparent;
+            }
+            QGroupBox {
+                background: #11161a;
+                border: 1px solid #1e2a31;
+                border-radius: 16px;
+                margin-top: 18px;
+                padding: 14px 14px 12px 14px;
+                font: 700 11pt "Segoe UI";
+                color: #f4eee3;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 14px;
+                padding: 0 6px;
+                color: #8fe0d0;
+            }
+            QLabel {
+                color: #d7d0c3;
+                font: 10.5pt "Segoe UI";
+            }
+            QLabel#heroEyebrow {
+                color: #77c7ff;
+                font: 700 10pt "Cascadia Mono";
+                letter-spacing: 2px;
+                text-transform: uppercase;
+            }
+            QLabel#heroTitle {
+                color: #f5efe2;
+                font: 700 19pt "Segoe UI";
+            }
+            QLabel#heroSubtitle {
+                color: #96a6a8;
+                font: 10.5pt "Segoe UI";
+            }
+            QFrame#heroCard, QFrame#statusChip, QFrame#metricCard, QFrame#dataCard {
+                background: #12181c;
+                border: 1px solid #213038;
+                border-radius: 18px;
+            }
+            QFrame#heroCard {
+                padding: 16px;
+            }
+            QFrame#statusChip {
+                padding: 12px;
+            }
+            QFrame#metricCard {
+                padding: 16px;
+            }
+            QLabel#chipTitle {
+                color: #7f9498;
+                font: 700 9pt "Cascadia Mono";
+                text-transform: uppercase;
+                letter-spacing: 1px;
+            }
+            QLabel#chipValue {
+                color: #e8e1d6;
+                font: 700 10.5pt "Segoe UI";
+            }
+            QLabel#metricTitle {
+                color: #7f9498;
+                font: 700 9pt "Cascadia Mono";
+                text-transform: uppercase;
+                letter-spacing: 1px;
+            }
+            QLabel#metricValue {
+                color: #f5efe2;
+                font: 700 15pt "Cascadia Mono";
+            }
+            QLabel#cardTitle {
+                color: #f5efe2;
+                font: 700 11.5pt "Segoe UI";
+            }
+            QLabel#cardCaption {
+                color: #87979c;
+                font: 9.5pt "Segoe UI";
+            }
+            QLineEdit, QComboBox, QPlainTextEdit, QTabWidget::pane {
+                background: #0f1417;
+                color: #e8e1d6;
+                border: 1px solid #26353d;
+                border-radius: 12px;
+                selection-background-color: #2c6a74;
+                selection-color: #f5efe2;
+                font: 10pt "Cascadia Mono";
+            }
+            QLineEdit, QComboBox {
+                padding: 8px 10px;
+                min-height: 22px;
+            }
+            QComboBox::drop-down {
+                border: none;
+                width: 26px;
+            }
+            QPlainTextEdit {
+                padding: 10px;
+            }
+            QPushButton {
+                background: #162126;
+                color: #f2eadf;
+                border: 1px solid #27414b;
+                border-radius: 12px;
+                padding: 10px 12px;
+                font: 700 10pt "Cascadia Mono";
+            }
+            QPushButton:hover {
+                background: #1b2a30;
+            }
+            QPushButton:disabled {
+                color: #718186;
+                background: #101518;
+                border-color: #1a2328;
+            }
+            QTabBar::tab {
+                background: #141a1e;
+                color: #96a6a8;
+                border: 1px solid #223039;
+                padding: 9px 14px;
+                margin-right: 6px;
+                border-top-left-radius: 10px;
+                border-top-right-radius: 10px;
+                font: 700 9.5pt "Cascadia Mono";
+            }
+            QTabBar::tab:selected {
+                color: #f5efe2;
+                background: #1c262b;
+                border-color: #2a4650;
+            }
+            QSplitter::handle {
+                background: #182126;
+                width: 2px;
+            }
+            QLabel#chipValue[tone="ok"], QLabel#metricValue[tone="ok"] {
+                color: #7ce0b7;
+            }
+            QLabel#chipValue[tone="warn"], QLabel#metricValue[tone="warn"] {
+                color: #f4c56a;
+            }
+            QLabel#chipValue[tone="error"], QLabel#metricValue[tone="error"] {
+                color: #ff8e87;
+            }
+            QLabel#chipValue[tone="idle"], QLabel#metricValue[tone="idle"] {
+                color: #9db0b4;
+            }
+            QLabel#chipValue[tone="live"], QLabel#metricValue[tone="live"] {
+                color: #77c7ff;
+            }
+            """
+        )
+
+    def _make_status_chip(self, title: str, value: QLabel) -> QFrame:
+        frame = QFrame(self)
+        frame.setObjectName("statusChip")
+        layout = QVBoxLayout(frame)
+        layout.setContentsMargins(12, 10, 12, 10)
+        layout.setSpacing(4)
+        title_label = QLabel(title.upper(), frame)
+        title_label.setObjectName("chipTitle")
+        value.setObjectName("chipValue")
+        layout.addWidget(title_label)
+        layout.addWidget(value)
+        return frame
+
+    def _make_metric_card(self, title: str, value: QLabel, caption: str) -> QFrame:
+        frame = QFrame(self)
+        frame.setObjectName("metricCard")
+        layout = QVBoxLayout(frame)
+        layout.setContentsMargins(16, 14, 16, 14)
+        layout.setSpacing(4)
+        title_label = QLabel(title.upper(), frame)
+        title_label.setObjectName("metricTitle")
+        value.setObjectName("metricValue")
+        caption_label = QLabel(caption, frame)
+        caption_label.setObjectName("cardCaption")
+        caption_label.setWordWrap(True)
+        layout.addWidget(title_label)
+        layout.addWidget(value)
+        layout.addWidget(caption_label)
+        return frame
+
     def _build_ui(self) -> None:
         central = QWidget(self)
+        central.setObjectName("workspaceRoot")
         self.setCentralWidget(central)
+        self._apply_obsidian_theme()
         root = QVBoxLayout(central)
+        root.setContentsMargins(18, 18, 18, 18)
+        root.setSpacing(14)
 
         toolbar = self.addToolBar("Main")
         toolbar.setMovable(False)
@@ -439,13 +648,39 @@ class BotEaQtWindow(QMainWindow):
         root.addWidget(splitter)
 
         left_panel = QWidget(self)
+        left_panel.setObjectName("leftRail")
         left_layout = QVBoxLayout(left_panel)
+        left_layout.setContentsMargins(0, 0, 0, 0)
+        left_layout.setSpacing(12)
         splitter.addWidget(left_panel)
 
         right_panel = QWidget(self)
+        right_panel.setObjectName("rightRail")
         right_layout = QVBoxLayout(right_panel)
+        right_layout.setContentsMargins(0, 0, 0, 0)
+        right_layout.setSpacing(12)
         splitter.addWidget(right_panel)
         splitter.setSizes([480, 980])
+
+        self.hero_card = QFrame(self)
+        self.hero_card.setObjectName("heroCard")
+        hero_layout = QVBoxLayout(self.hero_card)
+        hero_layout.setContentsMargins(18, 16, 18, 16)
+        hero_layout.setSpacing(4)
+        self.hero_eyebrow = QLabel("Operator Console", self.hero_card)
+        self.hero_eyebrow.setObjectName("heroEyebrow")
+        self.hero_title = QLabel("Obsidian Runtime Monitor", self.hero_card)
+        self.hero_title.setObjectName("heroTitle")
+        self.hero_subtitle = QLabel(
+            "Single-window terminal for MT5 readiness, manual execution, risk preview, and runtime telemetry.",
+            self.hero_card,
+        )
+        self.hero_subtitle.setObjectName("heroSubtitle")
+        self.hero_subtitle.setWordWrap(True)
+        hero_layout.addWidget(self.hero_eyebrow)
+        hero_layout.addWidget(self.hero_title)
+        hero_layout.addWidget(self.hero_subtitle)
+        right_layout.addWidget(self.hero_card)
 
         self.service_group = QGroupBox("Backend Service", self)
         service_form = QFormLayout(self.service_group)
@@ -542,35 +777,44 @@ class BotEaQtWindow(QMainWindow):
 
         self.status_group = QGroupBox("Readiness", self)
         status_grid = QGridLayout(self.status_group)
+        status_grid.setContentsMargins(10, 18, 10, 10)
+        status_grid.setHorizontalSpacing(12)
+        status_grid.setVerticalSpacing(12)
         self.service_status = QLabel("Service disconnected", self)
         self.mt5_status = QLabel("MT5 unchecked", self)
         self.codex_status = QLabel("codex-cli unchecked", self)
         self.runtime_status = QLabel("Runtime stopped", self)
         self.run_id_status = QLabel("-", self)
         self.approval_status = QLabel("No pending live approval", self)
-        status_grid.addWidget(QLabel("Service"), 0, 0)
-        status_grid.addWidget(self.service_status, 0, 1)
-        status_grid.addWidget(QLabel("MT5"), 1, 0)
-        status_grid.addWidget(self.mt5_status, 1, 1)
-        status_grid.addWidget(QLabel("Codex"), 2, 0)
-        status_grid.addWidget(self.codex_status, 2, 1)
-        status_grid.addWidget(QLabel("Runtime"), 3, 0)
-        status_grid.addWidget(self.runtime_status, 3, 1)
-        status_grid.addWidget(QLabel("Run ID"), 4, 0)
-        status_grid.addWidget(self.run_id_status, 4, 1)
-        status_grid.addWidget(QLabel("Approval"), 5, 0)
-        status_grid.addWidget(self.approval_status, 5, 1)
+        self.readiness_chips = {
+            "service": {"frame": self._make_status_chip("Service", self.service_status), "value": self.service_status},
+            "mt5": {"frame": self._make_status_chip("MT5", self.mt5_status), "value": self.mt5_status},
+            "codex": {"frame": self._make_status_chip("Codex", self.codex_status), "value": self.codex_status},
+            "runtime": {"frame": self._make_status_chip("Runtime", self.runtime_status), "value": self.runtime_status},
+            "approval": {"frame": self._make_status_chip("Approval", self.approval_status), "value": self.approval_status},
+        }
+        self.run_id_card = self._make_metric_card("Run ID", self.run_id_status, "Active runtime session / audit cursor")
+        status_grid.addWidget(self.readiness_chips["service"]["frame"], 0, 0)
+        status_grid.addWidget(self.readiness_chips["mt5"]["frame"], 0, 1)
+        status_grid.addWidget(self.readiness_chips["codex"]["frame"], 0, 2)
+        status_grid.addWidget(self.readiness_chips["runtime"]["frame"], 1, 0)
+        status_grid.addWidget(self.readiness_chips["approval"]["frame"], 1, 1)
+        status_grid.addWidget(self.run_id_card, 1, 2)
         right_layout.addWidget(self.status_group)
 
         summary_row = QHBoxLayout()
-        self.market_card = self._make_text_card("Market Snapshot")
-        self.manual_card = self._make_text_card("Manual Lot Snapshot")
-        self.risk_card = self._make_text_card("Risk / Sizing Snapshot")
+        summary_row.setSpacing(12)
+        self.market_card = self._make_text_card("Market Snapshot", "Realtime symbol/tick and broker execution context")
+        self.manual_card = self._make_text_card("Manual Order Envelope", "Normalized lot, margin envelope, and order path")
+        self.risk_card = self._make_text_card("Risk Envelope", "Sizing projection, loss budget, and blockers")
         summary_row.addWidget(self.market_card["frame"])
         summary_row.addWidget(self.manual_card["frame"])
         summary_row.addWidget(self.risk_card["frame"])
         right_layout.addLayout(summary_row)
 
+        self.logs_group = QGroupBox("Telemetry / Logs", self)
+        logs_layout = QVBoxLayout(self.logs_group)
+        logs_layout.setContentsMargins(10, 18, 10, 10)
         self.tabs = QTabWidget(self)
         self.runtime_text = QPlainTextEdit(self)
         self.runtime_text.setReadOnly(True)
@@ -578,30 +822,87 @@ class BotEaQtWindow(QMainWindow):
         self.validation_text.setReadOnly(True)
         self.events_text = QPlainTextEdit(self)
         self.events_text.setReadOnly(True)
-        self.tabs.addTab(self.runtime_text, "Runtime")
-        self.tabs.addTab(self.validation_text, "Validation")
-        self.tabs.addTab(self.events_text, "Events / Log")
-        right_layout.addWidget(self.tabs)
+        self.tabs.addTab(self.runtime_text, "Runtime Feed")
+        self.tabs.addTab(self.validation_text, "Risk Validation")
+        self.tabs.addTab(self.events_text, "Log Console")
+        logs_layout.addWidget(self.tabs)
+        right_layout.addWidget(self.logs_group)
 
         self.hint_label = QLabel(
-            "Qt app memakai websocket backend service untuk probe, preview, preflight, execute, runtime, dan telemetry. "
-            "Lot Mode=manual akan dinormalisasi mengikuti batas broker/capital dari service.",
+            "Operator hint: the GUI keeps websocket/runtime behavior intact. Market, manual, risk, and logs now render as terminal cards; "
+            "lot-mode manual is still normalized by broker/capital constraints from the backend preview.",
             self,
         )
+        self.hint_label.setObjectName("heroSubtitle")
         self.hint_label.setWordWrap(True)
         right_layout.addWidget(self.hint_label)
         self._sync_button_states()
 
-    def _make_text_card(self, title: str) -> dict[str, QWidget | QPlainTextEdit]:
+    def _make_text_card(self, title: str, caption: str) -> dict[str, QWidget | QPlainTextEdit]:
         frame = QFrame(self)
-        frame.setFrameShape(QFrame.StyledPanel)
+        frame.setObjectName("dataCard")
         layout = QVBoxLayout(frame)
-        layout.addWidget(QLabel(title, self))
+        layout.setContentsMargins(14, 14, 14, 14)
+        layout.setSpacing(6)
+        title_label = QLabel(title, frame)
+        title_label.setObjectName("cardTitle")
+        caption_label = QLabel(caption, frame)
+        caption_label.setObjectName("cardCaption")
+        caption_label.setWordWrap(True)
         text = QPlainTextEdit(self)
         text.setReadOnly(True)
         text.setMaximumBlockCount(200)
+        layout.addWidget(title_label)
+        layout.addWidget(caption_label)
         layout.addWidget(text)
-        return {"frame": frame, "text": text}
+        return {"frame": frame, "text": text, "title": title_label, "caption": caption_label}
+
+    @staticmethod
+    def _repolish(widget: QWidget) -> None:
+        widget.style().unpolish(widget)
+        widget.style().polish(widget)
+        widget.update()
+
+    def _set_chip_tone(self, chip_key: str, tone: str) -> None:
+        chip = self.readiness_chips[chip_key]
+        chip["value"].setProperty("tone", tone)
+        self._repolish(chip["value"])
+
+    def _set_metric_tone(self, tone: str) -> None:
+        self.run_id_status.setProperty("tone", tone)
+        self._repolish(self.run_id_status)
+
+    def _refresh_status_presentation(self) -> None:
+        self._set_chip_tone("service", "ok" if self._service_connected else "warn")
+        mt5_text = self.mt5_status.text().lower()
+        if "ready" in mt5_text:
+            self._set_chip_tone("mt5", "ok")
+        elif "unchecked" in mt5_text:
+            self._set_chip_tone("mt5", "idle")
+        else:
+            self._set_chip_tone("mt5", "warn")
+
+        codex_text = self.codex_status.text().lower()
+        if "unchecked" in codex_text:
+            self._set_chip_tone("codex", "idle")
+        elif "error" in codex_text or "failed" in codex_text:
+            self._set_chip_tone("codex", "warn")
+        else:
+            self._set_chip_tone("codex", "ok")
+
+        if self._runtime_running:
+            self._set_chip_tone("runtime", "live" if self._live_enabled else "ok")
+        else:
+            self._set_chip_tone("runtime", "idle")
+
+        if self._pending_approval is not None:
+            self._set_chip_tone("approval", "warn")
+        elif "approved" in self.approval_status.text().lower():
+            self._set_chip_tone("approval", "ok")
+        else:
+            self._set_chip_tone("approval", "idle")
+
+        self._set_metric_tone("live" if self._runtime_running and self.run_id_status.text().strip() != "-" else "idle")
 
     def _wire_events(self) -> None:
         self.connect_service_button.clicked.connect(self.connect_service)
@@ -1240,6 +1541,7 @@ class BotEaQtWindow(QMainWindow):
             widget.setEnabled(trade_setup_enabled)
         self.manual_lot_input.setEnabled(trade_setup_enabled and self.lot_mode_combo.currentText().strip() == "manual")
         self.connect_service_button.setEnabled(not self._runtime_running)
+        self._refresh_status_presentation()
 
     def _append_log(self, lines: list[str]) -> None:
         current = self.events_text.toPlainText().strip()
