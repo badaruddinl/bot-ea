@@ -18,6 +18,8 @@ data/forward-demo/
 
 # Logs
 *.log
+*.db
+*.db-journal
 
 # MetaTrader artifacts
 *.ex5

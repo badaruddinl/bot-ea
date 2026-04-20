@@ -52,6 +52,8 @@ Research-first workspace for an autonomous MetaTrader trading bot with strict ri
   - Windows helper to launch the desktop GUI in dev mode without packaging
 - `scripts/run-qt-gui.ps1`
   - Windows helper to launch the new Qt desktop GUI in dev mode
+- `scripts/run-websocket-service.ps1`
+  - Windows helper to launch the local websocket backend service
 - `tests/test_risk_engine.py`
   - smoke tests for the first risk-engine slice
 
