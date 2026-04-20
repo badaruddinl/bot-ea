@@ -8,6 +8,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from bot_ea.validation import (  # noqa: E402
+    build_runtime_validation_report,
+    build_trade_records_from_runtime,
     build_promotion_audit_record,
     export_promotion_audit_markdown,
     PromotionCandidate,
@@ -21,6 +23,217 @@ from bot_ea.validation import (  # noqa: E402
 
 
 class ValidationTests(unittest.TestCase):
+    def test_build_trade_records_from_runtime_merges_ledger_and_fill_telemetry(self) -> None:
+        position_events = [
+            {
+                "broker_position_id": "ord-1",
+                "symbol": "EURUSD",
+                "side": "buy",
+                "status": "OPENED",
+                "entry_price": 1.1010,
+                "opened_at": "2026-04-20T09:00:05Z",
+                "commission_cash": 0.5,
+                "payload_json": {
+                    "strategy_family": "breakout",
+                    "risk_cash": 50.0,
+                    "entry_spread_points": 9.0,
+                    "quoted_price": 1.1008,
+                },
+            },
+            {
+                "broker_position_id": "ord-1",
+                "symbol": "EURUSD",
+                "side": "buy",
+                "status": "CLOSED",
+                "entry_price": 1.1010,
+                "exit_price": 1.1025,
+                "closed_at": "2026-04-20T09:12:00Z",
+                "realized_pnl_cash": 75.0,
+                "commission_cash": 0.7,
+                "swap_cash": -0.2,
+                "payload_json": '{"exit_reason":"tp_hit"}',
+            },
+        ]
+        execution_events = [
+            {
+                "execution_id": 1,
+                "attempt_id": "attempt-1",
+                "phase": "PRECHECK",
+                "status": "PRECHECK_OK",
+                "symbol": "EURUSD",
+                "side": "buy",
+                "order_ticket": "ord-1",
+                "polled_at": "2026-04-20T09:00:04Z",
+            },
+            {
+                "execution_id": 2,
+                "attempt_id": "attempt-1",
+                "phase": "FILL",
+                "status": "FILLED",
+                "symbol": "EURUSD",
+                "side": "buy",
+                "order_ticket": "ord-1",
+                "deal_ticket": "deal-1",
+                "quoted_price": 1.1008,
+                "executed_price": 1.1010,
+                "slippage_points": 1.2,
+                "fill_latency_ms": 180.0,
+                "polled_at": "2026-04-20T09:00:05Z",
+            },
+        ]
+
+        trades = build_trade_records_from_runtime(position_events, execution_events)
+
+        self.assertEqual(len(trades), 1)
+        trade = trades[0]
+        self.assertEqual(trade.symbol, "EURUSD")
+        self.assertEqual(trade.strategy_family, "breakout")
+        self.assertEqual(trade.side, "buy")
+        self.assertEqual(trade.entry_time, datetime.fromisoformat("2026-04-20T09:00:05+00:00"))
+        self.assertEqual(trade.exit_time, datetime.fromisoformat("2026-04-20T09:12:00+00:00"))
+        self.assertAlmostEqual(trade.pnl_cash, 75.0)
+        self.assertAlmostEqual(trade.risk_cash, 50.0)
+        self.assertAlmostEqual(trade.entry_spread_points, 9.0)
+        self.assertAlmostEqual(trade.quoted_entry_price or 0.0, 1.1008)
+        self.assertAlmostEqual(trade.realized_entry_price or 0.0, 1.1010)
+        self.assertAlmostEqual(trade.commission_cash, 1.2)
+        self.assertAlmostEqual(trade.swap_cash, -0.2)
+        self.assertAlmostEqual(trade.slippage_points, 1.2)
+        self.assertAlmostEqual(trade.fill_latency_ms, 180.0)
+        self.assertEqual(trade.exit_reason, "tp_hit")
+        self.assertFalse(trade.notes)
+
+    def test_build_runtime_validation_report_uses_terminal_attempts_and_bridge_warnings(self) -> None:
+        position_events = [
+            {
+                "broker_position_id": "ord-1",
+                "symbol": "EURUSD",
+                "side": "buy",
+                "status": "OPENED",
+                "entry_price": 1.1002,
+                "opened_at": "2026-04-20T09:00:00Z",
+                "commission_cash": 0.3,
+                "payload_json": {"strategy_family": "breakout", "risk_cash": 25.0, "entry_spread_points": 6.0},
+            },
+            {
+                "broker_position_id": "ord-1",
+                "symbol": "EURUSD",
+                "side": "buy",
+                "status": "CLOSED",
+                "entry_price": 1.1002,
+                "exit_price": 1.1015,
+                "closed_at": "2026-04-20T09:14:00Z",
+                "realized_pnl_cash": 30.0,
+                "commission_cash": 0.4,
+                "payload_json": {"exit_reason": "target_hit"},
+            },
+            {
+                "broker_position_id": "ord-2",
+                "symbol": "GBPUSD",
+                "side": "sell",
+                "status": "OPENED",
+                "entry_price": 1.2500,
+                "opened_at": "2026-04-20T09:20:00Z",
+                "payload_json": {"risk_cash": 15.0},
+            },
+            {
+                "broker_position_id": "ord-3",
+                "symbol": "USDJPY",
+                "side": "buy",
+                "status": "CLOSED",
+                "entry_price": 155.10,
+                "exit_price": 154.90,
+                "opened_at": "2026-04-20T09:30:00Z",
+                "closed_at": "2026-04-20T09:40:00Z",
+                "realized_pnl_cash": -10.0,
+                "commission_cash": 0.1,
+                "payload_json": {"risk_cash_budget": 20.0, "entry_spread_points": 7.0},
+            },
+        ]
+        execution_events = [
+            {
+                "execution_id": 1,
+                "attempt_id": "attempt-1",
+                "phase": "INTENT",
+                "status": "READY",
+                "symbol": "EURUSD",
+                "side": "buy",
+                "order_ticket": "ord-1",
+                "polled_at": "2026-04-20T09:00:00Z",
+            },
+            {
+                "execution_id": 2,
+                "attempt_id": "attempt-1",
+                "phase": "FILL",
+                "status": "FILLED",
+                "symbol": "EURUSD",
+                "side": "buy",
+                "order_ticket": "ord-1",
+                "quoted_price": 1.1000,
+                "executed_price": 1.1002,
+                "slippage_points": 0.5,
+                "fill_latency_ms": 80.0,
+                "polled_at": "2026-04-20T09:00:01Z",
+            },
+            {
+                "execution_id": 3,
+                "attempt_id": "attempt-2",
+                "phase": "PRECHECK",
+                "status": "PRECHECK_REJECTED",
+                "symbol": "EURUSD",
+                "side": "sell",
+                "retcode": "10030",
+                "polled_at": "2026-04-20T09:05:00Z",
+            },
+            {
+                "execution_id": 4,
+                "attempt_id": "attempt-3",
+                "phase": "GUARD",
+                "status": "GUARD_REJECTED",
+                "symbol": "GBPUSD",
+                "side": "buy",
+                "polled_at": "2026-04-20T09:10:00Z",
+            },
+            {
+                "execution_id": 5,
+                "attempt_id": "attempt-4",
+                "phase": "FILL",
+                "status": "FILLED",
+                "symbol": "AUDUSD",
+                "side": "buy",
+                "order_ticket": "ord-x",
+                "quoted_price": 0.6500,
+                "executed_price": 0.6503,
+                "slippage_points": 1.0,
+                "fill_latency_ms": 120.0,
+                "polled_at": "2026-04-20T09:50:00Z",
+            },
+        ]
+
+        report = build_runtime_validation_report(
+            position_events,
+            execution_events,
+            starting_equity=1000.0,
+        )
+
+        self.assertEqual(len(report.trade_records), 2)
+        self.assertEqual(report.validation_summary.total_trades, 2)
+        self.assertEqual(report.execution_quality.total_trade_records, 2)
+        self.assertEqual(report.execution_quality.total_order_attempts, 4)
+        self.assertEqual(report.execution_quality.rejected_orders, 2)
+        self.assertAlmostEqual(report.execution_quality.reject_rate, 0.5)
+        self.assertAlmostEqual(report.execution_quality.average_fill_latency_ms, 40.0)
+        self.assertAlmostEqual(report.validation_summary.total_commission_cash, 0.8)
+        self.assertTrue(any("open position event skipped" in warning for warning in report.warnings))
+        self.assertTrue(any("closed trade missing fill telemetry linkage" in warning for warning in report.warnings))
+        self.assertTrue(any("filled execution attempt was not matched to a ledger position" in warning for warning in report.warnings))
+        self.assertIn(
+            "fill telemetry missing; runtime ledger used as fallback",
+            report.trade_records[1].notes,
+        )
+        self.assertTrue(any("open position event skipped" in warning for warning in report.validation_summary.warnings))
+        self.assertTrue(any("filled execution attempt was not matched to a ledger position" in warning for warning in report.execution_quality.warnings))
+
     def test_summary_metrics(self) -> None:
         start = datetime(2026, 4, 20, 9, 0, 0)
         trades = [

@@ -632,6 +632,20 @@ class RuntimeStore:
             ).fetchall()
         return [self._row_to_dict(row) for row in rows]
 
+    def fetch_trade_lifecycle_rows(self, *, run_id: str | None = None, limit: int = 100) -> list[dict[str, Any]]:
+        execution_rows, position_rows = self._fetch_trade_lifecycle_inputs(run_id=run_id)
+        trades = self._build_trade_lifecycle_rows(execution_rows=execution_rows, position_rows=position_rows)
+        return trades[:limit]
+
+    def fetch_trade_lifecycle_ledger(self, *, run_id: str | None = None, limit: int = 500) -> list[dict[str, Any]]:
+        execution_rows, position_rows = self._fetch_trade_lifecycle_inputs(run_id=run_id)
+        trades = self._build_trade_lifecycle_rows(execution_rows=execution_rows, position_rows=position_rows)
+        ledger = [entry for trade in trades for entry in trade["ledger"]]
+        ledger.sort(key=self._trade_ledger_sort_key)
+        if len(ledger) > limit:
+            ledger = ledger[-limit:]
+        return ledger
+
     def fetch_latest_risk_guard(self) -> dict[str, Any] | None:
         with self.session() as connection:
             row = connection.execute(
@@ -714,6 +728,87 @@ class RuntimeStore:
         with self.session() as connection:
             connection.execute(sql, params)
 
+    def _fetch_trade_lifecycle_inputs(
+        self,
+        *,
+        run_id: str | None = None,
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        execution_where = ["ee.status = 'FILLED'"]
+        execution_params: list[Any] = []
+        position_where: list[str] = []
+        position_params: list[Any] = []
+        if run_id is not None:
+            execution_where.append("ee.run_id = ?")
+            execution_params.append(run_id)
+            position_where.append("pe.run_id = ?")
+            position_params.append(run_id)
+
+        with self.session() as connection:
+            execution_rows = connection.execute(
+                f"""
+                SELECT
+                    ee.execution_id,
+                    ee.run_id,
+                    ee.cycle_id,
+                    pc.polled_at,
+                    ee.attempt_id,
+                    ee.event_type,
+                    ee.phase,
+                    ee.status,
+                    ee.symbol,
+                    ee.side,
+                    ee.volume,
+                    ee.price,
+                    ee.quoted_price,
+                    ee.executed_price,
+                    ee.slippage_points,
+                    ee.fill_latency_ms,
+                    ee.order_ticket,
+                    ee.deal_ticket,
+                    ee.retcode,
+                    ee.detail,
+                    ee.payload_json
+                FROM execution_events ee
+                LEFT JOIN polling_cycles pc ON pc.cycle_id = ee.cycle_id
+                WHERE {' AND '.join(execution_where)}
+                ORDER BY ee.execution_id ASC
+                """,
+                tuple(execution_params),
+            ).fetchall()
+            position_rows = connection.execute(
+                f"""
+                SELECT
+                    pe.position_event_id,
+                    pe.run_id,
+                    pe.cycle_id,
+                    pc.polled_at,
+                    pe.broker_position_id,
+                    pe.symbol,
+                    pe.side,
+                    pe.volume,
+                    pe.status,
+                    pe.entry_price,
+                    pe.exit_price,
+                    pe.stop_loss,
+                    pe.take_profit,
+                    pe.opened_at,
+                    pe.closed_at,
+                    pe.realized_pnl_cash,
+                    pe.commission_cash,
+                    pe.swap_cash,
+                    pe.payload_json
+                FROM position_events pe
+                LEFT JOIN polling_cycles pc ON pc.cycle_id = pe.cycle_id
+                {f"WHERE {' AND '.join(position_where)}" if position_where else ""}
+                ORDER BY pe.position_event_id ASC
+                """,
+                tuple(position_params),
+            ).fetchall()
+        return (
+            [self._row_to_dict(row) for row in execution_rows],
+            [self._row_to_dict(row) for row in position_rows],
+        )
+
     @staticmethod
     def _dump(payload: dict[str, Any] | None) -> str | None:
         if payload is None:
@@ -729,6 +824,299 @@ class RuntimeStore:
         for column_name, column_type in columns.items():
             if column_name not in existing:
                 connection.execute(f"ALTER TABLE {table} ADD COLUMN {column_name} {column_type}")
+
+    @classmethod
+    def _build_trade_lifecycle_rows(
+        cls,
+        *,
+        execution_rows: list[dict[str, Any]],
+        position_rows: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        trades: dict[str, dict[str, Any]] = {}
+        aliases: dict[str, str] = {}
+
+        for execution_row in execution_rows:
+            trade_key = cls._find_trade_key(
+                aliases=aliases,
+                candidates=cls._execution_trade_aliases(execution_row),
+            ) or cls._execution_trade_key(execution_row)
+            trade = trades.get(trade_key)
+            if trade is None:
+                trade = cls._new_trade_lifecycle_row(trade_key)
+                trades[trade_key] = trade
+            cls._register_trade_aliases(aliases, trade_key, cls._execution_trade_aliases(execution_row))
+            cls._merge_execution_fill(trade, execution_row)
+
+        for position_row in position_rows:
+            trade_key = cls._find_trade_key(
+                aliases=aliases,
+                candidates=cls._position_trade_aliases(position_row),
+            ) or cls._position_trade_key(position_row)
+            trade = trades.get(trade_key)
+            if trade is None:
+                trade = cls._new_trade_lifecycle_row(trade_key)
+                trades[trade_key] = trade
+            cls._register_trade_aliases(aliases, trade_key, cls._position_trade_aliases(position_row))
+            cls._merge_position_event(trade, position_row)
+
+        rows = list(trades.values())
+        for trade in rows:
+            trade["ledger"].sort(key=cls._trade_ledger_sort_key)
+            trade["lifecycle_status"] = cls._derive_trade_lifecycle_status(trade)
+        rows.sort(key=cls._trade_row_sort_key, reverse=True)
+        return rows
+
+    @staticmethod
+    def _new_trade_lifecycle_row(trade_key: str) -> dict[str, Any]:
+        return {
+            "trade_key": trade_key,
+            "run_id": None,
+            "attempt_id": None,
+            "broker_position_id": None,
+            "order_ticket": None,
+            "deal_ticket": None,
+            "symbol": None,
+            "side": None,
+            "volume": None,
+            "entry_price": None,
+            "exit_price": None,
+            "stop_loss": None,
+            "take_profit": None,
+            "filled_at": None,
+            "opened_at": None,
+            "closed_at": None,
+            "fill_execution_id": None,
+            "open_position_event_id": None,
+            "close_position_event_id": None,
+            "fill_cycle_id": None,
+            "last_cycle_id": None,
+            "position_status": None,
+            "lifecycle_status": "OPEN",
+            "realized_pnl_cash": None,
+            "commission_cash": None,
+            "swap_cash": None,
+            "fill_price": None,
+            "fill_quoted_price": None,
+            "fill_slippage_points": None,
+            "fill_latency_ms": None,
+            "last_event_at": None,
+            "ledger": [],
+        }
+
+    @classmethod
+    def _merge_execution_fill(cls, trade: dict[str, Any], execution_row: dict[str, Any]) -> None:
+        trade["run_id"] = execution_row.get("run_id") or trade["run_id"]
+        trade["attempt_id"] = execution_row.get("attempt_id") or trade["attempt_id"]
+        trade["broker_position_id"] = execution_row.get("order_ticket") or trade["broker_position_id"]
+        trade["order_ticket"] = execution_row.get("order_ticket") or trade["order_ticket"]
+        trade["deal_ticket"] = execution_row.get("deal_ticket") or trade["deal_ticket"]
+        trade["symbol"] = execution_row.get("symbol") or trade["symbol"]
+        trade["side"] = execution_row.get("side") or trade["side"]
+        trade["volume"] = execution_row.get("volume") if execution_row.get("volume") is not None else trade["volume"]
+        trade["fill_execution_id"] = execution_row.get("execution_id")
+        trade["fill_cycle_id"] = execution_row.get("cycle_id")
+        trade["last_cycle_id"] = execution_row.get("cycle_id")
+        trade["filled_at"] = execution_row.get("polled_at") or trade["filled_at"]
+        trade["opened_at"] = trade["opened_at"] or execution_row.get("polled_at")
+        trade["fill_price"] = cls._coalesce(execution_row.get("executed_price"), execution_row.get("price"), trade["fill_price"])
+        trade["fill_quoted_price"] = execution_row.get("quoted_price") if execution_row.get("quoted_price") is not None else trade["fill_quoted_price"]
+        trade["fill_slippage_points"] = execution_row.get("slippage_points") if execution_row.get("slippage_points") is not None else trade["fill_slippage_points"]
+        trade["fill_latency_ms"] = execution_row.get("fill_latency_ms") if execution_row.get("fill_latency_ms") is not None else trade["fill_latency_ms"]
+        trade["entry_price"] = trade["entry_price"] if trade["entry_price"] is not None else trade["fill_price"]
+        trade["last_event_at"] = execution_row.get("polled_at") or trade["last_event_at"]
+        trade["ledger"].append(cls._execution_ledger_entry(execution_row, trade["trade_key"]))
+
+    @classmethod
+    def _merge_position_event(cls, trade: dict[str, Any], position_row: dict[str, Any]) -> None:
+        event_at = cls._position_event_at(position_row)
+        status = str(position_row.get("status") or "")
+        is_closed = cls._is_closed_position_event(position_row)
+
+        trade["run_id"] = position_row.get("run_id") or trade["run_id"]
+        trade["broker_position_id"] = position_row.get("broker_position_id") or trade["broker_position_id"]
+        trade["symbol"] = position_row.get("symbol") or trade["symbol"]
+        trade["side"] = position_row.get("side") or trade["side"]
+        trade["volume"] = position_row.get("volume") if position_row.get("volume") is not None else trade["volume"]
+        trade["entry_price"] = position_row.get("entry_price") if position_row.get("entry_price") is not None else trade["entry_price"]
+        trade["stop_loss"] = position_row.get("stop_loss") if position_row.get("stop_loss") is not None else trade["stop_loss"]
+        trade["take_profit"] = position_row.get("take_profit") if position_row.get("take_profit") is not None else trade["take_profit"]
+        trade["position_status"] = status or trade["position_status"]
+        trade["last_cycle_id"] = position_row.get("cycle_id")
+        trade["last_event_at"] = event_at or trade["last_event_at"]
+
+        if trade["opened_at"] is None:
+            trade["opened_at"] = position_row.get("opened_at") or event_at
+        elif position_row.get("opened_at") is not None:
+            trade["opened_at"] = position_row["opened_at"]
+        if trade["open_position_event_id"] is None and not is_closed:
+            trade["open_position_event_id"] = position_row.get("position_event_id")
+
+        if is_closed:
+            trade["close_position_event_id"] = position_row.get("position_event_id")
+            trade["closed_at"] = position_row.get("closed_at") or event_at
+            trade["exit_price"] = position_row.get("exit_price") if position_row.get("exit_price") is not None else trade["exit_price"]
+            trade["realized_pnl_cash"] = position_row.get("realized_pnl_cash") if position_row.get("realized_pnl_cash") is not None else trade["realized_pnl_cash"]
+        trade["commission_cash"] = position_row.get("commission_cash") if position_row.get("commission_cash") is not None else trade["commission_cash"]
+        trade["swap_cash"] = position_row.get("swap_cash") if position_row.get("swap_cash") is not None else trade["swap_cash"]
+
+        trade["ledger"].append(cls._position_ledger_entry(position_row, trade["trade_key"]))
+
+    @staticmethod
+    def _coalesce(*values: Any) -> Any:
+        for value in values:
+            if value is not None:
+                return value
+        return None
+
+    @staticmethod
+    def _execution_trade_key(execution_row: dict[str, Any]) -> str:
+        return str(
+            execution_row.get("order_ticket")
+            or execution_row.get("deal_ticket")
+            or execution_row.get("attempt_id")
+            or f"execution:{execution_row['execution_id']}"
+        )
+
+    @staticmethod
+    def _position_trade_key(position_row: dict[str, Any]) -> str:
+        payload = position_row.get("payload_json") or {}
+        return str(
+            position_row.get("broker_position_id")
+            or payload.get("order_ticket")
+            or payload.get("order")
+            or payload.get("deal")
+            or f"position:{position_row['position_event_id']}"
+        )
+
+    @staticmethod
+    def _execution_trade_aliases(execution_row: dict[str, Any]) -> list[str]:
+        aliases = [
+            execution_row.get("order_ticket"),
+            execution_row.get("deal_ticket"),
+            execution_row.get("attempt_id"),
+        ]
+        return [str(alias) for alias in aliases if alias]
+
+    @staticmethod
+    def _position_trade_aliases(position_row: dict[str, Any]) -> list[str]:
+        payload = position_row.get("payload_json") or {}
+        aliases = [
+            position_row.get("broker_position_id"),
+            payload.get("order_ticket"),
+            payload.get("order"),
+            payload.get("deal"),
+        ]
+        return [str(alias) for alias in aliases if alias]
+
+    @staticmethod
+    def _find_trade_key(*, aliases: dict[str, str], candidates: list[str]) -> str | None:
+        for candidate in candidates:
+            trade_key = aliases.get(candidate)
+            if trade_key is not None:
+                return trade_key
+        return None
+
+    @staticmethod
+    def _register_trade_aliases(aliases: dict[str, str], trade_key: str, keys: list[str]) -> None:
+        for key in keys:
+            aliases[key] = trade_key
+
+    @classmethod
+    def _execution_ledger_entry(cls, execution_row: dict[str, Any], trade_key: str) -> dict[str, Any]:
+        return {
+            "trade_key": trade_key,
+            "run_id": execution_row.get("run_id"),
+            "cycle_id": execution_row.get("cycle_id"),
+            "event_kind": "execution",
+            "event_name": execution_row.get("status"),
+            "event_at": execution_row.get("polled_at"),
+            "polled_at": execution_row.get("polled_at"),
+            "execution_id": execution_row.get("execution_id"),
+            "position_event_id": None,
+            "attempt_id": execution_row.get("attempt_id"),
+            "broker_position_id": execution_row.get("order_ticket"),
+            "order_ticket": execution_row.get("order_ticket"),
+            "deal_ticket": execution_row.get("deal_ticket"),
+            "symbol": execution_row.get("symbol"),
+            "side": execution_row.get("side"),
+            "volume": execution_row.get("volume"),
+            "price": cls._coalesce(execution_row.get("executed_price"), execution_row.get("price")),
+            "quoted_price": execution_row.get("quoted_price"),
+            "entry_price": None,
+            "exit_price": None,
+            "realized_pnl_cash": None,
+            "commission_cash": None,
+            "swap_cash": None,
+            "slippage_points": execution_row.get("slippage_points"),
+            "fill_latency_ms": execution_row.get("fill_latency_ms"),
+            "detail": execution_row.get("detail"),
+            "payload_json": execution_row.get("payload_json"),
+        }
+
+    @classmethod
+    def _position_ledger_entry(cls, position_row: dict[str, Any], trade_key: str) -> dict[str, Any]:
+        return {
+            "trade_key": trade_key,
+            "run_id": position_row.get("run_id"),
+            "cycle_id": position_row.get("cycle_id"),
+            "event_kind": "position",
+            "event_name": position_row.get("status"),
+            "event_at": cls._position_event_at(position_row),
+            "polled_at": position_row.get("polled_at"),
+            "execution_id": None,
+            "position_event_id": position_row.get("position_event_id"),
+            "attempt_id": None,
+            "broker_position_id": position_row.get("broker_position_id"),
+            "order_ticket": None,
+            "deal_ticket": (position_row.get("payload_json") or {}).get("deal"),
+            "symbol": position_row.get("symbol"),
+            "side": position_row.get("side"),
+            "volume": position_row.get("volume"),
+            "price": None,
+            "quoted_price": (position_row.get("payload_json") or {}).get("quoted_price"),
+            "entry_price": position_row.get("entry_price"),
+            "exit_price": position_row.get("exit_price"),
+            "realized_pnl_cash": position_row.get("realized_pnl_cash"),
+            "commission_cash": position_row.get("commission_cash"),
+            "swap_cash": position_row.get("swap_cash"),
+            "slippage_points": (position_row.get("payload_json") or {}).get("slippage_points"),
+            "fill_latency_ms": (position_row.get("payload_json") or {}).get("fill_latency_ms"),
+            "detail": None,
+            "payload_json": position_row.get("payload_json"),
+        }
+
+    @staticmethod
+    def _position_event_at(position_row: dict[str, Any]) -> str | None:
+        return position_row.get("closed_at") or position_row.get("opened_at") or position_row.get("polled_at")
+
+    @staticmethod
+    def _is_closed_position_event(position_row: dict[str, Any]) -> bool:
+        status = str(position_row.get("status") or "").upper()
+        return (
+            position_row.get("closed_at") is not None
+            or position_row.get("exit_price") is not None
+            or position_row.get("realized_pnl_cash") is not None
+            or status in {"CLOSED", "EXITED", "LIQUIDATED"}
+        )
+
+    @staticmethod
+    def _derive_trade_lifecycle_status(trade: dict[str, Any]) -> str:
+        if trade.get("closed_at") is not None:
+            return "CLOSED"
+        if str(trade.get("position_status") or "").upper() in {"CLOSED", "EXITED", "LIQUIDATED"}:
+            return "CLOSED"
+        return "OPEN"
+
+    @staticmethod
+    def _trade_ledger_sort_key(entry: dict[str, Any]) -> tuple[str, int, int]:
+        event_kind_rank = 0 if entry.get("event_kind") == "execution" else 1
+        event_id = int(entry.get("execution_id") or entry.get("position_event_id") or 0)
+        return (str(entry.get("event_at") or entry.get("polled_at") or ""), event_kind_rank, event_id)
+
+    @staticmethod
+    def _trade_row_sort_key(trade: dict[str, Any]) -> tuple[str, int]:
+        last_identifier = int(trade.get("close_position_event_id") or trade.get("open_position_event_id") or trade.get("fill_execution_id") or 0)
+        return (str(trade.get("last_event_at") or ""), last_identifier)
 
     @staticmethod
     def _row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
