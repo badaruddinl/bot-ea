@@ -1,0 +1,24 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# Data outputs
+data/raw/
+data/backtests/
+data/walkforward/
+data/forward-demo/
+
+# Logs
+*.log
+
+# MetaTrader artifacts
+*.ex5
+*.mq5.cache
