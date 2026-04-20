@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+import time
 import unittest
 from pathlib import Path
 
@@ -235,6 +236,24 @@ class GuiAppTests(unittest.TestCase):
             self.assertIn("requested_lot=1.0000", output)
             self.assertIn("resized_down=True", output)
             self.assertFalse(panel.execute_button.instate(["disabled"]))
+        finally:
+            root.destroy()
+
+    def test_manual_lot_realtime_clamps_up_to_broker_minimum(self) -> None:
+        root = self._make_root()
+        coordinator = FakeRuntimeCoordinator()
+        try:
+            panel = LiveControlPanel(root, runtime_coordinator=coordinator, adapter=self._make_adapter())
+            panel.symbol_var.set("XAUUSD")
+            panel.allocation_mode_var.set(CapitalAllocationMode.FIXED_CASH.value)
+            panel.allocation_var.set("250")
+            panel.refresh()
+            panel.lot_mode_var.set("manual")
+            panel.manual_lot_var.set("0.001")
+            root.update()
+            time.sleep(0.25)
+            root.update()
+            self.assertEqual(panel.manual_lot_var.get(), "0.01")
         finally:
             root.destroy()
 

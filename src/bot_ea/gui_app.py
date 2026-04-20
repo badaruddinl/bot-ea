@@ -88,7 +88,10 @@ class LiveControlPanel:
         self.symbol_combo: ttk.Combobox | None = None
         self.timeframe_combo: ttk.Combobox | None = None
         self.model_combo: ttk.Combobox | None = None
+        self._field_trace_guard = False
+        self._realtime_after_id: str | None = None
         self._build()
+        self._bind_realtime_fields()
         self.root.after(250, self._pump_runtime_events)
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
 
@@ -223,6 +226,51 @@ class LiveControlPanel:
                     self.model_combo = combo
             else:
                 ttk.Entry(parent, textvariable=variable, width=18).grid(row=row, column=1, sticky="ew", pady=4)
+
+    def _bind_realtime_fields(self) -> None:
+        traced_vars = (
+            self.symbol_var,
+            self.timeframe_var,
+            self.style_var,
+            self.stop_var,
+            self.allocation_mode_var,
+            self.allocation_var,
+            self.lot_mode_var,
+            self.manual_lot_var,
+            self.side_var,
+        )
+        for variable in traced_vars:
+            variable.trace_add("write", self._on_realtime_field_changed)
+
+    def _on_realtime_field_changed(self, *_args) -> None:
+        if self._field_trace_guard:
+            return
+        if self._realtime_after_id is not None:
+            self.root.after_cancel(self._realtime_after_id)
+        self._realtime_after_id = self.root.after(150, self._run_realtime_field_sync)
+
+    def _run_realtime_field_sync(self) -> None:
+        self._realtime_after_id = None
+        if self.snapshot is None:
+            self._sync_runtime_controls()
+            return
+        symbol_changed = (
+            self.snapshot.symbol != self.symbol_var.get().strip()
+            or self.snapshot.timeframe != self.timeframe_var.get().strip()
+        )
+        if symbol_changed:
+            try:
+                self.snapshot = self._provider().get_snapshot()
+            except Exception:
+                self._sync_runtime_controls()
+                return
+        self._apply_realtime_constraints()
+        try:
+            self.size_result = self._size_result()
+        except Exception:
+            self.size_result = None
+        self.manual_order_snapshot = self._manual_order_snapshot()
+        self._sync_runtime_controls()
 
     def check_mt5(self) -> None:
         try:
@@ -731,13 +779,11 @@ class LiveControlPanel:
         ]
 
     def _manual_order_snapshot(self) -> dict[str, float | str | bool] | None:
-        if self.snapshot is None:
+        limits = self._manual_order_limits()
+        if limits is None:
             return None
-        symbol = self.snapshot.symbol_snapshot
-        side = self.side_var.get()
         lot_mode = self.lot_mode_var.get().strip() or "auto_max"
-        order_price = float(self.snapshot.ask if side == "buy" else self.snapshot.bid)
-        allocation_cap = self._allocation_capital_basis()
+        allocation_cap = limits["allocation_cap_usd"]
         if allocation_cap <= 0:
             return {
                 "accepted": False,
@@ -745,9 +791,14 @@ class LiveControlPanel:
                 "lot_mode": lot_mode,
                 "why_blocked": "capital allocation must be positive",
             }
-        min_lot = float(symbol.volume_min or 0.0)
-        max_lot = float(symbol.volume_max or 0.0)
-        step = float(symbol.volume_step or 0.0)
+        min_lot = limits["broker_min_lot"]
+        max_lot = limits["broker_max_lot"]
+        step = limits["broker_lot_step"]
+        order_price = limits["order_price"]
+        available_budget = limits["available_margin_cap_usd"]
+        margin_for_min = limits["margin_for_min_lot_usd"]
+        final_lot = limits["affordable_max_lot"]
+        margin_for_final = limits["margin_for_affordable_max_lot_usd"]
         if min_lot <= 0 or step <= 0 or max_lot <= 0 or order_price <= 0:
             return {
                 "accepted": False,
@@ -755,16 +806,7 @@ class LiveControlPanel:
                 "lot_mode": lot_mode,
                 "why_blocked": "symbol volume or price configuration is invalid",
             }
-        margin_min = self.adapter.estimate_margin(self.snapshot.symbol, min_lot, side, order_price)
-        if not margin_min.success:
-            return {
-                "accepted": False,
-                "final_lot": 0.0,
-                "lot_mode": lot_mode,
-                "why_blocked": margin_min.detail,
-            }
-        available_budget = min(allocation_cap, float(self.snapshot.account.free_margin))
-        if margin_min.required_margin > available_budget:
+        if margin_for_min > available_budget or final_lot <= 0:
             return {
                 "accepted": False,
                 "final_lot": 0.0,
@@ -772,23 +814,11 @@ class LiveControlPanel:
                 "allocation_cap_usd": allocation_cap,
                 "available_margin_cap_usd": available_budget,
                 "broker_min_lot": min_lot,
-                "margin_for_min_lot_usd": margin_min.required_margin,
+                "broker_max_lot": max_lot,
+                "broker_lot_step": step,
+                "margin_for_min_lot_usd": margin_for_min,
                 "why_blocked": "allocation cannot cover broker minimum lot margin",
             }
-        final_lot = min_lot
-        margin_for_final = margin_min.required_margin
-        current = min_lot
-        max_steps = int(round((max_lot - min_lot) / step)) + 1
-        for _ in range(max_steps):
-            next_lot = round(current + step, 8)
-            if next_lot > max_lot + 1e-9:
-                break
-            margin = self.adapter.estimate_margin(self.snapshot.symbol, next_lot, side, order_price)
-            if not margin.success or margin.required_margin > available_budget:
-                break
-            final_lot = next_lot
-            margin_for_final = margin.required_margin
-            current = next_lot
         requested_lot = 0.0
         resized = False
         why_blocked = "n/a"
@@ -809,7 +839,9 @@ class LiveControlPanel:
                     "lot_mode": lot_mode,
                     "why_blocked": "manual lot must be positive",
                 }
-            normalized_requested = round((int(requested_lot / step) * step), 8)
+            normalized_requested = round((int(max(requested_lot, min_lot) / step) * step), 8)
+            if normalized_requested < min_lot:
+                normalized_requested = min_lot
             if normalized_requested < min_lot:
                 return {
                     "accepted": False,
@@ -822,7 +854,12 @@ class LiveControlPanel:
             if normalized_requested > final_lot:
                 resized = True
                 why_blocked = "manual lot resized down to max allowed by capital, margin, and broker"
+            elif abs(normalized_requested - requested_lot) > 1e-9:
+                resized = True
+                why_blocked = "manual lot normalized to broker minimum / step"
             final_lot = min(normalized_requested, final_lot)
+            margin = self.adapter.estimate_margin(self.snapshot.symbol, final_lot, self.side_var.get(), order_price)
+            margin_for_final = margin.required_margin if margin.success else margin_for_final
         return {
             "accepted": final_lot > 0,
             "lot_mode": lot_mode,
@@ -835,9 +872,54 @@ class LiveControlPanel:
             "requested_lot": requested_lot,
             "resized_down": resized,
             "final_lot": final_lot,
-            "margin_for_min_lot_usd": margin_min.required_margin,
+            "margin_for_min_lot_usd": margin_for_min,
             "margin_for_final_lot_usd": margin_for_final,
             "why_blocked": why_blocked if final_lot > 0 else "allocation cannot cover broker minimum lot margin",
+        }
+
+    def _manual_order_limits(self) -> dict[str, float] | None:
+        if self.snapshot is None:
+            return None
+        symbol = self.snapshot.symbol_snapshot
+        side = self.side_var.get()
+        order_price = float(self.snapshot.ask if side == "buy" else self.snapshot.bid)
+        allocation_cap = self._allocation_capital_basis()
+        min_lot = float(symbol.volume_min or 0.0)
+        max_lot = float(symbol.volume_max or 0.0)
+        step = float(symbol.volume_step or 0.0)
+        available_budget = min(allocation_cap, float(self.snapshot.account.free_margin))
+        if min_lot <= 0 or max_lot <= 0 or step <= 0 or order_price <= 0:
+            return None
+        margin_min = self.adapter.estimate_margin(self.snapshot.symbol, min_lot, side, order_price)
+        if not margin_min.success:
+            return None
+        affordable_max_lot = 0.0
+        margin_for_affordable_max = 0.0
+        if margin_min.required_margin <= available_budget:
+            affordable_max_lot = min_lot
+            margin_for_affordable_max = margin_min.required_margin
+            current = min_lot
+            max_steps = int(round((max_lot - min_lot) / step)) + 1
+            for _ in range(max_steps):
+                next_lot = round(current + step, 8)
+                if next_lot > max_lot + 1e-9:
+                    break
+                margin = self.adapter.estimate_margin(self.snapshot.symbol, next_lot, side, order_price)
+                if not margin.success or margin.required_margin > available_budget:
+                    break
+                affordable_max_lot = next_lot
+                margin_for_affordable_max = margin.required_margin
+                current = next_lot
+        return {
+            "allocation_cap_usd": allocation_cap,
+            "available_margin_cap_usd": available_budget,
+            "broker_min_lot": min_lot,
+            "broker_max_lot": max_lot,
+            "broker_lot_step": step,
+            "order_price": order_price,
+            "margin_for_min_lot_usd": margin_min.required_margin,
+            "affordable_max_lot": affordable_max_lot,
+            "margin_for_affordable_max_lot_usd": margin_for_affordable_max,
         }
 
     def _manual_order_snapshot_lines(self) -> list[str]:
@@ -955,6 +1037,38 @@ class LiveControlPanel:
         current = self.symbol_var.get().strip()
         if current not in values and values:
             self.symbol_var.set(values[0])
+
+    def _apply_realtime_constraints(self) -> None:
+        self._field_trace_guard = True
+        try:
+            self._sync_stop_distance_from_symbol_snapshot(self.snapshot.symbol_snapshot)
+            self._apply_manual_lot_realtime_bounds()
+        finally:
+            self._field_trace_guard = False
+
+    def _apply_manual_lot_realtime_bounds(self) -> None:
+        if self.snapshot is None or self.lot_mode_var.get().strip() != "manual":
+            return
+        limits = self._manual_order_limits()
+        if limits is None:
+            return
+        min_lot = float(limits["broker_min_lot"])
+        step = float(limits["broker_lot_step"])
+        affordable_max_lot = float(limits["affordable_max_lot"])
+        try:
+            requested = float(self.manual_lot_var.get())
+        except ValueError:
+            return
+        if requested <= 0:
+            return
+        clamped = max(requested, min_lot)
+        normalized = round((int(clamped / step) * step), 8)
+        if normalized < min_lot:
+            normalized = min_lot
+        if affordable_max_lot > 0 and normalized > affordable_max_lot:
+            normalized = affordable_max_lot
+        if abs(normalized - requested) > 1e-9:
+            self.manual_lot_var.set(f"{normalized:.2f}")
 
     def _sync_stop_distance_from_probe(self, snapshot: dict[str, object]) -> None:
         stop_min = float(snapshot.get("stops_level_points") or 0.0)
