@@ -93,22 +93,30 @@ class CodexCLIEngine:
     def parse_response(response: str) -> AIIntent:
         pairs = CodexCLIEngine._extract_pairs(response)
 
-        required_keys = {"ACTION", "CONFIDENCE", "REASON"}
-        missing_keys = sorted(required_keys.difference(pairs))
+        action_raw = pairs.get("ACTION")
+        if action_raw in {None, ""}:
+            raise CodexContractError(
+                f"codex response missing required keys ACTION: {CodexCLIEngine._shorten(response)}",
+                raw_response=response,
+            )
+        try:
+            action = DecisionAction(action_raw.strip().upper())
+        except ValueError as exc:
+            raise CodexContractError(
+                f"codex response has invalid ACTION={pairs.get('ACTION')!r}: {CodexCLIEngine._shorten(response)}",
+                raw_response=response,
+            ) from exc
+
+        required_keys = {"REASON"} if action in {DecisionAction.NO_TRADE, DecisionAction.HALT} else {"CONFIDENCE", "REASON"}
+        missing_keys = sorted(required_keys.difference({key for key, value in pairs.items() if value not in {None, ""}}))
         if missing_keys:
             raise CodexContractError(
                 f"codex response missing required keys {', '.join(missing_keys)}: {CodexCLIEngine._shorten(response)}",
                 raw_response=response,
             )
 
-        try:
-            action = DecisionAction(pairs["ACTION"].strip().upper())
-        except ValueError as exc:
-            raise CodexContractError(
-                f"codex response has invalid ACTION={pairs.get('ACTION')!r}: {CodexCLIEngine._shorten(response)}",
-                raw_response=response,
-            ) from exc
-        side_raw = (pairs.get("SIDE") or ("none" if action in {DecisionAction.NO_TRADE, DecisionAction.HALT} else "")).lower()
+        side_token = pairs.get("SIDE") or pairs.get("DIRECTION") or ("none" if action in {DecisionAction.NO_TRADE, DecisionAction.HALT} else "")
+        side_raw = side_token.lower()
         side_value = side_raw or None
         if side_value == "none":
             side_value = None
@@ -121,7 +129,10 @@ class CodexCLIEngine:
         stop_raw = pairs.get("STOP_DISTANCE_POINTS")
 
         try:
-            confidence = float(confidence_raw) if confidence_raw not in {None, "", "none"} else None
+            if action in {DecisionAction.NO_TRADE, DecisionAction.HALT} and confidence_raw in {None, "", "none"}:
+                confidence = 0.0
+            else:
+                confidence = float(confidence_raw) if confidence_raw not in {None, "", "none"} else None
         except ValueError as exc:
             raise CodexContractError(
                 f"codex response has invalid CONFIDENCE={confidence_raw!r}: {CodexCLIEngine._shorten(response)}",
@@ -140,6 +151,11 @@ class CodexCLIEngine:
                 f"codex response has invalid STOP_DISTANCE_POINTS={stop_raw!r}: {CodexCLIEngine._shorten(response)}",
                 raw_response=response,
             ) from exc
+        if action not in {DecisionAction.NO_TRADE, DecisionAction.HALT} and stop_distance_points is None:
+            raise CodexContractError(
+                f"codex response missing required STOP_DISTANCE_POINTS for ACTION={action.value}: {CodexCLIEngine._shorten(response)}",
+                raw_response=response,
+            )
 
         return AIIntent(
             action=action,
@@ -221,6 +237,7 @@ class CodexCLIEngine:
             "ACTION must be one of NO_TRADE, OPEN, ADD, REDUCE, CLOSE, CANCEL_PENDING, HALT. "
             "SIDE must be buy, sell, or none. "
             "STOP_DISTANCE_POINTS may be none for NO_TRADE or HALT. "
+            "For NO_TRADE or HALT, you may omit STOP_DISTANCE_POINTS or set it to none. "
             "If uncertain, return ACTION=NO_TRADE SIDE=none CONFIDENCE=0.0 STOP_DISTANCE_POINTS=none REASON=insufficient_data.\n\n"
             f"SYMBOL={snapshot.symbol}\n"
             f"TIMEFRAME={snapshot.timeframe}\n"

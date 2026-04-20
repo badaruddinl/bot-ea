@@ -40,6 +40,17 @@ class CodexCLIEngineTests(unittest.TestCase):
         self.assertIsNone(intent.stop_distance_points)
         self.assertEqual(intent.reason, "INSUFFICIENT_DATA")
 
+    def test_parse_response_supports_direction_alias_for_no_trade(self) -> None:
+        response = "ACTION=NO_TRADE SYMBOL=UNKNOWN DIRECTION=NONE ENTRY=NA REASON=INSUFFICIENT_DATA"
+
+        intent = CodexCLIEngine.parse_response(response)
+
+        self.assertEqual(intent.action, DecisionAction.NO_TRADE)
+        self.assertIsNone(intent.side)
+        self.assertEqual(intent.confidence, 0.0)
+        self.assertIsNone(intent.stop_distance_points)
+        self.assertEqual(intent.reason, "INSUFFICIENT_DATA")
+
     def test_parse_response_allows_missing_stop_distance_points(self) -> None:
         response = "\n".join(
             [
@@ -55,7 +66,7 @@ class CodexCLIEngineTests(unittest.TestCase):
         self.assertEqual(intent.action, DecisionAction.NO_TRADE)
         self.assertIsNone(intent.stop_distance_points)
 
-    def test_parse_response_allows_empty_stop_distance_points(self) -> None:
+    def test_parse_response_rejects_empty_stop_distance_points_for_open(self) -> None:
         response = "\n".join(
             [
                 "ACTION=OPEN",
@@ -66,10 +77,8 @@ class CodexCLIEngineTests(unittest.TestCase):
             ]
         )
 
-        intent = CodexCLIEngine.parse_response(response)
-
-        self.assertEqual(intent.action, DecisionAction.OPEN)
-        self.assertIsNone(intent.stop_distance_points)
+        with self.assertRaisesRegex(CodexContractError, "missing required STOP_DISTANCE_POINTS"):
+            CodexCLIEngine.parse_response(response)
 
     def test_parse_response_rejects_invalid_action(self) -> None:
         response = "\n".join(

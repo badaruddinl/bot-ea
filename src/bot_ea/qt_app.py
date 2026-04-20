@@ -500,6 +500,11 @@ class BotEaQtWindow(QMainWindow):
                 border: 1px solid #213038;
                 border-radius: 18px;
             }
+            QFrame#dataCardAccent {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #152027, stop:1 #11181d);
+                border: 1px solid #33515d;
+                border-radius: 22px;
+            }
             QFrame#heroCard {
                 padding: 16px;
             }
@@ -1014,7 +1019,7 @@ class BotEaQtWindow(QMainWindow):
         dashboard_caption.setObjectName("cardCaption")
         dashboard_caption.setWordWrap(True)
         self.dashboard_overview_frame = QFrame(self.dashboard_page)
-        self.dashboard_overview_frame.setObjectName("dataCard")
+        self.dashboard_overview_frame.setObjectName("dataCardAccent")
         dashboard_overview_layout = QGridLayout(self.dashboard_overview_frame)
         dashboard_overview_layout.setContentsMargins(14, 14, 14, 14)
         dashboard_overview_layout.setHorizontalSpacing(12)
@@ -1023,6 +1028,8 @@ class BotEaQtWindow(QMainWindow):
         self.dashboard_symbol_value = QLabel("EURUSD", self.dashboard_overview_frame)
         self.dashboard_lot_value = QLabel("--", self.dashboard_overview_frame)
         self.dashboard_risk_value = QLabel("--", self.dashboard_overview_frame)
+        self.dashboard_mode_value = QLabel("Idle", self.dashboard_overview_frame)
+        self.dashboard_spread_value = QLabel("--", self.dashboard_overview_frame)
         dashboard_overview_layout.addWidget(
             self._make_metric_card("Connection", self.dashboard_connection_value, "Transport + runtime readiness"),
             0,
@@ -1043,9 +1050,39 @@ class BotEaQtWindow(QMainWindow):
             1,
             1,
         )
+        dashboard_overview_layout.addWidget(
+            self._make_metric_card("Runtime Mode", self.dashboard_mode_value, "Idle, dry-run, or live runtime posture"),
+            0,
+            2,
+        )
+        dashboard_overview_layout.addWidget(
+            self._make_metric_card("Spread", self.dashboard_spread_value, "Latest spread observed on the focused symbol"),
+            1,
+            2,
+        )
+        self.dashboard_story_card = QFrame(self.dashboard_page)
+        self.dashboard_story_card.setObjectName("dataCard")
+        dashboard_story_layout = QVBoxLayout(self.dashboard_story_card)
+        dashboard_story_layout.setContentsMargins(14, 14, 14, 14)
+        dashboard_story_layout.setSpacing(6)
+        self.dashboard_story_title = QLabel("Mission Control", self.dashboard_story_card)
+        self.dashboard_story_title.setObjectName("cardTitle")
+        self.dashboard_story_caption = QLabel(
+            "Use this surface as the operator landing page: confirm transport, inspect market state, then branch into Strategy or History.",
+            self.dashboard_story_card,
+        )
+        self.dashboard_story_caption.setObjectName("cardCaption")
+        self.dashboard_story_caption.setWordWrap(True)
+        self.dashboard_story_text = QPlainTextEdit(self.dashboard_story_card)
+        self.dashboard_story_text.setReadOnly(True)
+        self.dashboard_story_text.setMaximumBlockCount(120)
+        dashboard_story_layout.addWidget(self.dashboard_story_title)
+        dashboard_story_layout.addWidget(self.dashboard_story_caption)
+        dashboard_story_layout.addWidget(self.dashboard_story_text)
         dashboard_page_layout.addWidget(dashboard_title)
         dashboard_page_layout.addWidget(dashboard_caption)
         dashboard_page_layout.addWidget(self.dashboard_overview_frame)
+        dashboard_page_layout.addWidget(self.dashboard_story_card)
         dashboard_page_layout.addWidget(self.snapshot_dashboard, 1)
 
         self.strategy_page = QWidget(self)
@@ -1060,8 +1097,46 @@ class BotEaQtWindow(QMainWindow):
         )
         strategy_caption.setObjectName("cardCaption")
         strategy_caption.setWordWrap(True)
+        self.strategy_metric_row = QGridLayout()
+        self.strategy_metric_row.setHorizontalSpacing(12)
+        self.strategy_metric_row.setVerticalSpacing(12)
+        self.strategy_style_value = QLabel(self.style_combo.currentText(), self.strategy_page)
+        self.strategy_side_value = QLabel(self.side_combo.currentText(), self.strategy_page)
+        self.strategy_live_value = QLabel("Disabled", self.strategy_page)
+        self.strategy_metric_row.addWidget(
+            self._make_metric_card("Style", self.strategy_style_value, "Active trading style for the focused setup"),
+            0,
+            0,
+        )
+        self.strategy_metric_row.addWidget(
+            self._make_metric_card("Manual Side", self.strategy_side_value, "Manual execution side when action is allowed"),
+            0,
+            1,
+        )
+        self.strategy_metric_row.addWidget(
+            self._make_metric_card("Live Toggle", self.strategy_live_value, "Live runtime submission state"),
+            0,
+            2,
+        )
+        self.strategy_note_card = QFrame(self.strategy_page)
+        self.strategy_note_card.setObjectName("dataCard")
+        strategy_note_layout = QVBoxLayout(self.strategy_note_card)
+        strategy_note_layout.setContentsMargins(14, 14, 14, 14)
+        strategy_note_layout.setSpacing(6)
+        strategy_note_title = QLabel("Execution Lane", self.strategy_note_card)
+        strategy_note_title.setObjectName("cardTitle")
+        strategy_note_caption = QLabel(
+            "Strategy keeps every setup control in one scrollable lane so the operator can work top-to-bottom without losing context.",
+            self.strategy_note_card,
+        )
+        strategy_note_caption.setObjectName("cardCaption")
+        strategy_note_caption.setWordWrap(True)
+        strategy_note_layout.addWidget(strategy_note_title)
+        strategy_note_layout.addWidget(strategy_note_caption)
         strategy_page_layout.addWidget(strategy_title)
         strategy_page_layout.addWidget(strategy_caption)
+        strategy_page_layout.addLayout(self.strategy_metric_row)
+        strategy_page_layout.addWidget(self.strategy_note_card)
         strategy_page_layout.addWidget(self.trade_control_scroll, 1)
 
         self.history_page = QWidget(self)
@@ -1103,6 +1178,21 @@ class BotEaQtWindow(QMainWindow):
             0,
             3,
         )
+        self.history_operator_note = QFrame(self.history_page)
+        self.history_operator_note.setObjectName("dataCard")
+        history_operator_layout = QVBoxLayout(self.history_operator_note)
+        history_operator_layout.setContentsMargins(14, 14, 14, 14)
+        history_operator_layout.setSpacing(6)
+        history_operator_title = QLabel("Review Notes", self.history_operator_note)
+        history_operator_title.setObjectName("cardTitle")
+        self.history_operator_text = QLabel(
+            "Telemetry loads here after a run; treat this page as post-trade review, not live execution.",
+            self.history_operator_note,
+        )
+        self.history_operator_text.setObjectName("cardCaption")
+        self.history_operator_text.setWordWrap(True)
+        history_operator_layout.addWidget(history_operator_title)
+        history_operator_layout.addWidget(self.history_operator_text)
         self.history_panel = QFrame(self)
         self.history_panel.setObjectName("dataCard")
         history_panel_layout = QVBoxLayout(self.history_panel)
@@ -1135,6 +1225,7 @@ class BotEaQtWindow(QMainWindow):
         history_page_layout.addWidget(history_title)
         history_page_layout.addWidget(history_caption)
         history_page_layout.addLayout(self.history_metric_row)
+        history_page_layout.addWidget(self.history_operator_note)
         history_page_layout.addWidget(self.history_panel, 1)
         history_panel_layout.addWidget(self.history_splitter, 1)
 
@@ -1178,8 +1269,24 @@ class BotEaQtWindow(QMainWindow):
         logs_operator_caption.setWordWrap(True)
         logs_operator_note_layout.addWidget(logs_operator_title)
         logs_operator_note_layout.addWidget(logs_operator_caption)
+        self.logs_focus_panel = QFrame(self.logs_page)
+        self.logs_focus_panel.setObjectName("dataCardAccent")
+        logs_focus_layout = QHBoxLayout(self.logs_focus_panel)
+        logs_focus_layout.setContentsMargins(14, 14, 14, 14)
+        logs_focus_layout.setSpacing(12)
+        self.logs_focus_primary = QLabel("Watch runtime feed for execution phase changes.", self.logs_focus_panel)
+        self.logs_focus_primary.setObjectName("cardTitle")
+        self.logs_focus_secondary = QLabel(
+            "Use Log Console for operator breadcrumbs and runtime incidents.",
+            self.logs_focus_panel,
+        )
+        self.logs_focus_secondary.setObjectName("cardCaption")
+        self.logs_focus_secondary.setWordWrap(True)
+        logs_focus_layout.addWidget(self.logs_focus_primary, 1)
+        logs_focus_layout.addWidget(self.logs_focus_secondary, 1)
         logs_page_layout.addLayout(self.logs_metric_row)
         logs_page_layout.addWidget(self.logs_operator_note)
+        logs_page_layout.addWidget(self.logs_focus_panel)
         logs_page_layout.addWidget(self.logs_group, 1)
 
         self.settings_page = QWidget(self)
@@ -1229,8 +1336,15 @@ class BotEaQtWindow(QMainWindow):
         self.settings_summary_text = QPlainTextEdit(self.settings_panel)
         self.settings_summary_text.setReadOnly(True)
         self.settings_summary_text.setMaximumBlockCount(100)
+        self.settings_operator_note = QLabel(
+            "Settings is the transport rack: endpoint, Codex defaults, poll cadence, and runtime database location.",
+            self.settings_panel,
+        )
+        self.settings_operator_note.setObjectName("cardCaption")
+        self.settings_operator_note.setWordWrap(True)
         settings_panel_layout.addWidget(self.service_group)
         settings_panel_layout.addWidget(self.codex_group)
+        settings_panel_layout.addWidget(self.settings_operator_note)
         settings_panel_layout.addWidget(self.settings_summary_text)
         settings_panel_layout.addStretch(1)
         settings_page_layout.addWidget(settings_title)
@@ -1329,6 +1443,27 @@ class BotEaQtWindow(QMainWindow):
         self.dashboard_lot_value.setText(f"{final_lot:.2f}" if final_lot > 0 else "--")
         risk_budget = self._float_value(size_result.get("risk_cash_budget_usd"))
         self.dashboard_risk_value.setText(f"${risk_budget:.2f}" if risk_budget > 0 else "--")
+        self.dashboard_mode_value.setText(
+            "LIVE" if self._runtime_running and self._live_enabled else ("RUNNING" if self._runtime_running else "IDLE")
+        )
+        spread_points = self._float_value(snapshot.get("spread_points"))
+        self.dashboard_spread_value.setText(f"{spread_points:.2f} pts" if spread_points > 0 else "--")
+        self.dashboard_story_text.setPlainText(
+            "\n".join(
+                [
+                    f"page={current_page}",
+                    f"service={'connected' if self._service_connected else 'offline'}",
+                    f"runtime={'live' if self._runtime_running and self._live_enabled else ('running' if self._runtime_running else 'idle')}",
+                    f"symbol={snapshot.get('symbol') or self.symbol_combo.currentText() or '-'}",
+                    f"manual_lot={final_lot:.2f}" if final_lot > 0 else "manual_lot=--",
+                    f"approval={self.approval_status.text()}",
+                ]
+            )
+        )
+
+        self.strategy_style_value.setText(self.style_combo.currentText())
+        self.strategy_side_value.setText(self.side_combo.currentText())
+        self.strategy_live_value.setText("Enabled" if self._live_enabled else "Disabled")
 
         overview = self._telemetry_overview or {}
         validation = self._telemetry_validation or {}
@@ -1339,6 +1474,11 @@ class BotEaQtWindow(QMainWindow):
         expectancy = validation.get("expectancy_r")
         expectancy_value = self._float_value(expectancy) if expectancy is not None else 0.0
         self.history_expectancy_value.setText(f"{expectancy_value:.2f}R" if expectancy is not None else "--")
+        self.history_operator_text.setText(
+            "Telemetry review ready."
+            if overview
+            else "Telemetry loads here after a run; treat this page as post-trade review, not live execution."
+        )
         if not self.history_summary_text.toPlainText().strip():
             self.history_summary_text.setPlainText(
                 "\n".join(
@@ -1353,6 +1493,14 @@ class BotEaQtWindow(QMainWindow):
         self.logs_endpoint_value.setText("Managed" if self._managed_service_owned else ("Connected" if self._service_connected else "Offline"))
         self.logs_runtime_value.setText("Live" if self._runtime_running and self._live_enabled else ("Running" if self._runtime_running else "Stopped"))
         self.logs_tick_value.setText(str(snapshot.get("tick_time") or "n/a"))
+        self.logs_focus_primary.setText(
+            "Watch runtime feed for execution phase changes."
+            if not self._runtime_running
+            else f"Runtime active on {snapshot.get('symbol') or self.symbol_combo.currentText() or '-'}."
+        )
+        self.logs_focus_secondary.setText(
+            f"Latest tick: {snapshot.get('tick_time') or 'n/a'} | Approval: {self.approval_status.text()}"
+        )
 
         self.settings_endpoint_value.setText(self._service_url())
         self.settings_model_value.setText(self._optional_str(self.model_combo.currentText()) or "default")
