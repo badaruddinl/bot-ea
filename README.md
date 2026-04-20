@@ -42,6 +42,12 @@ Research-first workspace for an autonomous MetaTrader trading bot with strict ri
 - [config/parameter-map.md](D:\luthfi\project\bot-ea\config\parameter-map.md)
 - `src/bot_ea/`
   - Python scaffold for risk, execution guards, decision family selection, MT5 adapter seams, strategy baseline, validation summaries, SQLite runtime store, stop policy, and Codex polling runtime
+- `docs/desktop-runtime-runbook.md`
+  - developer/operator runbook for the desktop GUI, MT5 readiness, codex-cli runtime, and safe dev testing
+- `docs/windows-packaging-plan.md`
+  - when to stay in dev-run mode and when packaging/installer work becomes justified
+- `scripts/run-desktop-gui.ps1`
+  - Windows helper to launch the desktop GUI in dev mode without packaging
 - `tests/test_risk_engine.py`
   - smoke tests for the first risk-engine slice
 
@@ -51,3 +57,18 @@ Research-first workspace for an autonomous MetaTrader trading bot with strict ri
 - Any recommendation about strategy quality is provisional until validated on the target broker/account
 - Equity-limited users should receive explicit warnings, automatic downscaling, and strict-mode guardrails
 - Candlestick logic is treated as secondary context unless future broker-specific evidence proves otherwise
+
+## Desktop app status
+
+The repository now includes a Tk desktop control panel for:
+
+- checking MT5 readiness
+- checking `codex-cli` readiness
+- starting the Codex polling runtime in the background
+- keeping live trading gated behind explicit operator action
+
+Current status:
+
+- suitable for `supervised dev testing`
+- suitable for `dry-run` and broker preflight
+- not yet suitable for autonomous live trading without operator supervision

@@ -62,6 +62,10 @@ Research depth: `stage 5`
   - live MT5 Python integration notes
   - trading foundation and tuning notes
   - promotion artifact expectations in validation harness docs
+- added:
+  - desktop GUI runtime controls for MT5 readiness, codex-cli readiness, and background polling runtime start/stop
+  - coverage-aware execution-quality metrics for runtime telemetry
+  - desktop runtime runbook and Windows packaging plan
 
 ## Key decisions already made
 
@@ -82,6 +86,17 @@ Turn the integrated runtime into a feedback-driven live-validation loop:
 5. add validation artifact writers for live/demo runs
 6. continue broker-specific tuning with fresh out-of-sample slices
 7. add strategy-level decision evaluation on top of the now-live execution substrate
+
+## Desktop runtime note
+
+The GUI is now a usable desktop control panel for supervised development and demo tests:
+
+- probe MT5 readiness
+- probe `codex-cli`
+- launch the polling runtime in a background thread
+- gate live trading behind explicit operator action
+
+It is still not positioned as unattended live-trading software.
 
 ## What another host needs to resume
 
