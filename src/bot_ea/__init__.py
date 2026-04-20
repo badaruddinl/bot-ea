@@ -13,6 +13,7 @@ from .models import (
     SymbolSnapshot,
     TradingStyle,
 )
+from .codex_cli_engine import CodexCLIEngine
 from .mt5_adapter import MockMT5Adapter, MT5Adapter, OrderValidationResult, SymbolCapabilitySnapshot
 from .mt5_snapshots import build_account_snapshot, build_symbol_snapshot
 from .polling_runtime import AIIntent, DecisionAction, PollingConfig, PollingRuntime, PollingCycleResult, RuntimeSnapshot
@@ -27,6 +28,7 @@ __all__ = [
     "Bar",
     "CapitalAllocation",
     "CapitalAllocationMode",
+    "CodexCLIEngine",
     "DecisionAction",
     "ExecutionGateResult",
     "MockMT5Adapter",
