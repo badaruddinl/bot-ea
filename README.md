@@ -7,6 +7,7 @@ Research-first workspace for an autonomous MetaTrader trading bot with strict ri
 - Build from research, not from zero
 - Prioritize MT5 because its native APIs and Python bridge expose account, symbol, margin, profit, and order validation primitives
 - Treat internet research as a baseline only; final tuning must come from broker-specific backtests and demo forward tests
+- Build the first testable core as pure Python risk logic, then attach MT5 adapters and execution code on top
 
 ## Proposed stack
 
@@ -19,17 +20,24 @@ Research-first workspace for an autonomous MetaTrader trading bot with strict ri
 - [research/2026-04-20-market-and-platform-research.md](D:\luthfi\project\bot-ea\research\2026-04-20-market-and-platform-research.md)
 - [research/2026-04-20-stage-2-deep-research.md](D:\luthfi\project\bot-ea\research\2026-04-20-stage-2-deep-research.md)
 - [research/2026-04-20-stage-3-decision-tree-and-candlestick-research.md](D:\luthfi\project\bot-ea\research\2026-04-20-stage-3-decision-tree-and-candlestick-research.md)
+- [research/2026-04-20-stage-4-implementation-and-live-research-notes.md](D:\luthfi\project\bot-ea\research\2026-04-20-stage-4-implementation-and-live-research-notes.md)
 - [docs/ea-bot-blueprint.md](D:\luthfi\project\bot-ea\docs\ea-bot-blueprint.md)
 - [docs/mt5-validation-protocol.md](D:\luthfi\project\bot-ea\docs\mt5-validation-protocol.md)
 - [docs/strategy-candidates.md](D:\luthfi\project\bot-ea\docs\strategy-candidates.md)
 - [docs/decision-tree-pseudorules.md](D:\luthfi\project\bot-ea\docs\decision-tree-pseudorules.md)
 - [docs/candlestick-patterns-assessment.md](D:\luthfi\project\bot-ea\docs\candlestick-patterns-assessment.md)
+- [docs/risk-engine-spec.md](D:\luthfi\project\bot-ea\docs\risk-engine-spec.md)
 - [docs/project-handoff.md](D:\luthfi\project\bot-ea\docs\project-handoff.md)
 - [docs/progress-summary.md](D:\luthfi\project\bot-ea\docs\progress-summary.md)
 - [config/parameter-map.md](D:\luthfi\project\bot-ea\config\parameter-map.md)
+- `src/bot_ea/`
+  - first Python scaffold for risk, execution guards, decision family selection, and MT5 adapter seams
+- `tests/test_risk_engine.py`
+  - smoke tests for the first risk-engine slice
 
 ## Research stance
 
 - Facts from official docs are separated from design recommendations
 - Any recommendation about strategy quality is provisional until validated on the target broker/account
 - Equity-limited users should receive explicit warnings, automatic downscaling, and strict-mode guardrails
+- Candlestick logic is treated as secondary context unless future broker-specific evidence proves otherwise

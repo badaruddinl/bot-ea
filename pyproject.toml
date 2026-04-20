@@ -1,0 +1,10 @@
+[project]
+name = "bot-ea"
+version = "0.1.0"
+description = "Research-first MT5 trading bot scaffold with risk-first design."
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+pythonpath = [
+  "src",
+]

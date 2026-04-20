@@ -1,0 +1,47 @@
+from __future__ import annotations
+
+from collections.abc import Mapping
+
+from .models import AccountSnapshot, SymbolSnapshot
+from .symbol_policy import default_risk_weight, infer_instrument_class
+
+
+def _read(source, key: str, default=None):
+    if isinstance(source, Mapping):
+        return source.get(key, default)
+    return getattr(source, key, default)
+
+
+def build_account_snapshot(account_info) -> AccountSnapshot:
+    return AccountSnapshot(
+        equity=float(_read(account_info, "equity", 0.0) or 0.0),
+        balance=float(_read(account_info, "balance", 0.0) or 0.0),
+        free_margin=float(_read(account_info, "margin_free", 0.0) or 0.0),
+        margin_level=float(_read(account_info, "margin_level", 0.0) or 0.0),
+        current_open_risk_pct=0.0,
+        daily_realized_loss_pct=0.0,
+        positions_total=int(_read(account_info, "positions", 0) or 0),
+    )
+
+
+def build_symbol_snapshot(symbol_info, *, quote_session_active: bool, trade_session_active: bool, volatility_points: float | None = None) -> SymbolSnapshot:
+    name = str(_read(symbol_info, "name", "") or "")
+    instrument_class = infer_instrument_class(name)
+    return SymbolSnapshot(
+        name=name,
+        instrument_class=instrument_class,
+        risk_weight=default_risk_weight(name),
+        point=float(_read(symbol_info, "point", 0.0) or 0.0),
+        tick_size=float(_read(symbol_info, "trade_tick_size", 0.0) or 0.0),
+        tick_value=float(_read(symbol_info, "trade_tick_value", 0.0) or 0.0),
+        volume_min=float(_read(symbol_info, "volume_min", 0.0) or 0.0),
+        volume_max=float(_read(symbol_info, "volume_max", 0.0) or 0.0),
+        volume_step=float(_read(symbol_info, "volume_step", 0.0) or 0.0),
+        spread_points=float(_read(symbol_info, "spread", 0.0) or 0.0),
+        stops_level_points=float(_read(symbol_info, "trade_stops_level", 0.0) or 0.0),
+        freeze_level_points=float(_read(symbol_info, "trade_freeze_level", 0.0) or 0.0),
+        quote_session_active=quote_session_active,
+        trade_session_active=trade_session_active,
+        trade_allowed=bool(_read(symbol_info, "visible", True)),
+        volatility_points=volatility_points,
+    )

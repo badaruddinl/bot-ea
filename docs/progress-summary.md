@@ -4,9 +4,9 @@ Date: 2026-04-20
 
 ## Project status
 
-Phase: `research and architecture`
+Phase: `research, architecture, and initial scaffold`
 
-Research depth: `stage 3`
+Research depth: `stage 4`
 
 ## Completed work
 
@@ -30,6 +30,13 @@ Research depth: `stage 3`
 - added:
   - decision-tree and pseudo-rule guidance
   - candlestick pattern relevance assessment
+- created:
+  - risk engine specification
+  - Python package scaffold in `src/bot_ea`
+  - initial unit tests for position sizing and strict-mode behavior
+  - MT5 snapshot builders for account and symbol normalization
+- added:
+  - stage-4 implementation and live research notes
 
 ## Key decisions already made
 
@@ -41,10 +48,10 @@ Research depth: `stage 3`
 
 ## Immediate next step
 
-Turn the blueprint into code scaffolding:
+Turn the scaffold into MT5-aware integration modules:
 
-1. risk engine spec
-2. symbol/account introspection module
+1. symbol/account introspection module
+2. MT5 adapter for margin/check/session snapshots
 3. execution module
 4. one baseline strategy
 5. validation harness and test logging
@@ -56,3 +63,4 @@ Turn the blueprint into code scaffolding:
 - MT5 terminal installed
 - target broker credentials
 - optional Python runtime for hybrid mode
+- a working Python runtime if continuing the scaffold locally
