@@ -20,6 +20,10 @@ It should answer five questions before any order is sent:
 - `risk_profile`
 - `market_allowlist`
 - `account_mode`
+- optional `capital_allocation`
+  - `full_equity`
+  - `percent_equity`
+  - `fixed_cash`
 - optional `force_symbol` if the user insists on a risky market
 
 ### Account snapshot
@@ -66,6 +70,7 @@ Session and calendar timestamps should be normalized to `TimeTradeServer`, not l
 
 ### Position sizing result
 
+- `capital_base_cash`
 - `effective_risk_pct`
 - `risk_cash_budget`
 - `normalized_volume`
@@ -102,6 +107,16 @@ Session and calendar timestamps should be normalized to `TimeTradeServer`, not l
 
 ### 2. Effective risk budget
 
+Before risk is calculated, the engine must determine the `capital base`.
+
+This can be:
+
+- full account equity
+- a percentage of equity
+- a fixed cash allocation capped by current equity
+
+All percentage-based risk calculations should then use `capital_base_cash`, not always full account equity.
+
 The engine should start from a base policy risk percentage and scale it by mode:
 
 - `recommend`: `1.00 x`
@@ -112,6 +127,24 @@ The resulting cash budget must then be capped by:
 
 - remaining daily loss capacity
 - remaining open-risk capacity
+
+## Allocation realism
+
+Allocated capital is allowed, but the engine should reject unrealistic cases.
+
+Examples:
+
+- account equity is `1000`, but user allocates only `10`
+- user then asks for `1%` risk per trade
+- resulting risk cash is only `0.10`
+
+That may be mathematically valid, but it is not practically tradable for many symbols once minimum lot and stop-distance reality are applied.
+
+So the engine should reject when:
+
+- allocated capital is below a practical minimum
+- effective risk cash is below a practical minimum
+- the resulting risk cash cannot support even the minimum symbol volume for the requested stop distance
 
 ## Position sizing formula
 
@@ -128,6 +161,7 @@ Then normalize down to broker constraints:
 - round down to `volume_step`
 
 If normalized volume falls below `volume_min`, the trade should be rejected instead of silently oversizing.
+The rejection should explicitly tell the user that the allocated capital is too small for the chosen symbol/stop configuration.
 
 ## Guardrails
 

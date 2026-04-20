@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 
 from .models import (
+    CapitalAllocationMode,
     OperatingMode,
     PositionSizeRequest,
     PositionSizeResult,
@@ -20,11 +21,13 @@ class RiskEngine:
         symbol,
         policy: RiskPolicy,
         *,
+        capital_base_cash: float | None = None,
         force_symbol: bool = False,
         requested_mode: OperatingMode | None = None,
     ) -> SuitabilityAssessment:
         reasons: list[str] = []
         warnings: list[str] = []
+        working_capital = capital_base_cash if capital_base_cash is not None else account.equity
 
         if requested_mode is not None:
             reasons.append(f"requested mode override: {requested_mode.value}")
@@ -63,7 +66,11 @@ class RiskEngine:
             policy.max_total_open_risk_pct,
         )
 
-        if account.equity <= policy.small_equity_threshold and symbol.risk_weight >= policy.strict_risk_weight:
+        if working_capital < policy.min_allocated_capital_cash:
+            reasons.append("allocated capital below practical minimum")
+            return SuitabilityAssessment(mode=OperatingMode.STRICT, reasons=reasons, warnings=warnings)
+
+        if working_capital <= policy.small_equity_threshold and symbol.risk_weight >= policy.strict_risk_weight:
             reasons.append("small equity against high-risk symbol")
             return SuitabilityAssessment(mode=OperatingMode.STRICT, reasons=reasons, warnings=warnings)
 
@@ -76,7 +83,7 @@ class RiskEngine:
             reasons.append("high friction or account pressure")
             return SuitabilityAssessment(mode=OperatingMode.STRICT, reasons=reasons, warnings=warnings)
 
-        if account.equity <= policy.small_equity_threshold and symbol.risk_weight >= policy.caution_risk_weight:
+        if working_capital <= policy.small_equity_threshold and symbol.risk_weight >= policy.caution_risk_weight:
             reasons.append("small equity against elevated symbol risk")
             return SuitabilityAssessment(mode=OperatingMode.CAUTION, reasons=reasons, warnings=warnings)
 
@@ -93,10 +100,25 @@ class RiskEngine:
         return SuitabilityAssessment(mode=OperatingMode.RECOMMEND, reasons=reasons, warnings=warnings)
 
     def compute_position_size(self, request: PositionSizeRequest) -> PositionSizeResult:
+        capital_base_cash = self._capital_base_cash(request)
+        if capital_base_cash <= 0:
+            return PositionSizeResult(
+                accepted=False,
+                mode=OperatingMode.STRICT,
+                capital_base_cash=0.0,
+                effective_risk_pct=0.0,
+                risk_cash_budget=0.0,
+                normalized_volume=0.0,
+                estimated_loss_cash=0.0,
+                stop_distance_points=request.stop_distance_points,
+                rejection_reason="allocated capital must be positive",
+            )
+
         if request.stop_distance_points <= 0:
             return PositionSizeResult(
                 accepted=False,
                 mode=OperatingMode.STRICT,
+                capital_base_cash=capital_base_cash,
                 effective_risk_pct=0.0,
                 risk_cash_budget=0.0,
                 normalized_volume=0.0,
@@ -109,6 +131,7 @@ class RiskEngine:
             return PositionSizeResult(
                 accepted=False,
                 mode=OperatingMode.STRICT,
+                capital_base_cash=capital_base_cash,
                 effective_risk_pct=0.0,
                 risk_cash_budget=0.0,
                 normalized_volume=0.0,
@@ -121,15 +144,17 @@ class RiskEngine:
             request.account,
             request.symbol,
             request.policy,
+            capital_base_cash=capital_base_cash,
             force_symbol=request.force_symbol,
             requested_mode=request.requested_mode,
         )
         effective_risk_pct = self._effective_risk_pct(request.policy, suitability.mode)
-        risk_cash_budget = self._risk_cash_budget(request, effective_risk_pct)
+        risk_cash_budget = self._risk_cash_budget(request, effective_risk_pct, capital_base_cash)
         if risk_cash_budget <= 0:
             return PositionSizeResult(
                 accepted=False,
                 mode=suitability.mode,
+                capital_base_cash=capital_base_cash,
                 effective_risk_pct=effective_risk_pct,
                 risk_cash_budget=0.0,
                 normalized_volume=0.0,
@@ -144,12 +169,27 @@ class RiskEngine:
             return PositionSizeResult(
                 accepted=False,
                 mode=suitability.mode,
+                capital_base_cash=capital_base_cash,
                 effective_risk_pct=effective_risk_pct,
                 risk_cash_budget=risk_cash_budget,
                 normalized_volume=0.0,
                 estimated_loss_cash=0.0,
                 stop_distance_points=request.stop_distance_points,
                 rejection_reason="invalid symbol tick configuration",
+                warnings=suitability.warnings,
+            )
+
+        if risk_cash_budget < request.policy.min_effective_risk_cash:
+            return PositionSizeResult(
+                accepted=False,
+                mode=suitability.mode,
+                capital_base_cash=capital_base_cash,
+                effective_risk_pct=effective_risk_pct,
+                risk_cash_budget=risk_cash_budget,
+                normalized_volume=0.0,
+                estimated_loss_cash=0.0,
+                stop_distance_points=request.stop_distance_points,
+                rejection_reason="allocated risk cash below practical minimum for this setup",
                 warnings=suitability.warnings,
             )
 
@@ -160,12 +200,13 @@ class RiskEngine:
             return PositionSizeResult(
                 accepted=False,
                 mode=suitability.mode,
+                capital_base_cash=capital_base_cash,
                 effective_risk_pct=effective_risk_pct,
                 risk_cash_budget=risk_cash_budget,
                 normalized_volume=0.0,
                 estimated_loss_cash=0.0,
                 stop_distance_points=request.stop_distance_points,
-                rejection_reason="normalized volume below symbol minimum",
+                rejection_reason="allocated capital too small for minimum volume and stop distance",
                 warnings=suitability.warnings,
             )
 
@@ -177,6 +218,7 @@ class RiskEngine:
         return PositionSizeResult(
             accepted=True,
             mode=suitability.mode,
+            capital_base_cash=capital_base_cash,
             effective_risk_pct=effective_risk_pct,
             risk_cash_budget=risk_cash_budget,
             normalized_volume=normalized_volume,
@@ -222,16 +264,28 @@ class RiskEngine:
             return 0.0
         return symbol.spread_points / symbol.volatility_points
 
-    def _risk_cash_budget(self, request: PositionSizeRequest, effective_risk_pct: float) -> float:
-        equity = request.account.equity
-        base_budget = equity * (effective_risk_pct / 100.0)
-        remaining_daily = equity * (
+    def _risk_cash_budget(self, request: PositionSizeRequest, effective_risk_pct: float, capital_base_cash: float) -> float:
+        base_budget = capital_base_cash * (effective_risk_pct / 100.0)
+        remaining_daily = capital_base_cash * (
             max(request.policy.daily_loss_limit_pct - request.account.daily_realized_loss_pct, 0.0) / 100.0
         )
-        remaining_open = equity * (
+        remaining_open = capital_base_cash * (
             max(request.policy.max_total_open_risk_pct - request.account.current_open_risk_pct, 0.0) / 100.0
         )
         return max(min(base_budget, remaining_daily, remaining_open), 0.0)
+
+    @staticmethod
+    def _capital_base_cash(request: PositionSizeRequest) -> float:
+        account_equity = max(request.account.equity, 0.0)
+        allocation = request.capital_allocation
+        if allocation is None or allocation.mode is CapitalAllocationMode.FULL_EQUITY:
+            return account_equity
+        if allocation.mode is CapitalAllocationMode.PERCENT_EQUITY:
+            pct = min(max(allocation.value, 0.0), 100.0)
+            return account_equity * (pct / 100.0)
+        if allocation.mode is CapitalAllocationMode.FIXED_CASH:
+            return min(max(allocation.value, 0.0), account_equity)
+        return account_equity
 
     @staticmethod
     def _loss_per_lot(request: PositionSizeRequest) -> float:

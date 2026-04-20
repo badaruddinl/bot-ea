@@ -3,6 +3,8 @@
 from .models import (
     AccountSnapshot,
     Bar,
+    CapitalAllocation,
+    CapitalAllocationMode,
     ExecutionGateResult,
     OperatingMode,
     PositionSizeRequest,
@@ -19,6 +21,8 @@ from .validation import TradeRecord, ValidationSummary, evaluate_cost_realism, e
 __all__ = [
     "AccountSnapshot",
     "Bar",
+    "CapitalAllocation",
+    "CapitalAllocationMode",
     "ExecutionGateResult",
     "MockMT5Adapter",
     "MT5Adapter",

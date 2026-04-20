@@ -12,6 +12,11 @@
   - `conservative`
   - `normal`
   - `aggressive`
+- `capital_allocation_mode`
+  - `full_equity`
+  - `percent_equity`
+  - `fixed_cash`
+- `capital_allocation_value`
 - `account_mode`
   - `demo`
   - `live`

@@ -8,6 +8,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from bot_ea.models import (  # noqa: E402
     AccountSnapshot,
+    CapitalAllocation,
+    CapitalAllocationMode,
     OperatingMode,
     PositionSizeRequest,
     RiskPolicy,
@@ -116,6 +118,49 @@ class RiskEngineTests(unittest.TestCase):
 
         self.assertFalse(result.accepted)
         self.assertEqual(result.rejection_reason, "stop distance below broker stop level")
+
+    def test_percent_allocation_changes_capital_base(self) -> None:
+        micro_symbol = SymbolSnapshot(
+            name="EURUSD",
+            instrument_class="forex_major",
+            risk_weight=1.0,
+            point=0.0001,
+            tick_size=0.0001,
+            tick_value=1.0,
+            volume_min=0.01,
+            volume_max=10.0,
+            volume_step=0.01,
+            spread_points=10.0,
+            stops_level_points=15.0,
+            freeze_level_points=0.0,
+            volatility_points=200.0,
+        )
+        request = PositionSizeRequest(
+            account=self.account,
+            symbol=micro_symbol,
+            policy=self.policy,
+            stop_distance_points=50.0,
+            capital_allocation=CapitalAllocation(mode=CapitalAllocationMode.PERCENT_EQUITY, value=10.0),
+        )
+        result = self.engine.compute_position_size(request)
+
+        self.assertTrue(result.accepted)
+        self.assertEqual(result.capital_base_cash, 100.0)
+        self.assertAlmostEqual(result.risk_cash_budget, 1.0)
+
+    def test_tiny_fixed_allocation_is_rejected_as_unrealistic(self) -> None:
+        request = PositionSizeRequest(
+            account=self.account,
+            symbol=self.symbol,
+            policy=self.policy,
+            stop_distance_points=50.0,
+            capital_allocation=CapitalAllocation(mode=CapitalAllocationMode.FIXED_CASH, value=10.0),
+        )
+        result = self.engine.compute_position_size(request)
+
+        self.assertFalse(result.accepted)
+        self.assertEqual(result.capital_base_cash, 10.0)
+        self.assertEqual(result.rejection_reason, "allocated risk cash below practical minimum for this setup")
 
 
 if __name__ == "__main__":

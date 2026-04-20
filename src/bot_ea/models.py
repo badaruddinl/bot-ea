@@ -17,6 +17,12 @@ class OperatingMode(str, Enum):
     STRICT = "strict"
 
 
+class CapitalAllocationMode(str, Enum):
+    FULL_EQUITY = "full_equity"
+    PERCENT_EQUITY = "percent_equity"
+    FIXED_CASH = "fixed_cash"
+
+
 @dataclass(slots=True)
 class AccountSnapshot:
     equity: float
@@ -66,6 +72,14 @@ class RiskPolicy:
     small_equity_threshold: float = 1_000.0
     caution_risk_weight: float = 1.20
     strict_risk_weight: float = 1.50
+    min_allocated_capital_cash: float = 25.0
+    min_effective_risk_cash: float = 0.50
+
+
+@dataclass(slots=True)
+class CapitalAllocation:
+    mode: CapitalAllocationMode
+    value: float
 
 
 @dataclass(slots=True)
@@ -81,6 +95,7 @@ class PositionSizeRequest:
     symbol: SymbolSnapshot
     policy: RiskPolicy
     stop_distance_points: float
+    capital_allocation: CapitalAllocation | None = None
     force_symbol: bool = False
     requested_mode: OperatingMode | None = None
 
@@ -89,6 +104,7 @@ class PositionSizeRequest:
 class PositionSizeResult:
     accepted: bool
     mode: OperatingMode
+    capital_base_cash: float
     effective_risk_pct: float
     risk_cash_budget: float
     normalized_volume: float
