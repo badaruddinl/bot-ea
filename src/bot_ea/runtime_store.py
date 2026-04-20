@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from contextlib import contextmanager
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterator
 
@@ -931,6 +932,7 @@ class RuntimeStore:
         event_at = cls._position_event_at(position_row)
         status = str(position_row.get("status") or "")
         is_closed = cls._is_closed_position_event(position_row)
+        position_opened_at = position_row.get("opened_at") or event_at
 
         trade["run_id"] = position_row.get("run_id") or trade["run_id"]
         trade["broker_position_id"] = position_row.get("broker_position_id") or trade["broker_position_id"]
@@ -945,9 +947,17 @@ class RuntimeStore:
         trade["last_event_at"] = event_at or trade["last_event_at"]
 
         if trade["opened_at"] is None:
-            trade["opened_at"] = position_row.get("opened_at") or event_at
-        elif position_row.get("opened_at") is not None:
-            trade["opened_at"] = position_row["opened_at"]
+            trade["opened_at"] = position_opened_at
+        elif position_opened_at is not None:
+            current_is_fill_fallback = (
+                trade["open_position_event_id"] is None
+                and trade["filled_at"] is not None
+                and trade["opened_at"] == trade["filled_at"]
+            )
+            if current_is_fill_fallback:
+                trade["opened_at"] = position_opened_at
+            else:
+                trade["opened_at"] = cls._earliest_timestamp(trade["opened_at"], position_opened_at)
         if trade["open_position_event_id"] is None and not is_closed:
             trade["open_position_event_id"] = position_row.get("position_event_id")
 
@@ -956,8 +966,8 @@ class RuntimeStore:
             trade["closed_at"] = position_row.get("closed_at") or event_at
             trade["exit_price"] = position_row.get("exit_price") if position_row.get("exit_price") is not None else trade["exit_price"]
             trade["realized_pnl_cash"] = position_row.get("realized_pnl_cash") if position_row.get("realized_pnl_cash") is not None else trade["realized_pnl_cash"]
-        trade["commission_cash"] = position_row.get("commission_cash") if position_row.get("commission_cash") is not None else trade["commission_cash"]
-        trade["swap_cash"] = position_row.get("swap_cash") if position_row.get("swap_cash") is not None else trade["swap_cash"]
+        trade["commission_cash"] = cls._accumulate_optional_number(trade["commission_cash"], position_row.get("commission_cash"))
+        trade["swap_cash"] = cls._accumulate_optional_number(trade["swap_cash"], position_row.get("swap_cash"))
 
         trade["ledger"].append(cls._position_ledger_entry(position_row, trade["trade_key"]))
 
@@ -967,6 +977,36 @@ class RuntimeStore:
             if value is not None:
                 return value
         return None
+
+    @staticmethod
+    def _accumulate_optional_number(current: Any, incoming: Any) -> float | None:
+        if incoming is None:
+            return None if current is None else float(current)
+        if current is None:
+            return float(incoming)
+        return float(current) + float(incoming)
+
+    @classmethod
+    def _earliest_timestamp(cls, current: str | None, incoming: str | None) -> str | None:
+        if current is None:
+            return incoming
+        if incoming is None:
+            return current
+        current_dt = cls._parse_timestamp(current)
+        incoming_dt = cls._parse_timestamp(incoming)
+        if current_dt is not None and incoming_dt is not None:
+            return current if current_dt <= incoming_dt else incoming
+        return current if str(current) <= str(incoming) else incoming
+
+    @staticmethod
+    def _parse_timestamp(value: str | None) -> datetime | None:
+        if value is None:
+            return None
+        normalized = value.replace("Z", "+00:00")
+        try:
+            return datetime.fromisoformat(normalized)
+        except ValueError:
+            return None
 
     @staticmethod
     def _execution_trade_key(execution_row: dict[str, Any]) -> str:

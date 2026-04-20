@@ -26,6 +26,9 @@ class TradeRecord:
     reject_code: str | None = None
     exit_reason: str = ""
     notes: list[str] = field(default_factory=list)
+    entry_spread_observed: bool = True
+    slippage_observed: bool = True
+    fill_latency_observed: bool = True
 
     @property
     def holding_minutes(self) -> float:
@@ -69,6 +72,12 @@ class ExecutionQualitySummary:
     spread_drift_points: float
     total_commission_cash: float
     total_swap_cash: float
+    entry_spread_coverage: float = 0.0
+    slippage_coverage: float = 0.0
+    fill_latency_coverage: float = 0.0
+    entry_spread_observed_trades: int = 0
+    slippage_observed_trades: int = 0
+    fill_latency_observed_trades: int = 0
     warnings: list[str] = field(default_factory=list)
 
 
@@ -293,24 +302,62 @@ def summarize_execution_quality(
             spread_drift_points=0.0,
             total_commission_cash=0.0,
             total_swap_cash=0.0,
+            entry_spread_coverage=0.0,
+            slippage_coverage=0.0,
+            fill_latency_coverage=0.0,
+            entry_spread_observed_trades=0,
+            slippage_observed_trades=0,
+            fill_latency_observed_trades=0,
             warnings=["no trades supplied"],
         )
 
     total_trade_records = len(trades)
     attempts = total_order_attempts if total_order_attempts is not None else total_trade_records + rejected_orders
-    average_entry_spread_points = sum(trade.entry_spread_points for trade in trades) / total_trade_records
-    average_slippage_points = sum(trade.slippage_points for trade in trades) / total_trade_records
-    average_fill_latency_ms = sum(trade.fill_latency_ms for trade in trades) / total_trade_records
+    observed_entry_spreads = [trade.entry_spread_points for trade in trades if trade.entry_spread_observed]
+    observed_slippage = [trade.slippage_points for trade in trades if trade.slippage_observed]
+    observed_fill_latency = [trade.fill_latency_ms for trade in trades if trade.fill_latency_observed]
+    average_entry_spread_points = sum(observed_entry_spreads) / len(observed_entry_spreads) if observed_entry_spreads else 0.0
+    average_slippage_points = sum(observed_slippage) / len(observed_slippage) if observed_slippage else 0.0
+    average_fill_latency_ms = sum(observed_fill_latency) / len(observed_fill_latency) if observed_fill_latency else 0.0
     total_commission_cash = sum(trade.commission_cash for trade in trades)
     total_swap_cash = sum(trade.swap_cash for trade in trades)
     reject_rate = (rejected_orders / attempts) if attempts > 0 else 0.0
     spread_drift_points = average_slippage_points - average_entry_spread_points
+    entry_spread_observed_trades = len(observed_entry_spreads)
+    slippage_observed_trades = len(observed_slippage)
+    fill_latency_observed_trades = len(observed_fill_latency)
+    entry_spread_coverage = entry_spread_observed_trades / total_trade_records
+    slippage_coverage = slippage_observed_trades / total_trade_records
+    fill_latency_coverage = fill_latency_observed_trades / total_trade_records
 
     warnings: list[str] = []
-    if average_entry_spread_points <= 0:
-        warnings.append("quoted spread data missing or zero")
-    if average_fill_latency_ms <= 0:
-        warnings.append("fill latency data missing or zero")
+    warnings.extend(
+        _build_execution_metric_coverage_warnings(
+            metric_label="quoted spread",
+            coverage=entry_spread_coverage,
+            observed_trades=entry_spread_observed_trades,
+            total_trade_records=total_trade_records,
+            average_value=average_entry_spread_points,
+        )
+    )
+    warnings.extend(
+        _build_execution_metric_coverage_warnings(
+            metric_label="slippage",
+            coverage=slippage_coverage,
+            observed_trades=slippage_observed_trades,
+            total_trade_records=total_trade_records,
+            average_value=average_slippage_points,
+        )
+    )
+    warnings.extend(
+        _build_execution_metric_coverage_warnings(
+            metric_label="fill latency",
+            coverage=fill_latency_coverage,
+            observed_trades=fill_latency_observed_trades,
+            total_trade_records=total_trade_records,
+            average_value=average_fill_latency_ms,
+        )
+    )
     if reject_rate > 0.10:
         warnings.append("reject rate elevated")
 
@@ -325,6 +372,12 @@ def summarize_execution_quality(
         spread_drift_points=spread_drift_points,
         total_commission_cash=total_commission_cash,
         total_swap_cash=total_swap_cash,
+        entry_spread_coverage=entry_spread_coverage,
+        slippage_coverage=slippage_coverage,
+        fill_latency_coverage=fill_latency_coverage,
+        entry_spread_observed_trades=entry_spread_observed_trades,
+        slippage_observed_trades=slippage_observed_trades,
+        fill_latency_observed_trades=fill_latency_observed_trades,
         warnings=warnings,
     )
 
@@ -582,6 +635,32 @@ def _bridge_runtime_records(
         if fill_meta is None:
             missing_fill_matches += 1
             notes.append("fill telemetry missing; runtime ledger used as fallback")
+        entry_spread_value = _first_present(
+            aggregate["entry_spread_points"],
+            fill_row.get("entry_spread_points"),
+            fill_payload.get("entry_spread_points"),
+            fill_payload.get("quoted_spread_points"),
+            fill_payload.get("spread_points"),
+        )
+        slippage_value = _first_present(
+            aggregate["slippage_points"],
+            fill_row.get("slippage_points"),
+            fill_payload.get("slippage_points"),
+        )
+        fill_latency_value = _first_present(
+            aggregate["fill_latency_ms"],
+            fill_row.get("fill_latency_ms"),
+            fill_payload.get("fill_latency_ms"),
+        )
+        entry_spread_observed = entry_spread_value is not None
+        slippage_observed = slippage_value is not None
+        fill_latency_observed = fill_latency_value is not None
+        if not entry_spread_observed:
+            notes.append("entry spread data missing; excluded from execution quality average")
+        if not slippage_observed:
+            notes.append("slippage telemetry missing; excluded from execution quality average")
+        if not fill_latency_observed:
+            notes.append("fill latency telemetry missing; excluded from execution quality average")
 
         entry_time, exit_time = _finalize_trade_times(
             aggregate["opened_at"],
@@ -597,15 +676,7 @@ def _bridge_runtime_records(
                 exit_time=exit_time,
                 pnl_cash=_coerce_float(aggregate["pnl_cash"]),
                 risk_cash=_coerce_float(aggregate["risk_cash"]),
-                entry_spread_points=_coerce_float(
-                    _first_present(
-                        aggregate["entry_spread_points"],
-                        fill_row.get("entry_spread_points"),
-                        fill_payload.get("entry_spread_points"),
-                        fill_payload.get("quoted_spread_points"),
-                        fill_payload.get("spread_points"),
-                    )
-                ),
+                entry_spread_points=_coerce_float(entry_spread_value),
                 quoted_entry_price=_coerce_optional_float(
                     _first_present(
                         aggregate["quoted_entry_price"],
@@ -625,20 +696,8 @@ def _bridge_runtime_records(
                 ),
                 commission_cash=_coerce_float(aggregate["commission_cash"]),
                 swap_cash=_coerce_float(aggregate["swap_cash"]),
-                slippage_points=_coerce_float(
-                    _first_present(
-                        aggregate["slippage_points"],
-                        fill_row.get("slippage_points"),
-                        fill_payload.get("slippage_points"),
-                    )
-                ),
-                fill_latency_ms=_coerce_float(
-                    _first_present(
-                        aggregate["fill_latency_ms"],
-                        fill_row.get("fill_latency_ms"),
-                        fill_payload.get("fill_latency_ms"),
-                    )
-                ),
+                slippage_points=_coerce_float(slippage_value),
+                fill_latency_ms=_coerce_float(fill_latency_value),
                 reject_code=_normalize_optional_string(
                     _first_present(
                         aggregate["reject_code"],
@@ -648,6 +707,9 @@ def _bridge_runtime_records(
                 ),
                 exit_reason=str(aggregate["exit_reason"] or ""),
                 notes=notes,
+                entry_spread_observed=entry_spread_observed,
+                slippage_observed=slippage_observed,
+                fill_latency_observed=fill_latency_observed,
             )
         )
 
@@ -1067,6 +1129,28 @@ def _time_distance_seconds(candidate: datetime | None, target: datetime) -> floa
 
 def _format_count_warning(count: int, singular: str, plural: str) -> str:
     return f"{count} {singular if count == 1 else plural}"
+
+
+def _build_execution_metric_coverage_warnings(
+    *,
+    metric_label: str,
+    coverage: float,
+    observed_trades: int,
+    total_trade_records: int,
+    average_value: float,
+) -> list[str]:
+    if total_trade_records <= 0:
+        return []
+    if observed_trades == total_trade_records:
+        if average_value <= 0:
+            return [f"{metric_label} data missing or zero"]
+        return []
+    return [
+        (
+            f"{metric_label} coverage {observed_trades}/{total_trade_records}; "
+            "execution quality averages exclude missing telemetry"
+        )
+    ]
 
 
 def _evaluate_absolute_promotion(

@@ -279,7 +279,7 @@ class RuntimeStoreTests(unittest.TestCase):
             self.assertEqual(closed_trade["opened_at"], "2026-04-20T00:01:02Z")
             self.assertEqual(closed_trade["closed_at"], "2026-04-20T00:15:03Z")
             self.assertEqual(closed_trade["realized_pnl_cash"], 14.0)
-            self.assertEqual(closed_trade["commission_cash"], -0.4)
+            self.assertAlmostEqual(closed_trade["commission_cash"], -0.6)
             self.assertEqual(closed_trade["swap_cash"], -0.1)
             self.assertEqual(
                 [(entry["event_kind"], entry["event_name"]) for entry in closed_trade["ledger"]],
@@ -310,4 +310,94 @@ class RuntimeStoreTests(unittest.TestCase):
             self.assertEqual(
                 [entry["event_name"] for entry in ledger],
                 ["FILLED", "OPENED", "FILLED", "CLOSED", "OPENED", "CLOSED"],
+            )
+
+    def test_trade_lifecycle_keeps_earliest_opened_at_and_accumulates_split_fees(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "runtime.db"
+            store = RuntimeStore(db_path)
+            store.initialize()
+            store.start_run(run_id="run-1", started_at="2026-04-20T00:00:00Z", status="RUNNING", symbol="EURUSD")
+
+            cycle_1 = store.start_cycle(run_id="run-1", polled_at="2026-04-20T00:01:00Z", status="STARTED")
+            cycle_2 = store.start_cycle(run_id="run-1", polled_at="2026-04-20T00:02:00Z", status="STARTED")
+            cycle_3 = store.start_cycle(run_id="run-1", polled_at="2026-04-20T00:05:00Z", status="STARTED")
+
+            store.record_execution_event(
+                run_id="run-1",
+                cycle_id=cycle_1,
+                attempt_id="attempt-1",
+                event_type="ORDER_ATTEMPT",
+                phase="FILL",
+                status="FILLED",
+                symbol="EURUSD",
+                side="buy",
+                volume=0.2,
+                price=1.1002,
+                quoted_price=1.1002,
+                executed_price=1.1003,
+                slippage_points=1.0,
+                fill_latency_ms=120.0,
+                order_ticket="1001",
+                deal_ticket="5001",
+                retcode="0",
+                detail="fill ok",
+            )
+            store.record_position_event(
+                run_id="run-1",
+                cycle_id=cycle_1,
+                broker_position_id="1001",
+                symbol="EURUSD",
+                side="buy",
+                volume=0.2,
+                status="OPENED",
+                entry_price=1.1003,
+                opened_at="2026-04-20T00:01:02Z",
+                commission_cash=-0.2,
+                swap_cash=-0.01,
+                payload={"deal": "5001"},
+            )
+            store.record_position_event(
+                run_id="run-1",
+                cycle_id=cycle_2,
+                broker_position_id="1001",
+                symbol="EURUSD",
+                side="buy",
+                volume=0.2,
+                status="OPENED",
+                entry_price=1.1003,
+                opened_at="2026-04-20T00:01:05Z",
+                commission_cash=-0.1,
+                swap_cash=-0.02,
+                payload={"deal": "5001", "note": "sync refresh"},
+            )
+            store.record_position_event(
+                run_id="run-1",
+                cycle_id=cycle_3,
+                broker_position_id="1001",
+                symbol="EURUSD",
+                side="buy",
+                volume=0.2,
+                status="CLOSED",
+                entry_price=1.1003,
+                exit_price=1.101,
+                opened_at="2026-04-20T00:01:08Z",
+                closed_at="2026-04-20T00:05:03Z",
+                realized_pnl_cash=14.0,
+                commission_cash=-0.3,
+                swap_cash=-0.04,
+                payload={"deal": "5001"},
+            )
+
+            rows = store.fetch_trade_lifecycle_rows(run_id="run-1", limit=5)
+            self.assertEqual(len(rows), 1)
+            trade = rows[0]
+
+            self.assertEqual(trade["opened_at"], "2026-04-20T00:01:02Z")
+            self.assertEqual(trade["closed_at"], "2026-04-20T00:05:03Z")
+            self.assertAlmostEqual(trade["commission_cash"], -0.6)
+            self.assertAlmostEqual(trade["swap_cash"], -0.07)
+            self.assertEqual(
+                [entry["event_name"] for entry in trade["ledger"]],
+                ["FILLED", "OPENED", "OPENED", "CLOSED"],
             )

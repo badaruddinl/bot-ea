@@ -100,6 +100,9 @@ class ValidationTests(unittest.TestCase):
         self.assertAlmostEqual(trade.swap_cash, -0.2)
         self.assertAlmostEqual(trade.slippage_points, 1.2)
         self.assertAlmostEqual(trade.fill_latency_ms, 180.0)
+        self.assertTrue(trade.entry_spread_observed)
+        self.assertTrue(trade.slippage_observed)
+        self.assertTrue(trade.fill_latency_observed)
         self.assertEqual(trade.exit_reason, "tp_hit")
         self.assertFalse(trade.notes)
 
@@ -222,7 +225,15 @@ class ValidationTests(unittest.TestCase):
         self.assertEqual(report.execution_quality.total_order_attempts, 4)
         self.assertEqual(report.execution_quality.rejected_orders, 2)
         self.assertAlmostEqual(report.execution_quality.reject_rate, 0.5)
-        self.assertAlmostEqual(report.execution_quality.average_fill_latency_ms, 40.0)
+        self.assertAlmostEqual(report.execution_quality.average_entry_spread_points, 6.5)
+        self.assertAlmostEqual(report.execution_quality.average_slippage_points, 0.5)
+        self.assertAlmostEqual(report.execution_quality.average_fill_latency_ms, 80.0)
+        self.assertAlmostEqual(report.execution_quality.entry_spread_coverage, 1.0)
+        self.assertAlmostEqual(report.execution_quality.slippage_coverage, 0.5)
+        self.assertAlmostEqual(report.execution_quality.fill_latency_coverage, 0.5)
+        self.assertEqual(report.execution_quality.entry_spread_observed_trades, 2)
+        self.assertEqual(report.execution_quality.slippage_observed_trades, 1)
+        self.assertEqual(report.execution_quality.fill_latency_observed_trades, 1)
         self.assertAlmostEqual(report.validation_summary.total_commission_cash, 0.8)
         self.assertTrue(any("open position event skipped" in warning for warning in report.warnings))
         self.assertTrue(any("closed trade missing fill telemetry linkage" in warning for warning in report.warnings))
@@ -231,8 +242,65 @@ class ValidationTests(unittest.TestCase):
             "fill telemetry missing; runtime ledger used as fallback",
             report.trade_records[1].notes,
         )
+        self.assertIn(
+            "slippage telemetry missing; excluded from execution quality average",
+            report.trade_records[1].notes,
+        )
+        self.assertIn(
+            "fill latency telemetry missing; excluded from execution quality average",
+            report.trade_records[1].notes,
+        )
         self.assertTrue(any("open position event skipped" in warning for warning in report.validation_summary.warnings))
         self.assertTrue(any("filled execution attempt was not matched to a ledger position" in warning for warning in report.execution_quality.warnings))
+        self.assertTrue(any("slippage coverage 1/2" in warning for warning in report.execution_quality.warnings))
+        self.assertTrue(any("fill latency coverage 1/2" in warning for warning in report.execution_quality.warnings))
+
+    def test_execution_quality_summary_excludes_missing_runtime_telemetry_from_averages(self) -> None:
+        start = datetime(2026, 4, 20, 9, 0, 0)
+        trades = [
+            TradeRecord(
+                "EURUSD",
+                "session_breakout",
+                "buy",
+                start,
+                start + timedelta(minutes=10),
+                50.0,
+                25.0,
+                8.0,
+                slippage_points=1.5,
+                fill_latency_ms=120.0,
+            ),
+            TradeRecord(
+                "EURUSD",
+                "session_breakout",
+                "sell",
+                start + timedelta(minutes=20),
+                start + timedelta(minutes=35),
+                -10.0,
+                25.0,
+                0.0,
+                slippage_points=0.0,
+                fill_latency_ms=0.0,
+                entry_spread_observed=False,
+                slippage_observed=False,
+                fill_latency_observed=False,
+            ),
+        ]
+
+        quality = summarize_execution_quality(trades, rejected_orders=1, total_order_attempts=3)
+
+        self.assertAlmostEqual(quality.average_entry_spread_points, 8.0)
+        self.assertAlmostEqual(quality.average_slippage_points, 1.5)
+        self.assertAlmostEqual(quality.average_fill_latency_ms, 120.0)
+        self.assertAlmostEqual(quality.entry_spread_coverage, 0.5)
+        self.assertAlmostEqual(quality.slippage_coverage, 0.5)
+        self.assertAlmostEqual(quality.fill_latency_coverage, 0.5)
+        self.assertEqual(quality.entry_spread_observed_trades, 1)
+        self.assertEqual(quality.slippage_observed_trades, 1)
+        self.assertEqual(quality.fill_latency_observed_trades, 1)
+        self.assertTrue(any("quoted spread coverage 1/2" in warning for warning in quality.warnings))
+        self.assertTrue(any("slippage coverage 1/2" in warning for warning in quality.warnings))
+        self.assertTrue(any("fill latency coverage 1/2" in warning for warning in quality.warnings))
 
     def test_summary_metrics(self) -> None:
         start = datetime(2026, 4, 20, 9, 0, 0)
