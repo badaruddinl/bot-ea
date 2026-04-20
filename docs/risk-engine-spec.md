@@ -117,6 +117,16 @@ This can be:
 
 All percentage-based risk calculations should then use `capital_base_cash`, not always full account equity.
 
+The engine should also produce a `recommended minimum allocation` based on:
+
+- instrument class
+- trading style
+
+This allows user-facing guidance such as:
+
+- `EURUSD scalping is not very practical below about 100 USD allocated capital`
+- `XAUUSD intraday is not very practical below about 150 USD allocated capital`
+
 The engine should start from a base policy risk percentage and scale it by mode:
 
 - `recommend`: `1.00 x`
@@ -145,6 +155,8 @@ So the engine should reject when:
 - allocated capital is below a practical minimum
 - effective risk cash is below a practical minimum
 - the resulting risk cash cannot support even the minimum symbol volume for the requested stop distance
+
+It may also accept a trade while still issuing a warning that the allocation is below the recommended practical minimum for the chosen symbol/style.
 
 ## Position sizing formula
 

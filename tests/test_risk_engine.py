@@ -14,6 +14,7 @@ from bot_ea.models import (  # noqa: E402
     PositionSizeRequest,
     RiskPolicy,
     SymbolSnapshot,
+    TradingStyle,
 )
 from bot_ea.risk_engine import RiskEngine  # noqa: E402
 
@@ -146,6 +147,7 @@ class RiskEngineTests(unittest.TestCase):
 
         self.assertTrue(result.accepted)
         self.assertEqual(result.capital_base_cash, 100.0)
+        self.assertEqual(result.recommended_minimum_allocation_cash, 75.0)
         self.assertAlmostEqual(result.risk_cash_budget, 1.0)
 
     def test_tiny_fixed_allocation_is_rejected_as_unrealistic(self) -> None:
@@ -154,13 +156,45 @@ class RiskEngineTests(unittest.TestCase):
             symbol=self.symbol,
             policy=self.policy,
             stop_distance_points=50.0,
+            trading_style=TradingStyle.SCALPING,
             capital_allocation=CapitalAllocation(mode=CapitalAllocationMode.FIXED_CASH, value=10.0),
         )
         result = self.engine.compute_position_size(request)
 
         self.assertFalse(result.accepted)
         self.assertEqual(result.capital_base_cash, 10.0)
-        self.assertEqual(result.rejection_reason, "allocated risk cash below practical minimum for this setup")
+        self.assertEqual(result.recommended_minimum_allocation_cash, 100.0)
+        self.assertEqual(result.rejection_reason, "allocated risk cash below practical minimum for scalping setup")
+
+    def test_warning_contains_recommended_minimum_for_symbol_and_style(self) -> None:
+        micro_symbol = SymbolSnapshot(
+            name="XAUUSD",
+            instrument_class="metal",
+            risk_weight=1.3,
+            point=0.01,
+            tick_size=0.01,
+            tick_value=0.1,
+            volume_min=0.01,
+            volume_max=50.0,
+            volume_step=0.01,
+            spread_points=25.0,
+            stops_level_points=50.0,
+            freeze_level_points=10.0,
+            volatility_points=500.0,
+        )
+        request = PositionSizeRequest(
+            account=self.account,
+            symbol=micro_symbol,
+            policy=self.policy,
+            stop_distance_points=100.0,
+            trading_style=TradingStyle.INTRADAY,
+            capital_allocation=CapitalAllocation(mode=CapitalAllocationMode.FIXED_CASH, value=125.0),
+        )
+        result = self.engine.compute_position_size(request)
+
+        self.assertTrue(result.accepted)
+        self.assertEqual(result.recommended_minimum_allocation_cash, 150.0)
+        self.assertTrue(any("recommended minimum allocation" in warning for warning in result.warnings))
 
 
 if __name__ == "__main__":

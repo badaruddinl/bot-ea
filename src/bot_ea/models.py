@@ -95,6 +95,7 @@ class PositionSizeRequest:
     symbol: SymbolSnapshot
     policy: RiskPolicy
     stop_distance_points: float
+    trading_style: TradingStyle = TradingStyle.INTRADAY
     capital_allocation: CapitalAllocation | None = None
     force_symbol: bool = False
     requested_mode: OperatingMode | None = None
@@ -105,6 +106,7 @@ class PositionSizeResult:
     accepted: bool
     mode: OperatingMode
     capital_base_cash: float
+    recommended_minimum_allocation_cash: float
     effective_risk_pct: float
     risk_cash_budget: float
     normalized_volume: float

@@ -9,11 +9,41 @@ from .models import (
     PositionSizeResult,
     RiskPolicy,
     SuitabilityAssessment,
+    TradingStyle,
 )
 
 
 class RiskEngine:
     """Pure risk logic that stays testable outside MT5."""
+
+    _STYLE_RISK_FLOOR = {
+        TradingStyle.SCALPING: 0.75,
+        TradingStyle.INTRADAY: 0.50,
+        TradingStyle.SWING: 1.00,
+    }
+
+    _CLASS_MINIMUM_ALLOCATION = {
+        "forex_major": {
+            TradingStyle.SCALPING: 100.0,
+            TradingStyle.INTRADAY: 75.0,
+            TradingStyle.SWING: 125.0,
+        },
+        "metal": {
+            TradingStyle.SCALPING: 250.0,
+            TradingStyle.INTRADAY: 150.0,
+            TradingStyle.SWING: 300.0,
+        },
+        "index_cfd": {
+            TradingStyle.SCALPING: 300.0,
+            TradingStyle.INTRADAY: 200.0,
+            TradingStyle.SWING: 350.0,
+        },
+        "unknown": {
+            TradingStyle.SCALPING: 150.0,
+            TradingStyle.INTRADAY: 100.0,
+            TradingStyle.SWING: 200.0,
+        },
+    }
 
     def assess_suitability(
         self,
@@ -21,6 +51,7 @@ class RiskEngine:
         symbol,
         policy: RiskPolicy,
         *,
+        trading_style: TradingStyle = TradingStyle.INTRADAY,
         capital_base_cash: float | None = None,
         force_symbol: bool = False,
         requested_mode: OperatingMode | None = None,
@@ -28,6 +59,7 @@ class RiskEngine:
         reasons: list[str] = []
         warnings: list[str] = []
         working_capital = capital_base_cash if capital_base_cash is not None else account.equity
+        recommended_minimum = self.recommended_minimum_allocation(symbol.instrument_class, trading_style)
 
         if requested_mode is not None:
             reasons.append(f"requested mode override: {requested_mode.value}")
@@ -70,6 +102,11 @@ class RiskEngine:
             reasons.append("allocated capital below practical minimum")
             return SuitabilityAssessment(mode=OperatingMode.STRICT, reasons=reasons, warnings=warnings)
 
+        if working_capital < recommended_minimum:
+            warnings.append(
+                f"recommended minimum allocation for {symbol.name} {trading_style.value} is about {recommended_minimum:.2f}"
+            )
+
         if working_capital <= policy.small_equity_threshold and symbol.risk_weight >= policy.strict_risk_weight:
             reasons.append("small equity against high-risk symbol")
             return SuitabilityAssessment(mode=OperatingMode.STRICT, reasons=reasons, warnings=warnings)
@@ -101,11 +138,13 @@ class RiskEngine:
 
     def compute_position_size(self, request: PositionSizeRequest) -> PositionSizeResult:
         capital_base_cash = self._capital_base_cash(request)
+        recommended_minimum = self.recommended_minimum_allocation(request.symbol.instrument_class, request.trading_style)
         if capital_base_cash <= 0:
             return PositionSizeResult(
                 accepted=False,
                 mode=OperatingMode.STRICT,
                 capital_base_cash=0.0,
+                recommended_minimum_allocation_cash=recommended_minimum,
                 effective_risk_pct=0.0,
                 risk_cash_budget=0.0,
                 normalized_volume=0.0,
@@ -119,6 +158,7 @@ class RiskEngine:
                 accepted=False,
                 mode=OperatingMode.STRICT,
                 capital_base_cash=capital_base_cash,
+                recommended_minimum_allocation_cash=recommended_minimum,
                 effective_risk_pct=0.0,
                 risk_cash_budget=0.0,
                 normalized_volume=0.0,
@@ -132,6 +172,7 @@ class RiskEngine:
                 accepted=False,
                 mode=OperatingMode.STRICT,
                 capital_base_cash=capital_base_cash,
+                recommended_minimum_allocation_cash=recommended_minimum,
                 effective_risk_pct=0.0,
                 risk_cash_budget=0.0,
                 normalized_volume=0.0,
@@ -144,6 +185,7 @@ class RiskEngine:
             request.account,
             request.symbol,
             request.policy,
+            trading_style=request.trading_style,
             capital_base_cash=capital_base_cash,
             force_symbol=request.force_symbol,
             requested_mode=request.requested_mode,
@@ -155,6 +197,7 @@ class RiskEngine:
                 accepted=False,
                 mode=suitability.mode,
                 capital_base_cash=capital_base_cash,
+                recommended_minimum_allocation_cash=recommended_minimum,
                 effective_risk_pct=effective_risk_pct,
                 risk_cash_budget=0.0,
                 normalized_volume=0.0,
@@ -170,6 +213,7 @@ class RiskEngine:
                 accepted=False,
                 mode=suitability.mode,
                 capital_base_cash=capital_base_cash,
+                recommended_minimum_allocation_cash=recommended_minimum,
                 effective_risk_pct=effective_risk_pct,
                 risk_cash_budget=risk_cash_budget,
                 normalized_volume=0.0,
@@ -179,17 +223,20 @@ class RiskEngine:
                 warnings=suitability.warnings,
             )
 
-        if risk_cash_budget < request.policy.min_effective_risk_cash:
+        style_floor = self.minimum_practical_risk_cash(request.trading_style)
+        effective_risk_floor = max(request.policy.min_effective_risk_cash, style_floor)
+        if risk_cash_budget < effective_risk_floor:
             return PositionSizeResult(
                 accepted=False,
                 mode=suitability.mode,
                 capital_base_cash=capital_base_cash,
+                recommended_minimum_allocation_cash=recommended_minimum,
                 effective_risk_pct=effective_risk_pct,
                 risk_cash_budget=risk_cash_budget,
                 normalized_volume=0.0,
                 estimated_loss_cash=0.0,
                 stop_distance_points=request.stop_distance_points,
-                rejection_reason="allocated risk cash below practical minimum for this setup",
+                rejection_reason=f"allocated risk cash below practical minimum for {request.trading_style.value} setup",
                 warnings=suitability.warnings,
             )
 
@@ -201,6 +248,7 @@ class RiskEngine:
                 accepted=False,
                 mode=suitability.mode,
                 capital_base_cash=capital_base_cash,
+                recommended_minimum_allocation_cash=recommended_minimum,
                 effective_risk_pct=effective_risk_pct,
                 risk_cash_budget=risk_cash_budget,
                 normalized_volume=0.0,
@@ -212,6 +260,10 @@ class RiskEngine:
 
         estimated_loss_cash = normalized_volume * loss_per_lot
         warnings = list(suitability.warnings)
+        if capital_base_cash < recommended_minimum:
+            warnings.append(
+                f"{request.symbol.name} may be impractical with allocated capital {capital_base_cash:.2f}; recommended minimum is about {recommended_minimum:.2f}"
+            )
         if suitability.mode is not OperatingMode.RECOMMEND:
             warnings.append(f"operating mode downgraded to {suitability.mode.value}")
 
@@ -219,6 +271,7 @@ class RiskEngine:
             accepted=True,
             mode=suitability.mode,
             capital_base_cash=capital_base_cash,
+            recommended_minimum_allocation_cash=recommended_minimum,
             effective_risk_pct=effective_risk_pct,
             risk_cash_budget=risk_cash_budget,
             normalized_volume=normalized_volume,
@@ -286,6 +339,15 @@ class RiskEngine:
         if allocation.mode is CapitalAllocationMode.FIXED_CASH:
             return min(max(allocation.value, 0.0), account_equity)
         return account_equity
+
+    @classmethod
+    def recommended_minimum_allocation(cls, instrument_class: str, trading_style: TradingStyle) -> float:
+        class_table = cls._CLASS_MINIMUM_ALLOCATION.get(instrument_class, cls._CLASS_MINIMUM_ALLOCATION["unknown"])
+        return class_table[trading_style]
+
+    @classmethod
+    def minimum_practical_risk_cash(cls, trading_style: TradingStyle) -> float:
+        return cls._STYLE_RISK_FLOOR[trading_style]
 
     @staticmethod
     def _loss_per_lot(request: PositionSizeRequest) -> float:

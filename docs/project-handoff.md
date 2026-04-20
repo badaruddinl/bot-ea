@@ -55,12 +55,20 @@ The repository currently contains:
   - explicit assessment of candlestick patterns as primary vs secondary signal logic
 - `docs/risk-engine-spec.md`
   - implementation contract for operating mode, sizing, and guardrails
+- `docs/allocation-guidance.md`
+  - explanation of allocated capital, recommendation layer, and practicality warnings
 - `docs/mt5-adapter-boundary.md`
   - practical separation between core logic, MT5 adapter, and mock provider
+- `docs/ea-brain-vs-config.md`
+  - clarification that Codex/strategy/risk code is the brain, while config is only settings
 - `docs/session-breakout-v1.md`
   - narrow baseline strategy notes for the first strategy family
 - `docs/validation-harness-spec.md`
   - artifact and metric contract for validation without MT5 dependency
+- `docs/sqlite-runtime-schema.md`
+  - SQLite table design for polling runtime persistence
+- `docs/codex-polling-runtime.md`
+  - Codex runtime polling flow and deterministic halt model
 - `config/parameter-map.md`
   - separation between user parameters, MT5-derived parameters, and tuned parameters
 - `data/README.md`
@@ -90,6 +98,10 @@ The repository currently contains:
 - Mock MT5 adapter added
 - Session breakout strategy scaffold added
 - Validation harness module added
+- Allocation-aware risk sizing added
+- SQLite runtime store added
+- Stop policy module added
+- Codex polling runtime scaffold added
 
 ### Resolved design direction
 
@@ -106,6 +118,7 @@ The repository currently contains:
 - no backtest harness yet
 - no broker-specific symbol profiles yet
 - no live execution workflow yet
+- no real Codex runtime connector yet
 
 ## How to continue on another host
 
@@ -132,11 +145,15 @@ Read in this order:
 10. `docs/decision-tree-pseudorules.md`
 11. `docs/candlestick-patterns-assessment.md`
 12. `docs/risk-engine-spec.md`
-13. `docs/mt5-adapter-boundary.md`
-14. `docs/session-breakout-v1.md`
-15. `docs/validation-harness-spec.md`
-16. `config/parameter-map.md`
-17. `src/bot_ea/`
+13. `docs/allocation-guidance.md`
+14. `docs/mt5-adapter-boundary.md`
+15. `docs/ea-brain-vs-config.md`
+16. `docs/session-breakout-v1.md`
+17. `docs/validation-harness-spec.md`
+18. `docs/sqlite-runtime-schema.md`
+19. `docs/codex-polling-runtime.md`
+20. `config/parameter-map.md`
+21. `src/bot_ea/`
 
 ### 3. Recommended next implementation steps
 
@@ -150,12 +167,16 @@ Read in this order:
    - `MQL5 + Python hybrid`
 3. Start with one symbol and one strategy family
 4. Add logging before adding complex strategy logic
-5. Build backtest and demo-test loop before any live deployment
+5. Connect `polling_runtime` to a real Codex runtime / codex-cli process
+6. Build backtest and demo-test loop before any live deployment
 
 ### 4. Suggested module order
 
 - `risk_engine`
 - `mt5_adapter`
+- `runtime_store`
+- `stop_policy`
+- `polling_runtime`
 - `market_filters`
 - `execution_engine`
 - `position_manager`

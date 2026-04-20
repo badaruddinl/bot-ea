@@ -28,14 +28,18 @@ Research-first workspace for an autonomous MetaTrader trading bot with strict ri
 - [docs/decision-tree-pseudorules.md](D:\luthfi\project\bot-ea\docs\decision-tree-pseudorules.md)
 - [docs/candlestick-patterns-assessment.md](D:\luthfi\project\bot-ea\docs\candlestick-patterns-assessment.md)
 - [docs/risk-engine-spec.md](D:\luthfi\project\bot-ea\docs\risk-engine-spec.md)
+- [docs/allocation-guidance.md](D:\luthfi\project\bot-ea\docs\allocation-guidance.md)
 - [docs/mt5-adapter-boundary.md](D:\luthfi\project\bot-ea\docs\mt5-adapter-boundary.md)
+- [docs/ea-brain-vs-config.md](D:\luthfi\project\bot-ea\docs\ea-brain-vs-config.md)
 - [docs/session-breakout-v1.md](D:\luthfi\project\bot-ea\docs\session-breakout-v1.md)
 - [docs/validation-harness-spec.md](D:\luthfi\project\bot-ea\docs\validation-harness-spec.md)
+- [docs/sqlite-runtime-schema.md](D:\luthfi\project\bot-ea\docs\sqlite-runtime-schema.md)
+- [docs/codex-polling-runtime.md](D:\luthfi\project\bot-ea\docs\codex-polling-runtime.md)
 - [docs/project-handoff.md](D:\luthfi\project\bot-ea\docs\project-handoff.md)
 - [docs/progress-summary.md](D:\luthfi\project\bot-ea\docs\progress-summary.md)
 - [config/parameter-map.md](D:\luthfi\project\bot-ea\config\parameter-map.md)
 - `src/bot_ea/`
-  - first Python scaffold for risk, execution guards, decision family selection, MT5 adapter seams, strategy baseline, and validation summaries
+  - Python scaffold for risk, execution guards, decision family selection, MT5 adapter seams, strategy baseline, validation summaries, SQLite runtime store, stop policy, and Codex polling runtime
 - `tests/test_risk_engine.py`
   - smoke tests for the first risk-engine slice
 

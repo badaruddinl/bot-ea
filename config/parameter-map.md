@@ -81,3 +81,10 @@ These are design starting points, not validated live settings.
 - require stronger setup quality
 - disable trading around high-impact news
 - tighten spread filter
+
+## Practical recommendation layer
+
+These are not direct user inputs, but outputs or defaults the engine can expose:
+
+- `recommended_minimum_allocation_cash`
+- `minimum_practical_risk_cash_by_style`

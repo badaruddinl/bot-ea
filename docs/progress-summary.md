@@ -44,6 +44,10 @@ Research depth: `stage 5`
   - mock MT5 adapter
   - session-breakout strategy scaffold
   - validation summary module
+  - allocation guidance notes
+  - SQLite runtime store scaffold
+  - stop-policy module
+  - Codex polling runtime scaffold
 
 ## Key decisions already made
 
@@ -61,8 +65,9 @@ Turn the scaffold into MT5-aware integration modules:
 2. MT5 adapter for margin/check/session snapshots
 3. execution module
 4. broker-aware session/news state loading
-5. artifact writers for validation runs
-6. optional bar-structure confirmation layer
+5. connect polling runtime to real Codex runtime / codex-cli
+6. artifact writers for validation runs
+7. optional bar-structure confirmation layer
 
 ## What another host needs to resume
 
