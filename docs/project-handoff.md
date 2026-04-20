@@ -36,12 +36,18 @@ The repository currently contains:
   - consolidated research on MT5 APIs, risk concepts, slippage, session behavior, and baseline design choices
 - `research/2026-04-20-stage-2-deep-research.md`
   - deeper research on execution variance, validation robustness, parameter governance, and strategy-family prioritization
+- `research/2026-04-20-stage-3-decision-tree-and-candlestick-research.md`
+  - deeper research on practical decision trees, pseudo-rules, and whether candlestick patterns should be used
 - `docs/ea-bot-blueprint.md`
   - target architecture and subsystem design
 - `docs/mt5-validation-protocol.md`
   - concrete validation order for backtest, forward, walk-forward, cost stress, and demo
 - `docs/strategy-candidates.md`
   - practical candidate strategy families with guardrails and priority order
+- `docs/decision-tree-pseudorules.md`
+  - practical strategy decision flow for the future bot
+- `docs/candlestick-patterns-assessment.md`
+  - explicit assessment of candlestick patterns as primary vs secondary signal logic
 - `config/parameter-map.md`
   - separation between user parameters, MT5-derived parameters, and tuned parameters
 - `data/README.md`
@@ -93,10 +99,13 @@ Read in this order:
 1. `README.md`
 2. `research/2026-04-20-market-and-platform-research.md`
 3. `research/2026-04-20-stage-2-deep-research.md`
-4. `docs/ea-bot-blueprint.md`
-5. `docs/mt5-validation-protocol.md`
-6. `docs/strategy-candidates.md`
-7. `config/parameter-map.md`
+4. `research/2026-04-20-stage-3-decision-tree-and-candlestick-research.md`
+5. `docs/ea-bot-blueprint.md`
+6. `docs/mt5-validation-protocol.md`
+7. `docs/strategy-candidates.md`
+8. `docs/decision-tree-pseudorules.md`
+9. `docs/candlestick-patterns-assessment.md`
+10. `config/parameter-map.md`
 
 ### 3. Recommended next implementation steps
 

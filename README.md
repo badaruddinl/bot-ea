@@ -18,9 +18,12 @@ Research-first workspace for an autonomous MetaTrader trading bot with strict ri
 
 - [research/2026-04-20-market-and-platform-research.md](D:\luthfi\project\bot-ea\research\2026-04-20-market-and-platform-research.md)
 - [research/2026-04-20-stage-2-deep-research.md](D:\luthfi\project\bot-ea\research\2026-04-20-stage-2-deep-research.md)
+- [research/2026-04-20-stage-3-decision-tree-and-candlestick-research.md](D:\luthfi\project\bot-ea\research\2026-04-20-stage-3-decision-tree-and-candlestick-research.md)
 - [docs/ea-bot-blueprint.md](D:\luthfi\project\bot-ea\docs\ea-bot-blueprint.md)
 - [docs/mt5-validation-protocol.md](D:\luthfi\project\bot-ea\docs\mt5-validation-protocol.md)
 - [docs/strategy-candidates.md](D:\luthfi\project\bot-ea\docs\strategy-candidates.md)
+- [docs/decision-tree-pseudorules.md](D:\luthfi\project\bot-ea\docs\decision-tree-pseudorules.md)
+- [docs/candlestick-patterns-assessment.md](D:\luthfi\project\bot-ea\docs\candlestick-patterns-assessment.md)
 - [docs/project-handoff.md](D:\luthfi\project\bot-ea\docs\project-handoff.md)
 - [docs/progress-summary.md](D:\luthfi\project\bot-ea\docs\progress-summary.md)
 - [config/parameter-map.md](D:\luthfi\project\bot-ea\config\parameter-map.md)

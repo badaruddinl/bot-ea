@@ -6,7 +6,7 @@ Date: 2026-04-20
 
 Phase: `research and architecture`
 
-Research depth: `stage 2`
+Research depth: `stage 3`
 
 ## Completed work
 
@@ -27,6 +27,9 @@ Research depth: `stage 2`
   - MT5 validation/anti-overfitting protocol
   - strategy family prioritization
   - parameter governance for low-overfit systems
+- added:
+  - decision-tree and pseudo-rule guidance
+  - candlestick pattern relevance assessment
 
 ## Key decisions already made
 
@@ -45,6 +48,7 @@ Turn the blueprint into code scaffolding:
 3. execution module
 4. one baseline strategy
 5. validation harness and test logging
+6. optional bar-structure confirmation layer
 
 ## What another host needs to resume
 
