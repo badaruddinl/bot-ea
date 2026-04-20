@@ -44,6 +44,51 @@ class CodexCLIEngineTests(unittest.TestCase):
         self.assertEqual(version, "codex-cli 0.121.0")
         run_mock.assert_called_once()
 
+    @patch("bot_ea.codex_cli_engine.subprocess.run")
+    def test_probe_wraps_timeout_cleanly(self, run_mock) -> None:
+        run_mock.side_effect = subprocess.TimeoutExpired(cmd=["codex", "--version"], timeout=60)
+        engine = CodexCLIEngine(executable="codex", timeout_seconds=60)
+
+        with self.assertRaisesRegex(RuntimeError, "codex --version timed out after 60 seconds"):
+            engine.probe()
+
+    @patch("bot_ea.codex_cli_engine.subprocess.run")
+    def test_decide_wraps_timeout_cleanly(self, run_mock) -> None:
+        from bot_ea.models import AccountSnapshot, CapitalAllocation, CapitalAllocationMode, RiskPolicy, SymbolSnapshot, TradingStyle
+        from bot_ea.polling_runtime import RuntimeSnapshot
+
+        run_mock.side_effect = subprocess.TimeoutExpired(cmd=["codex", "exec"], timeout=60)
+        engine = CodexCLIEngine(executable="codex", timeout_seconds=60)
+        snapshot = RuntimeSnapshot(
+            symbol="EURUSD",
+            timeframe="M5",
+            bid=1.1,
+            ask=1.1002,
+            spread_points=2.0,
+            account=AccountSnapshot(equity=1000.0, balance=1000.0, free_margin=900.0, margin_level=500.0),
+            symbol_snapshot=SymbolSnapshot(
+                name="EURUSD",
+                instrument_class="forex_major",
+                risk_weight=1.0,
+                point=0.0001,
+                tick_size=0.0001,
+                tick_value=1.0,
+                volume_min=0.01,
+                volume_max=10.0,
+                volume_step=0.01,
+                spread_points=2.0,
+                stops_level_points=10.0,
+                freeze_level_points=0.0,
+            ),
+            risk_policy=RiskPolicy(base_risk_pct=1.0, max_total_open_risk_pct=2.0, daily_loss_limit_pct=3.0),
+            trading_style=TradingStyle.INTRADAY,
+            stop_distance_points=50.0,
+            capital_allocation=CapitalAllocation(mode=CapitalAllocationMode.FIXED_CASH, value=250.0),
+        )
+
+        with self.assertRaisesRegex(RuntimeError, "codex exec timed out after 60 seconds"):
+            engine.decide(snapshot)
+
     @patch("bot_ea.codex_cli_engine.shutil.which")
     @patch("bot_ea.codex_cli_engine.os.name", "nt")
     def test_resolve_executable_prefers_windows_launcher(self, which_mock) -> None:

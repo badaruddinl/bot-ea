@@ -29,7 +29,7 @@ class DesktopRuntimeConfig:
     codex_executable: str = "codex"
     codex_model: str | None = None
     codex_cwd: str | None = None
-    codex_timeout_seconds: int = 20
+    codex_timeout_seconds: int = 60
     poll_interval_seconds: int = 30
     session_state: str = "desktop_runtime"
     news_state: str = "unknown"

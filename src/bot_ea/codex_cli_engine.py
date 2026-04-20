@@ -18,7 +18,7 @@ class CodexCLIEngine:
         executable: str = "codex",
         model: str | None = None,
         cwd: str | None = None,
-        timeout_seconds: int = 20,
+        timeout_seconds: int = 60,
     ) -> None:
         self.executable = executable
         self.model = model
@@ -30,8 +30,33 @@ class CodexCLIEngine:
         with tempfile.TemporaryDirectory() as tmpdir:
             output_file = Path(tmpdir) / "codex_last_message.txt"
             command = self._build_exec_command(prompt=prompt, output_file=output_file)
-            subprocess.run(
-                command,
+            try:
+                subprocess.run(
+                    command,
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    timeout=self.timeout_seconds,
+                    cwd=self.cwd,
+                )
+            except subprocess.TimeoutExpired as exc:
+                raise RuntimeError(f"codex exec timed out after {self.timeout_seconds} seconds") from exc
+            except FileNotFoundError as exc:
+                raise RuntimeError(f"codex executable not found: {self.executable}") from exc
+            except subprocess.CalledProcessError as exc:
+                stderr = (exc.stderr or "").strip()
+                stdout = (exc.stdout or "").strip()
+                detail = stderr or stdout or f"exit code {exc.returncode}"
+                raise RuntimeError(f"codex exec failed: {self._shorten(detail)}") from exc
+            response = output_file.read_text(encoding="utf-8").strip()
+        return self.parse_response(response)
+
+    def probe(self) -> str:
+        try:
+            result = subprocess.run(
+                [self._resolve_executable(), "--version"],
                 check=True,
                 capture_output=True,
                 text=True,
@@ -40,20 +65,15 @@ class CodexCLIEngine:
                 timeout=self.timeout_seconds,
                 cwd=self.cwd,
             )
-            response = output_file.read_text(encoding="utf-8").strip()
-        return self.parse_response(response)
-
-    def probe(self) -> str:
-        result = subprocess.run(
-            [self._resolve_executable(), "--version"],
-            check=True,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=self.timeout_seconds,
-            cwd=self.cwd,
-        )
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError(f"codex --version timed out after {self.timeout_seconds} seconds") from exc
+        except FileNotFoundError as exc:
+            raise RuntimeError(f"codex executable not found: {self.executable}") from exc
+        except subprocess.CalledProcessError as exc:
+            stderr = (exc.stderr or "").strip()
+            stdout = (exc.stdout or "").strip()
+            detail = stderr or stdout or f"exit code {exc.returncode}"
+            raise RuntimeError(f"codex probe failed: {self._shorten(detail)}") from exc
         return result.stdout.strip() or result.stderr.strip() or "codex-cli available"
 
     @staticmethod
@@ -115,6 +135,13 @@ class CodexCLIEngine:
             if resolved:
                 return resolved
         return candidate
+
+    @staticmethod
+    def _shorten(message: str, *, limit: int = 220) -> str:
+        normalized = " ".join(str(message).split())
+        if len(normalized) <= limit:
+            return normalized
+        return f"{normalized[: limit - 3]}..."
 
     @staticmethod
     def _build_prompt(snapshot: RuntimeSnapshot) -> str:
