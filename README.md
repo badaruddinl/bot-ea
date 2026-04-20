@@ -50,6 +50,8 @@ Research-first workspace for an autonomous MetaTrader trading bot with strict ri
   - when to stay in dev-run mode and when packaging/installer work becomes justified
 - `scripts/run-desktop-gui.ps1`
   - Windows helper to launch the desktop GUI in dev mode without packaging
+- `scripts/run-qt-gui.ps1`
+  - Windows helper to launch the new Qt desktop GUI in dev mode
 - `tests/test_risk_engine.py`
   - smoke tests for the first risk-engine slice
 
