@@ -35,6 +35,8 @@ Research-first workspace for an autonomous MetaTrader trading bot with strict ri
 - [docs/validation-harness-spec.md](D:\luthfi\project\bot-ea\docs\validation-harness-spec.md)
 - [docs/sqlite-runtime-schema.md](D:\luthfi\project\bot-ea\docs\sqlite-runtime-schema.md)
 - [docs/codex-polling-runtime.md](D:\luthfi\project\bot-ea\docs\codex-polling-runtime.md)
+- [docs/session-memory-export.md](D:\luthfi\project\bot-ea\docs\session-memory-export.md)
+- [docs/resume-prompt.md](D:\luthfi\project\bot-ea\docs\resume-prompt.md)
 - [docs/project-handoff.md](D:\luthfi\project\bot-ea\docs\project-handoff.md)
 - [docs/progress-summary.md](D:\luthfi\project\bot-ea\docs\progress-summary.md)
 - [config/parameter-map.md](D:\luthfi\project\bot-ea\config\parameter-map.md)
