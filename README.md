@@ -44,6 +44,8 @@ Research-first workspace for an autonomous MetaTrader trading bot with strict ri
   - Python scaffold for risk, execution guards, decision family selection, MT5 adapter seams, strategy baseline, validation summaries, SQLite runtime store, stop policy, and Codex polling runtime
 - `docs/desktop-runtime-runbook.md`
   - developer/operator runbook for the desktop GUI, MT5 readiness, codex-cli runtime, and safe dev testing
+- `docs/user-manual.md`
+  - non-technical user guide for operating the desktop GUI step by step
 - `docs/windows-packaging-plan.md`
   - when to stay in dev-run mode and when packaging/installer work becomes justified
 - `scripts/run-desktop-gui.ps1`
