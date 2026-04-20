@@ -43,6 +43,128 @@ class DesktopRuntimeEvent:
     payload: dict[str, Any] = field(default_factory=dict)
 
 
+@dataclass(slots=True)
+class PendingApproval:
+    approval_key: str
+    run_id: str
+    symbol: str
+    action: str
+    side: str | None
+    volume: float
+    price: float
+    reason: str
+    created_at: str
+    detail: str
+    request: dict[str, Any] = field(default_factory=dict)
+
+
+class SupervisedExecutionRuntime:
+    def __init__(
+        self,
+        *,
+        dry_runtime: MT5ExecutionRuntime,
+        live_runtime: MT5ExecutionRuntime,
+        event_callback: Callable[[str, str, dict[str, Any]], None],
+    ) -> None:
+        self.dry_runtime = dry_runtime
+        self.live_runtime = live_runtime
+        self.event_callback = event_callback
+        self.live_requested = False
+        self.pending_approval: PendingApproval | None = None
+        self._armed_approval_key: str | None = None
+        self.run_id: str = ""
+
+    @property
+    def live_enabled(self) -> bool:
+        return self.live_requested
+
+    def set_live_enabled(self, enabled: bool) -> None:
+        self.live_requested = enabled
+        if not enabled:
+            self._armed_approval_key = None
+            self.pending_approval = None
+
+    def approve_pending(self) -> PendingApproval:
+        if self.pending_approval is None:
+            raise RuntimeError("no pending approval")
+        self._armed_approval_key = self.pending_approval.approval_key
+        self.event_callback(
+            "approval_armed",
+            "pending live order approved; next matching cycle may submit",
+            asdict(self.pending_approval),
+        )
+        return self.pending_approval
+
+    def reject_pending(self) -> PendingApproval:
+        if self.pending_approval is None:
+            raise RuntimeError("no pending approval")
+        rejected = self.pending_approval
+        self.pending_approval = None
+        self._armed_approval_key = None
+        self.event_callback(
+            "approval_rejected",
+            "pending live order rejected by operator",
+            asdict(rejected),
+        )
+        return rejected
+
+    def preflight(self, snapshot, intent, size_result) -> dict:
+        return self.live_runtime.preflight(snapshot, intent, size_result)
+
+    def execute(self, snapshot, intent, size_result, preflight_result: dict | None = None) -> dict:
+        preflight = preflight_result or self.preflight(snapshot, intent, size_result)
+        if preflight.get("status") != "PRECHECK_OK":
+            return preflight
+        if not self.live_requested:
+            return self.dry_runtime.execute(snapshot, intent, size_result, preflight_result=preflight)
+
+        approval_key = self._build_approval_key(intent=intent, request=preflight.get("request", {}), volume=size_result.normalized_volume)
+        if self._armed_approval_key == approval_key:
+            self._armed_approval_key = None
+            self.pending_approval = None
+            return self.live_runtime.execute(snapshot, intent, size_result, preflight_result=preflight)
+
+        pending = PendingApproval(
+            approval_key=approval_key,
+            run_id=self.run_id,
+            symbol=str(preflight.get("request", {}).get("symbol") or snapshot.symbol),
+            action=str(intent.action.value),
+            side=intent.side,
+            volume=float(size_result.normalized_volume),
+            price=float(preflight.get("request", {}).get("price") or 0.0),
+            reason=str(intent.reason or ""),
+            created_at=datetime.now(timezone.utc).isoformat(),
+            detail="operator approval required before live order",
+            request=dict(preflight.get("request", {})),
+        )
+        self.pending_approval = pending
+        payload = asdict(pending)
+        self.event_callback("approval_pending", "live order awaiting operator approval", payload)
+        return {
+            "status": "APPROVAL_REQUIRED",
+            "detail": pending.detail,
+            "request": pending.request,
+            "approval_key": pending.approval_key,
+            "quoted_price": pending.price,
+            "live_order_submitted": False,
+        }
+
+    @staticmethod
+    def _build_approval_key(*, intent, request: dict[str, Any], volume: float) -> str:
+        symbol = str(request.get("symbol") or "")
+        side = str(intent.side or "")
+        price = float(request.get("price") or 0.0)
+        return "|".join(
+            [
+                str(intent.action.value),
+                symbol,
+                side,
+                f"{volume:.6f}",
+                f"{price:.6f}",
+            ]
+        )
+
+
 class DesktopRuntimeCoordinator:
     def __init__(
         self,
@@ -68,6 +190,7 @@ class DesktopRuntimeCoordinator:
         self._stop_event: Event | None = None
         self._thread: Thread | None = None
         self._execution_runtime: MT5ExecutionRuntime | None = None
+        self._supervised_runtime: SupervisedExecutionRuntime | None = None
         self._adapter: Any | None = None
         self._run_id: str | None = None
         self._db_path: str | None = None
@@ -87,7 +210,11 @@ class DesktopRuntimeCoordinator:
 
     @property
     def live_enabled(self) -> bool:
-        return bool(self._execution_runtime and self._execution_runtime.allow_live_orders)
+        return bool(self._supervised_runtime and self._supervised_runtime.live_enabled)
+
+    @property
+    def pending_approval(self) -> PendingApproval | None:
+        return None if self._supervised_runtime is None else self._supervised_runtime.pending_approval
 
     def drain_events(self) -> list[DesktopRuntimeEvent]:
         events: list[DesktopRuntimeEvent] = []
@@ -168,13 +295,27 @@ class DesktopRuntimeCoordinator:
 
     def set_live_enabled(self, enabled: bool) -> None:
         self._desired_live_enabled = enabled
-        if self._execution_runtime is not None:
-            self._execution_runtime.allow_live_orders = enabled
+        if self._supervised_runtime is not None:
+            self._supervised_runtime.set_live_enabled(enabled)
         self._emit(
             "live_toggle",
             "live orders enabled" if enabled else "live orders disabled",
             {"enabled": enabled, "run_id": self._run_id},
         )
+
+    def approve_pending_live_order(self) -> PendingApproval:
+        if self._supervised_runtime is None:
+            raise RuntimeError("desktop runtime is not active")
+        pending = self._supervised_runtime.approve_pending()
+        self._emit("approval_status", "operator approved pending live order", asdict(pending))
+        return pending
+
+    def reject_pending_live_order(self) -> PendingApproval:
+        if self._supervised_runtime is None:
+            raise RuntimeError("desktop runtime is not active")
+        pending = self._supervised_runtime.reject_pending()
+        self._emit("approval_status", "operator rejected pending live order", asdict(pending))
+        return pending
 
     def _run_loop(self, config: DesktopRuntimeConfig) -> None:
         store: RuntimeStore | None = None
@@ -203,11 +344,23 @@ class DesktopRuntimeCoordinator:
             )
             adapter = self.adapter_factory()
             self._adapter = adapter
-            execution_runtime = MT5ExecutionRuntime(
+            live_execution_runtime = MT5ExecutionRuntime(
                 adapter=adapter,
-                allow_live_orders=self._desired_live_enabled,
+                allow_live_orders=True,
             )
-            self._execution_runtime = execution_runtime
+            dry_execution_runtime = MT5ExecutionRuntime(
+                adapter=adapter,
+                allow_live_orders=False,
+            )
+            supervised_runtime = SupervisedExecutionRuntime(
+                dry_runtime=dry_execution_runtime,
+                live_runtime=live_execution_runtime,
+                event_callback=self._emit,
+            )
+            supervised_runtime.run_id = config.run_id or ""
+            supervised_runtime.set_live_enabled(self._desired_live_enabled)
+            self._execution_runtime = live_execution_runtime
+            self._supervised_runtime = supervised_runtime
             runtime = PollingRuntime(
                 store=store,
                 snapshot_provider=self._build_provider(
@@ -226,7 +379,7 @@ class DesktopRuntimeCoordinator:
                     cwd=config.codex_cwd,
                     timeout_seconds=config.codex_timeout_seconds,
                 ),
-                execution_runtime=execution_runtime,
+                execution_runtime=supervised_runtime,
                 risk_engine=self.risk_engine_factory(),
                 stop_policy=self.stop_policy_factory(),
                 config=PollingConfig(poll_interval_seconds=config.poll_interval_seconds),
@@ -237,14 +390,14 @@ class DesktopRuntimeCoordinator:
                 {
                     "run_id": config.run_id,
                     "db_path": config.db_path,
-                    "live_enabled": execution_runtime.allow_live_orders,
+                    "live_enabled": supervised_runtime.live_enabled,
                 },
             )
 
             while self._stop_event is not None and not self._stop_event.is_set():
                 result = runtime.run_cycle(run_id=config.run_id or "", performance=SessionPerformance())
                 overview = store.fetch_latest_run_overview()
-                health = store.fetch_execution_health_summary(limit=20)
+                health = store.fetch_execution_health_summary(run_id=config.run_id, limit=20)
                 self._emit(
                     "runtime_cycle",
                     f"{result.action}: {result.detail}",
@@ -255,7 +408,7 @@ class DesktopRuntimeCoordinator:
                         "halted": result.halted,
                         "overview": overview or {},
                         "health": health,
-                        "live_enabled": execution_runtime.allow_live_orders,
+                        "live_enabled": supervised_runtime.live_enabled,
                     },
                 )
                 if result.halted:
@@ -293,6 +446,7 @@ class DesktopRuntimeCoordinator:
             )
         finally:
             self._execution_runtime = None
+            self._supervised_runtime = None
             self._adapter = None
             self._shutdown_adapter(adapter)
             self._thread = None

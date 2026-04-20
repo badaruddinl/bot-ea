@@ -46,6 +46,7 @@ class FakeAdapter:
             spread_points=2.0,
             stops_level_points=10.0,
             freeze_level_points=0.0,
+            volatility_points=100.0,
             trade_allowed=True,
             trade_mode="full",
             order_mode="market",
@@ -71,6 +72,34 @@ class FakeAdapter:
             account_trade_expert=True,
         )
 
+    def validate_order(self, request: dict) -> dict:
+        _ = request
+        from bot_ea.mt5_adapter import OrderValidationResult
+
+        return OrderValidationResult(
+            accepted=True,
+            detail="mock precheck",
+            projected_margin_free=850.0,
+            projected_margin_level=350.0,
+            retcode=0,
+        )
+
+    def send_order(self, request: dict):
+        _ = request
+        from bot_ea.mt5_adapter import OrderSendResult
+
+        return OrderSendResult(
+            accepted=True,
+            detail="mock fill",
+            retcode=0,
+            order=900001,
+            deal=800001,
+            volume=0.01,
+            price=1.1002,
+            bid=1.1000,
+            ask=1.1002,
+        )
+
     def shutdown(self) -> None:
         return None
 
@@ -89,6 +118,24 @@ class FakeCodexEngine:
             confidence=0.5,
             reason=f"hold for {snapshot.symbol}",
             stop_distance_points=snapshot.stop_distance_points,
+        )
+
+
+class OpenCodexEngine:
+    def __init__(self, **_: object) -> None:
+        pass
+
+    def probe(self) -> str:
+        return "codex-cli fake"
+
+    def decide(self, snapshot) -> AIIntent:
+        return AIIntent(
+            action=DecisionAction.OPEN,
+            side="buy",
+            confidence=0.75,
+            reason=f"open for {snapshot.symbol}",
+            stop_distance_points=snapshot.stop_distance_points,
+            entry_price=snapshot.ask,
         )
 
 
@@ -124,8 +171,8 @@ class DesktopRuntimeCoordinatorTests(unittest.TestCase):
                 symbol="EURUSD",
                 timeframe="M5",
                 trading_style=TradingStyle.INTRADAY,
-                stop_distance_points=50.0,
-                capital_allocation=CapitalAllocation(mode=CapitalAllocationMode.FIXED_CASH, value=250.0),
+                stop_distance_points=20.0,
+                capital_allocation=CapitalAllocation(mode=CapitalAllocationMode.FIXED_CASH, value=1000.0),
                 db_path=str(Path(tmpdir) / "runtime.db"),
                 poll_interval_seconds=1,
             )
@@ -149,6 +196,44 @@ class DesktopRuntimeCoordinatorTests(unittest.TestCase):
             self.assertIn("runtime_stopped", seen_kinds)
             self.assertFalse(coordinator.is_running)
             self.assertFalse(coordinator.live_enabled)
+
+    def test_live_mode_requires_operator_approval_before_submission(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            coordinator = DesktopRuntimeCoordinator(
+                adapter_factory=FakeAdapter,
+                codex_engine_factory=OpenCodexEngine,
+                risk_policy=RiskPolicy(base_risk_pct=1.0, max_total_open_risk_pct=2.0, daily_loss_limit_pct=3.0),
+            )
+            coordinator.set_live_enabled(True)
+            config = DesktopRuntimeConfig(
+                symbol="EURUSD",
+                timeframe="M5",
+                trading_style=TradingStyle.INTRADAY,
+                stop_distance_points=20.0,
+                capital_allocation=CapitalAllocation(mode=CapitalAllocationMode.FIXED_CASH, value=1000.0),
+                db_path=str(Path(tmpdir) / "runtime.db"),
+                poll_interval_seconds=1,
+            )
+
+            try:
+                coordinator.start(config)
+                deadline = time.time() + 3.0
+                seen_kinds: set[str] = set()
+                while time.time() < deadline and coordinator.pending_approval is None:
+                    for event in coordinator.drain_events():
+                        seen_kinds.add(event.kind)
+                    time.sleep(0.05)
+                for event in coordinator.drain_events():
+                    seen_kinds.add(event.kind)
+
+                self.assertIsNotNone(coordinator.pending_approval)
+                assert coordinator.pending_approval is not None
+                self.assertIn("approval_pending", seen_kinds)
+                pending = coordinator.approve_pending_live_order()
+                self.assertEqual(pending.symbol, "EURUSD")
+                self.assertIsNotNone(coordinator.pending_approval)
+            finally:
+                coordinator.stop()
 
 
 if __name__ == "__main__":

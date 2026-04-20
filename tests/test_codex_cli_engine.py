@@ -44,6 +44,16 @@ class CodexCLIEngineTests(unittest.TestCase):
         self.assertEqual(version, "codex-cli 0.121.0")
         run_mock.assert_called_once()
 
+    @patch("bot_ea.codex_cli_engine.shutil.which")
+    @patch("bot_ea.codex_cli_engine.os.name", "nt")
+    def test_resolve_executable_prefers_windows_launcher(self, which_mock) -> None:
+        which_mock.side_effect = [r"C:\nvm4w\nodejs\codex.cmd", None, None]
+        engine = CodexCLIEngine(executable="codex")
+
+        resolved = engine._resolve_executable()
+
+        self.assertEqual(resolved, r"C:\nvm4w\nodejs\codex.cmd")
+
 
 if __name__ == "__main__":
     unittest.main()

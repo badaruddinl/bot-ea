@@ -11,6 +11,7 @@ from .mt5_execution_runtime import MT5ExecutionRuntime
 from .polling_runtime import AIIntent, DecisionAction, MT5SnapshotProvider
 from .risk_engine import RiskEngine
 from .runtime_store import RuntimeStore
+from .validation import build_runtime_validation_report
 
 
 class LiveControlPanel:
@@ -53,12 +54,16 @@ class LiveControlPanel:
         self.mt5_status_var = tk.StringVar(value="MT5 unchecked")
         self.codex_status_var = tk.StringVar(value="codex-cli unchecked")
         self.runtime_status_var = tk.StringVar(value="Runtime stopped")
+        self.approval_status_var = tk.StringVar(value="No pending live approval")
         self.live_button_text_var = tk.StringVar(value="Enable Live")
+        self.current_run_id_var = tk.StringVar(value="")
         self.snapshot = None
         self.size_result = None
         self.play_button: ttk.Button | None = None
         self.stop_button: ttk.Button | None = None
         self.live_button: ttk.Button | None = None
+        self.approve_button: ttk.Button | None = None
+        self.reject_button: ttk.Button | None = None
         self._build()
         self.root.after(250, self._pump_runtime_events)
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
@@ -107,6 +112,10 @@ class LiveControlPanel:
         ttk.Label(status_frame, textvariable=self.codex_status_var).grid(row=1, column=1, sticky="w", pady=2)
         ttk.Label(status_frame, text="Background Runtime").grid(row=2, column=0, sticky="w", padx=(0, 8), pady=2)
         ttk.Label(status_frame, textvariable=self.runtime_status_var).grid(row=2, column=1, sticky="w", pady=2)
+        ttk.Label(status_frame, text="Current Run").grid(row=3, column=0, sticky="w", padx=(0, 8), pady=2)
+        ttk.Label(status_frame, textvariable=self.current_run_id_var).grid(row=3, column=1, sticky="w", pady=2)
+        ttk.Label(status_frame, text="Approval").grid(row=4, column=0, sticky="w", padx=(0, 8), pady=2)
+        ttk.Label(status_frame, textvariable=self.approval_status_var).grid(row=4, column=1, sticky="w", pady=2)
 
         control_bar = ttk.Frame(frame)
         control_bar.grid(row=2, column=0, columnspan=2, sticky="w", pady=(0, 8))
@@ -118,6 +127,10 @@ class LiveControlPanel:
         self.stop_button.grid(row=0, column=3, padx=(0, 6))
         self.live_button = ttk.Button(control_bar, textvariable=self.live_button_text_var, command=self.toggle_live)
         self.live_button.grid(row=0, column=4, padx=(0, 6))
+        self.approve_button = ttk.Button(control_bar, text="Approve Pending", command=self.approve_pending_order)
+        self.approve_button.grid(row=0, column=5, padx=(0, 6))
+        self.reject_button = ttk.Button(control_bar, text="Reject Pending", command=self.reject_pending_order)
+        self.reject_button.grid(row=0, column=6, padx=(0, 6))
 
         manual_bar = ttk.Frame(frame)
         manual_bar.grid(row=3, column=0, columnspan=2, sticky="w", pady=(0, 8))
@@ -239,6 +252,8 @@ class LiveControlPanel:
             self._handle_panel_error(exc, fallback_status="Runtime failed to start")
             return
         self.db_path_var.set(config.db_path)
+        self.current_run_id_var.set(run_id)
+        self.approval_status_var.set("No pending live approval")
         self.runtime_status_var.set(f"Starting run {run_id}")
         self.status_var.set("Background runtime starting")
         self._append_output([f"runtime_starting run_id={run_id}", f"db_path={config.db_path}"])
@@ -287,6 +302,47 @@ class LiveControlPanel:
         self.allow_live_var.set(enable_live)
         self.runtime_status_var.set("Live orders enabled" if enable_live else "Live orders disabled")
         self.status_var.set("Live mode updated")
+        self._sync_runtime_controls()
+
+    def approve_pending_order(self) -> None:
+        try:
+            pending = self.runtime_coordinator.approve_pending_live_order()
+        except Exception as exc:
+            self._handle_panel_error(exc, fallback_status="Approve pending failed")
+            return
+        self.approval_status_var.set(f"Approved {pending.symbol} {pending.side} {pending.volume}")
+        self._append_output(
+            [
+                "approval_armed:",
+                f"run_id={pending.run_id}",
+                f"symbol={pending.symbol}",
+                f"side={pending.side}",
+                f"volume={pending.volume}",
+                f"price={pending.price}",
+                f"approval_key={pending.approval_key}",
+            ]
+        )
+        self.status_var.set("Pending live order approved")
+        self._sync_runtime_controls()
+
+    def reject_pending_order(self) -> None:
+        try:
+            pending = self.runtime_coordinator.reject_pending_live_order()
+        except Exception as exc:
+            self._handle_panel_error(exc, fallback_status="Reject pending failed")
+            return
+        self.approval_status_var.set("No pending live approval")
+        self._append_output(
+            [
+                "approval_rejected:",
+                f"run_id={pending.run_id}",
+                f"symbol={pending.symbol}",
+                f"side={pending.side}",
+                f"volume={pending.volume}",
+                f"price={pending.price}",
+            ]
+        )
+        self.status_var.set("Pending live order rejected")
         self._sync_runtime_controls()
 
     def refresh(self) -> None:
@@ -381,16 +437,27 @@ class LiveControlPanel:
             self.health_var.set("Runtime DB not found")
             self._write([f"runtime_db_missing={store.db_path}"])
             return
-        overview = store.fetch_latest_run_overview()
-        health = store.fetch_execution_health_summary(limit=50)
-        events = store.fetch_recent_execution_events(limit=10)
-        rejections = store.fetch_recent_rejections(limit=10)
-        positions = store.fetch_recent_position_events(limit=10)
-        latest_guard = store.fetch_latest_risk_guard()
+        target_run_id = self.current_run_id_var.get().strip() or self.runtime_coordinator.run_id
+        overview = store.fetch_latest_run_overview(run_id=target_run_id or None)
+        if overview is None:
+            overview = store.fetch_latest_run_overview()
         if overview is None:
             self.health_var.set("Runtime DB loaded but no runs found")
             self._write(["no runtime runs found"])
             return
+        run_id = str(overview.get("run_id") or "")
+        self.current_run_id_var.set(run_id)
+        health = store.fetch_execution_health_summary(run_id=run_id, limit=50)
+        events = store.fetch_recent_execution_events(run_id=run_id, limit=10)
+        rejections = store.fetch_recent_rejections(run_id=run_id, limit=10)
+        positions = store.fetch_recent_position_events(run_id=run_id, limit=10)
+        latest_guard = store.fetch_latest_risk_guard(run_id=run_id)
+        validation_inputs = store.fetch_runtime_validation_inputs(run_id=run_id)
+        validation_report = build_runtime_validation_report(
+            validation_inputs["position_events"],
+            validation_inputs["execution_events"],
+            starting_equity=float(validation_inputs.get("starting_equity") or 0.0),
+        )
         self.health_var.set(
             " ".join(
                 [
@@ -415,6 +482,26 @@ class LiveControlPanel:
             f"free_margin={overview.get('free_margin')}",
             f"stop_reason={overview.get('stop_reason')}",
             f"runtime_mode={'live' if self.runtime_coordinator.live_enabled else 'dry-run'}",
+            "",
+            "validation_summary:",
+            f"- total_trades={validation_report.validation_summary.total_trades}",
+            f"- win_rate={validation_report.validation_summary.win_rate:.2%}",
+            f"- profit_factor={validation_report.validation_summary.profit_factor:.3f}",
+            f"- expectancy_r={validation_report.validation_summary.expectancy_r:.3f}",
+            f"- total_pnl_cash={validation_report.validation_summary.total_pnl_cash:.2f}",
+            f"- max_drawdown_cash={validation_report.validation_summary.max_drawdown_cash:.2f}",
+            f"- max_drawdown_pct={validation_report.validation_summary.max_drawdown_pct:.2f}%",
+            "",
+            "execution_quality_run_scoped:",
+            f"- total_order_attempts={validation_report.execution_quality.total_order_attempts}",
+            f"- rejected_orders={validation_report.execution_quality.rejected_orders}",
+            f"- reject_rate={validation_report.execution_quality.reject_rate:.2%}",
+            f"- avg_spread_points={validation_report.execution_quality.average_entry_spread_points:.2f}",
+            f"- avg_slippage_points={validation_report.execution_quality.average_slippage_points:.2f}",
+            f"- avg_fill_latency_ms={validation_report.execution_quality.average_fill_latency_ms:.2f}",
+            f"- spread_coverage={validation_report.execution_quality.entry_spread_observed_trades}/{validation_report.execution_quality.total_trade_records}",
+            f"- slippage_coverage={validation_report.execution_quality.slippage_observed_trades}/{validation_report.execution_quality.total_trade_records}",
+            f"- latency_coverage={validation_report.execution_quality.fill_latency_observed_trades}/{validation_report.execution_quality.total_trade_records}",
             "",
             "execution_health:",
             f"- total_events={health.get('total_events')}",
@@ -486,6 +573,25 @@ class LiveControlPanel:
                         f"cycle={rejection.get('cycle_id')}",
                         f"status={rejection.get('status')}",
                         f"detail={rejection.get('detail')}",
+                    ]
+                )
+            )
+        lines.append("")
+        lines.append("validation_warnings:")
+        for warning in validation_report.warnings + validation_report.validation_summary.warnings + validation_report.execution_quality.warnings:
+            lines.append(f"- {warning}")
+        lines.append("")
+        lines.append("trade_lifecycle_rows:")
+        for trade in validation_inputs["lifecycle_rows"][:5]:
+            lines.append(
+                " ".join(
+                    [
+                        f"- [{trade.get('lifecycle_status')}]",
+                        f"{trade.get('symbol')}",
+                        f"{trade.get('side')}",
+                        f"entry={trade.get('entry_price')}",
+                        f"exit={trade.get('exit_price')}",
+                        f"pnl={trade.get('realized_pnl_cash')}",
                     ]
                 )
             )
@@ -579,10 +685,15 @@ class LiveControlPanel:
             db_path = payload.get("db_path")
             if isinstance(db_path, str):
                 self.db_path_var.set(db_path)
+            run_id = payload.get("run_id")
+            if isinstance(run_id, str):
+                self.current_run_id_var.set(run_id)
         elif kind == "runtime_cycle":
             self.runtime_status_var.set(message)
             overview = payload.get("overview") if isinstance(payload.get("overview"), dict) else {}
             health = payload.get("health") if isinstance(payload.get("health"), dict) else {}
+            if isinstance(payload.get("run_id"), str):
+                self.current_run_id_var.set(str(payload.get("run_id")))
             self.health_var.set(
                 " ".join(
                     [
@@ -599,6 +710,8 @@ class LiveControlPanel:
                 self.load_telemetry()
         elif kind in {"runtime_stopped", "runtime_error", "runtime_halted"}:
             self.runtime_status_var.set(message)
+            if kind != "runtime_error":
+                self.approval_status_var.set("No pending live approval")
         elif kind == "mt5_ready":
             self.mt5_status_var.set(message)
         elif kind == "codex_ready":
@@ -608,18 +721,37 @@ class LiveControlPanel:
             enabled = bool(payload.get("enabled"))
             self.allow_live_var.set(enabled)
             self.runtime_status_var.set(message)
+        elif kind == "approval_pending":
+            self.approval_status_var.set(message)
+            self._append_output(
+                [
+                    "approval_pending:",
+                    f"symbol={payload.get('symbol')}",
+                    f"side={payload.get('side')}",
+                    f"volume={payload.get('volume')}",
+                    f"price={payload.get('price')}",
+                    f"approval_key={payload.get('approval_key')}",
+                ]
+            )
+        elif kind in {"approval_armed", "approval_rejected", "approval_status"}:
+            self.approval_status_var.set(message)
         self.status_var.set(message)
         self._sync_runtime_controls()
 
     def _sync_runtime_controls(self) -> None:
         running = self.runtime_coordinator.is_running
         live_enabled = self.runtime_coordinator.live_enabled
+        pending = self.runtime_coordinator.pending_approval is not None
         if self.play_button is not None:
             self.play_button.state(["disabled"] if running else ["!disabled"])
         if self.stop_button is not None:
             self.stop_button.state(["!disabled"] if running else ["disabled"])
         if self.live_button is not None:
             self.live_button.state(["!disabled"] if running else ["disabled"])
+        if self.approve_button is not None:
+            self.approve_button.state(["!disabled"] if pending else ["disabled"])
+        if self.reject_button is not None:
+            self.reject_button.state(["!disabled"] if pending else ["disabled"])
         self.live_button_text_var.set("Disable Live" if live_enabled else "Enable Live")
 
     def _handle_panel_error(self, exc: Exception, *, fallback_status: str) -> None:

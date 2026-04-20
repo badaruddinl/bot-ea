@@ -18,6 +18,7 @@ class FakeRuntimeCoordinator:
         self.live_enabled = False
         self.started_with = None
         self.mt5_trade_allowed = True
+        self.pending_approval = None
 
     def probe_mt5(self, **_: object) -> dict:
         return {
@@ -57,6 +58,16 @@ class FakeRuntimeCoordinator:
 
     def set_live_enabled(self, enabled: bool) -> None:
         self.live_enabled = enabled
+
+    def approve_pending_live_order(self):
+        pending = self.pending_approval
+        self.pending_approval = None
+        return pending
+
+    def reject_pending_live_order(self):
+        pending = self.pending_approval
+        self.pending_approval = None
+        return pending
 
     def drain_events(self) -> list:
         return []
@@ -129,6 +140,21 @@ class GuiAppTests(unittest.TestCase):
             panel.toggle_live()
             self.assertFalse(coordinator.live_enabled)
             self.assertEqual(panel.status_var.get(), "MT5 terminal blocks live trading")
+        finally:
+            root.destroy()
+
+    def test_sync_runtime_controls_enables_approval_buttons_when_pending_exists(self) -> None:
+        root = self._make_root()
+        coordinator = FakeRuntimeCoordinator()
+        coordinator.is_running = True
+        coordinator.pending_approval = type("Pending", (), {"symbol": "EURUSD", "side": "buy", "volume": 0.01, "price": 1.1, "approval_key": "key", "run_id": "run-1"})()
+        try:
+            panel = LiveControlPanel(root, runtime_coordinator=coordinator)
+            panel._sync_runtime_controls()
+            assert panel.approve_button is not None
+            assert panel.reject_button is not None
+            self.assertFalse(panel.approve_button.instate(["disabled"]))
+            self.assertFalse(panel.reject_button.instate(["disabled"]))
         finally:
             root.destroy()
 

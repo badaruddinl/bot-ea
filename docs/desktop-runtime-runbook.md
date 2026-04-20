@@ -166,6 +166,8 @@ Main control buttons:
 - `Play Runtime`
 - `Stop Runtime`
 - `Enable Live` / `Disable Live`
+- `Approve Pending`
+- `Reject Pending`
 
 ### Manual controls
 
@@ -198,6 +200,28 @@ Expected safe result:
 - at least one cycle is stored
 - execution remains `DRY_RUN_OK` unless live is explicitly enabled and MT5 allows trading
 
+## Supervised Approval Flow
+
+When live mode is enabled, the runtime still does not send orders immediately.
+
+The runtime now follows:
+
+1. Codex proposes the action
+2. deterministic risk guard evaluates it
+3. broker preflight evaluates it
+4. GUI receives `approval_pending`
+5. operator chooses:
+   - `Approve Pending`
+   - `Reject Pending`
+6. only the next matching cycle may submit the approved live order
+
+Important behavior:
+
+- approval is not unattended autonomy
+- approval is tied to the matching proposal signature
+- if the proposal changes, it should be reviewed again
+- if live mode is disabled, execution returns to `dry-run`
+
 ## Example Dev Output
 
 Typical dry-run smoke characteristics:
@@ -222,6 +246,7 @@ The operator should always inspect:
 - latest risk guard allowance/rejection
 - latest execution attempt status
 - whether the app is in `dry-run` or `live`
+- whether there is a pending approval waiting for operator action
 
 ## Why Autonomous Live Trading Is Not Ready
 

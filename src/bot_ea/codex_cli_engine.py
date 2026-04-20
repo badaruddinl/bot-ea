@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import shutil
 import subprocess
 import tempfile
 from pathlib import Path
@@ -40,7 +42,7 @@ class CodexCLIEngine:
 
     def probe(self) -> str:
         result = subprocess.run(
-            [self.executable, "--version"],
+            [self._resolve_executable(), "--version"],
             check=True,
             capture_output=True,
             text=True,
@@ -77,7 +79,7 @@ class CodexCLIEngine:
 
     def _build_exec_command(self, *, prompt: str, output_file: Path) -> list[str]:
         command = [
-            self.executable,
+            self._resolve_executable(),
             "exec",
             "--skip-git-repo-check",
             "--sandbox",
@@ -91,6 +93,23 @@ class CodexCLIEngine:
             command.extend(["-m", self.model])
         command.append(prompt)
         return command
+
+    def _resolve_executable(self) -> str:
+        candidate = self.executable.strip()
+        if not candidate:
+            raise RuntimeError("codex executable is empty")
+        if os.name != "nt":
+            return candidate
+
+        expanded = os.path.expandvars(candidate)
+        if os.path.isabs(expanded) or os.path.sep in expanded or "/" in expanded:
+            return candidate
+
+        for name in (f"{candidate}.cmd", f"{candidate}.exe", candidate):
+            resolved = shutil.which(name)
+            if resolved:
+                return resolved
+        return candidate
 
     @staticmethod
     def _build_prompt(snapshot: RuntimeSnapshot) -> str:

@@ -482,10 +482,15 @@ class RuntimeStore:
                 counts[table] = int(connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0])
         return counts
 
-    def fetch_recent_execution_events(self, *, limit: int = 20) -> list[dict[str, Any]]:
+    def fetch_recent_execution_events(self, *, run_id: str | None = None, limit: int = 20) -> list[dict[str, Any]]:
+        where_clause = ""
+        params: tuple[Any, ...] = (limit,)
+        if run_id is not None:
+            where_clause = "WHERE ee.run_id = ?"
+            params = (run_id, limit)
         with self.session() as connection:
             rows = connection.execute(
-                """
+                f"""
                 SELECT
                     ee.execution_id,
                     ee.run_id,
@@ -510,12 +515,25 @@ class RuntimeStore:
                     ee.payload_json
                 FROM execution_events ee
                 LEFT JOIN polling_cycles pc ON pc.cycle_id = ee.cycle_id
+                {where_clause}
                 ORDER BY ee.execution_id DESC
                 LIMIT ?
                 """,
-                (limit,),
+                params,
             ).fetchall()
         return [self._row_to_dict(row) for row in rows]
+
+    def fetch_run(self, run_id: str) -> dict[str, Any] | None:
+        with self.session() as connection:
+            row = connection.execute(
+                """
+                SELECT run_id, started_at, status, symbol, timeframe, trading_style, allocation_mode, allocation_value, stop_reason, config_json
+                FROM runs
+                WHERE run_id = ?
+                """,
+                (run_id,),
+            ).fetchone()
+        return None if row is None else self._row_to_dict(row)
 
     def fetch_recent_runs(self, *, limit: int = 20) -> list[dict[str, Any]]:
         with self.session() as connection:
@@ -530,10 +548,15 @@ class RuntimeStore:
             ).fetchall()
         return [self._row_to_dict(row) for row in rows]
 
-    def fetch_latest_run_overview(self) -> dict[str, Any] | None:
+    def fetch_latest_run_overview(self, *, run_id: str | None = None) -> dict[str, Any] | None:
+        where_clause = ""
+        params: tuple[Any, ...] = ()
+        if run_id is not None:
+            where_clause = "WHERE r.run_id = ?"
+            params = (run_id,)
         with self.session() as connection:
             row = connection.execute(
-                """
+                f"""
                 SELECT
                     r.run_id,
                     r.started_at,
@@ -551,16 +574,27 @@ class RuntimeStore:
                 LEFT JOIN polling_cycles pc ON pc.run_id = r.run_id
                 LEFT JOIN market_snapshots ms ON ms.cycle_id = pc.cycle_id
                 LEFT JOIN ai_decisions ad ON ad.cycle_id = pc.cycle_id
+                {where_clause}
                 ORDER BY r.started_at DESC, pc.cycle_id DESC, ms.snapshot_id DESC, ad.decision_id DESC
                 LIMIT 1
-                """
+                """,
+                params,
             ).fetchone()
         return None if row is None else self._row_to_dict(row)
 
-    def fetch_recent_rejections(self, *, limit: int = 20) -> list[dict[str, Any]]:
+    def fetch_recent_rejections(self, *, run_id: str | None = None, limit: int = 20) -> list[dict[str, Any]]:
+        execution_where = "WHERE ee.status IN ('REJECTED', 'PRECHECK_REJECTED', 'GUARD_REJECTED', 'ERROR')"
+        risk_where = "WHERE rg.allowed = 0"
+        params: tuple[Any, ...]
+        if run_id is not None:
+            execution_where += " AND ee.run_id = ?"
+            risk_where += " AND rg.run_id = ?"
+            params = (run_id, run_id, limit)
+        else:
+            params = (limit,)
         with self.session() as connection:
             rows = connection.execute(
-                """
+                f"""
                 SELECT *
                 FROM (
                     SELECT
@@ -575,7 +609,7 @@ class RuntimeStore:
                         ee.execution_id AS sort_id
                     FROM execution_events ee
                     LEFT JOIN polling_cycles pc ON pc.cycle_id = ee.cycle_id
-                    WHERE ee.status IN ('REJECTED', 'PRECHECK_REJECTED', 'GUARD_REJECTED', 'ERROR')
+                    {execution_where}
 
                     UNION ALL
 
@@ -591,19 +625,24 @@ class RuntimeStore:
                         rg.guard_id AS sort_id
                     FROM risk_guard_events rg
                     LEFT JOIN polling_cycles pc ON pc.cycle_id = rg.cycle_id
-                    WHERE rg.allowed = 0
+                    {risk_where}
                 )
                 ORDER BY polled_at DESC, sort_id DESC
                 LIMIT ?
                 """,
-                (limit,),
+                params,
             ).fetchall()
         return [self._row_to_dict(row) for row in rows]
 
-    def fetch_recent_position_events(self, *, limit: int = 20) -> list[dict[str, Any]]:
+    def fetch_recent_position_events(self, *, run_id: str | None = None, limit: int = 20) -> list[dict[str, Any]]:
+        where_clause = ""
+        params: tuple[Any, ...] = (limit,)
+        if run_id is not None:
+            where_clause = "WHERE pe.run_id = ?"
+            params = (run_id, limit)
         with self.session() as connection:
             rows = connection.execute(
-                """
+                f"""
                 SELECT
                     position_event_id,
                     pe.run_id,
@@ -626,10 +665,40 @@ class RuntimeStore:
                     pe.payload_json
                 FROM position_events pe
                 LEFT JOIN polling_cycles pc ON pc.cycle_id = pe.cycle_id
+                {where_clause}
                 ORDER BY pe.position_event_id DESC
                 LIMIT ?
                 """,
-                (limit,),
+                params,
+            ).fetchall()
+        return [self._row_to_dict(row) for row in rows]
+
+    def fetch_market_snapshots(self, *, run_id: str, limit: int = 500) -> list[dict[str, Any]]:
+        with self.session() as connection:
+            rows = connection.execute(
+                """
+                SELECT
+                    snapshot_id,
+                    ms.run_id,
+                    ms.cycle_id,
+                    pc.polled_at,
+                    ms.symbol,
+                    ms.timeframe,
+                    ms.bid,
+                    ms.ask,
+                    ms.spread_points,
+                    ms.equity,
+                    ms.free_margin,
+                    ms.session_state,
+                    ms.news_state,
+                    ms.payload_json
+                FROM market_snapshots ms
+                LEFT JOIN polling_cycles pc ON pc.cycle_id = ms.cycle_id
+                WHERE ms.run_id = ?
+                ORDER BY ms.snapshot_id ASC
+                LIMIT ?
+                """,
+                (run_id, limit),
             ).fetchall()
         return [self._row_to_dict(row) for row in rows]
 
@@ -647,10 +716,15 @@ class RuntimeStore:
             ledger = ledger[-limit:]
         return ledger
 
-    def fetch_latest_risk_guard(self) -> dict[str, Any] | None:
+    def fetch_latest_risk_guard(self, *, run_id: str | None = None) -> dict[str, Any] | None:
+        where_clause = ""
+        params: tuple[Any, ...] = ()
+        if run_id is not None:
+            where_clause = "WHERE rg.run_id = ?"
+            params = (run_id,)
         with self.session() as connection:
             row = connection.execute(
-                """
+                f"""
                 SELECT
                     rg.guard_id,
                     rg.run_id,
@@ -664,25 +738,38 @@ class RuntimeStore:
                     rg.payload_json
                 FROM risk_guard_events rg
                 LEFT JOIN polling_cycles pc ON pc.cycle_id = rg.cycle_id
+                {where_clause}
                 ORDER BY rg.guard_id DESC
                 LIMIT 1
-                """
+                """,
+                params,
             ).fetchone()
         return None if row is None else self._row_to_dict(row)
 
-    def fetch_execution_health_summary(self, *, limit: int = 100) -> dict[str, Any]:
+    def fetch_execution_health_summary(self, *, run_id: str | None = None, limit: int = 100) -> dict[str, Any]:
+        run_filter = ""
+        params: tuple[Any, ...]
+        if run_id is not None:
+            run_filter = "AND run_id = ?"
+            params = (run_id, limit)
+        else:
+            params = (limit,)
         with self.session() as connection:
             row = connection.execute(
-                """
+                f"""
                 WITH terminal AS (
                     SELECT
                         COALESCE(attempt_id, printf('legacy-%d', execution_id)) AS attempt_key,
                         MAX(execution_id) AS terminal_execution_id
                     FROM execution_events
                     WHERE
+                        1 = 1
+                        {run_filter}
+                        AND (
                         phase IN ('FILL', 'GUARD')
                         OR status = 'PRECHECK_REJECTED'
                         OR (phase IS NULL AND status IN ('FILLED', 'DRY_RUN_OK', 'REJECTED', 'ERROR'))
+                        )
                     GROUP BY COALESCE(attempt_id, printf('legacy-%d', execution_id))
                 ),
                 recent AS (
@@ -701,7 +788,7 @@ class RuntimeStore:
                     AVG(CASE WHEN status = 'FILLED' THEN fill_latency_ms END) AS average_fill_latency_ms
                 FROM recent
                 """,
-                (limit,),
+                params,
             ).fetchone()
         if row is None:
             return {
@@ -724,6 +811,24 @@ class RuntimeStore:
         summary["average_slippage_points"] = float(summary.get("average_slippage_points") or 0.0)
         summary["average_fill_latency_ms"] = float(summary.get("average_fill_latency_ms") or 0.0)
         return summary
+
+    def fetch_runtime_validation_inputs(self, *, run_id: str) -> dict[str, Any]:
+        run = self.fetch_run(run_id)
+        market_snapshots = self.fetch_market_snapshots(run_id=run_id, limit=10_000)
+        position_events = self.fetch_recent_position_events(run_id=run_id, limit=10_000)
+        execution_events = self.fetch_recent_execution_events(run_id=run_id, limit=10_000)
+        lifecycle_rows = self.fetch_trade_lifecycle_rows(run_id=run_id, limit=10_000)
+        starting_equity = 0.0
+        if market_snapshots:
+            starting_equity = float(market_snapshots[0].get("equity") or 0.0)
+        return {
+            "run": run,
+            "market_snapshots": market_snapshots,
+            "position_events": list(reversed(position_events)),
+            "execution_events": list(reversed(execution_events)),
+            "lifecycle_rows": lifecycle_rows,
+            "starting_equity": starting_equity,
+        }
 
     def _insert(self, sql: str, params: tuple[Any, ...]) -> None:
         with self.session() as connection:

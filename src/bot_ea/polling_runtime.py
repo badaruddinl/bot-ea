@@ -345,6 +345,13 @@ class PollingRuntime:
             detail=str(execution_result.get("detail", "")),
             payload=execution_result,
         )
+        if execution_result.get("status") == "APPROVAL_REQUIRED":
+            return PollingCycleResult(
+                cycle_id=cycle_id,
+                halted=False,
+                detail=str(execution_result.get("detail", "operator approval required")),
+                action="APPROVAL_REQUIRED",
+            )
         if execution_result.get("status") == "FILLED" and execution_result.get("order") is not None:
             self.store.record_position_event(
                 run_id=run_id,
