@@ -415,7 +415,8 @@ class BotEaQtWindow(QMainWindow):
             self._sync_button_states()
             return
         try:
-            runtime = MT5ExecutionRuntime(adapter=self.adapter, allow_live_orders=self.live_button.text() == "Disable Live")
+            live_enabled = self.live_button.text() == "Disable Live"
+            runtime = MT5ExecutionRuntime(adapter=self.adapter, allow_live_orders=live_enabled)
             manual_size_result = SimpleNamespace(
                 accepted=True,
                 mode=OperatingMode.RECOMMEND,
@@ -430,7 +431,18 @@ class BotEaQtWindow(QMainWindow):
                 warnings=[],
             )
             result = runtime.execute(self.snapshot, self._intent("manual execute"), manual_size_result)
-            self._append_log(self._manual_snapshot_lines() + [f"status={result.get('status')}", f"detail={result.get('detail')}", f"retcode={result.get('retcode')}", f"order={result.get('order')}", f"deal={result.get('deal')}"])
+            self._append_log(
+                self._manual_snapshot_lines()
+                + [
+                    f"execution_mode={'LIVE' if live_enabled else 'DRY_RUN'}",
+                    "live_hint=Klik Enable Live dulu jika ingin order sungguhan." if not live_enabled else "live_hint=Live order path active",
+                    f"status={result.get('status')}",
+                    f"detail={result.get('detail')}",
+                    f"retcode={result.get('retcode')}",
+                    f"order={result.get('order')}",
+                    f"deal={result.get('deal')}",
+                ]
+            )
         except Exception as exc:
             self._append_log([f"Execute error: {self._format_exception_detail(exc)}"])
 
@@ -734,6 +746,7 @@ class BotEaQtWindow(QMainWindow):
             "manual_order_snapshot:",
             f"- lot_mode={snap.get('lot_mode') or 'auto_max'}",
             f"- requested_lot={float(snap.get('requested_lot') or 0.0):.4f}",
+            f"- manual_lot_field_used={snap.get('lot_mode') == 'manual'}",
             f"- final_lot={float(snap.get('final_lot') or 0.0):.4f}",
             f"- capital_basis_usd={float(snap.get('allocation_cap_usd') or 0.0):.2f}",
             f"- free_margin_cap_usd={float(snap.get('available_margin_cap_usd') or 0.0):.2f}",
@@ -901,6 +914,7 @@ class BotEaQtWindow(QMainWindow):
         self.approve_button.setEnabled(pending)
         self.reject_button.setEnabled(pending)
         self.execute_button.setEnabled(manual_execute_allowed)
+        self.manual_lot_input.setEnabled(self.lot_mode_combo.currentText().strip() == "manual")
 
     def _append_log(self, lines: list[str]) -> None:
         current = self.events_text.toPlainText().strip()
