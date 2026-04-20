@@ -121,6 +121,11 @@ class PositionSizeResult:
     stop_distance_points: float
     rejection_reason: str | None = None
     warnings: list[str] = field(default_factory=list)
+    raw_volume: float = 0.0
+    loss_per_lot: float = 0.0
+    volume_min: float = 0.0
+    volume_max: float = 0.0
+    volume_step: float = 0.0
 
 
 @dataclass(slots=True)

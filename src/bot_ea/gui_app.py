@@ -78,6 +78,7 @@ class LiveControlPanel:
         self.live_button: ttk.Button | None = None
         self.approve_button: ttk.Button | None = None
         self.reject_button: ttk.Button | None = None
+        self.execute_button: ttk.Button | None = None
         self.symbol_combo: ttk.Combobox | None = None
         self.timeframe_combo: ttk.Combobox | None = None
         self.model_combo: ttk.Combobox | None = None
@@ -153,7 +154,8 @@ class LiveControlPanel:
         manual_bar.grid(row=3, column=0, columnspan=2, sticky="w", pady=(0, 8))
         ttk.Button(manual_bar, text="Refresh", command=self.refresh).grid(row=0, column=0, padx=(0, 6))
         ttk.Button(manual_bar, text="Preflight", command=self.preflight).grid(row=0, column=1, padx=(0, 6))
-        ttk.Button(manual_bar, text="Execute", command=self.execute).grid(row=0, column=2, padx=(0, 6))
+        self.execute_button = ttk.Button(manual_bar, text="Execute", command=self.execute)
+        self.execute_button.grid(row=0, column=2, padx=(0, 6))
         ttk.Button(manual_bar, text="Load Telemetry", command=self.load_telemetry).grid(row=0, column=3, padx=(0, 6))
         ttk.Checkbutton(manual_bar, text="Allow Live Orders", variable=self.allow_live_var).grid(row=0, column=4, sticky="w")
 
@@ -397,25 +399,15 @@ class LiveControlPanel:
         except Exception as exc:
             self._handle_panel_error(exc, fallback_status="Snapshot refresh failed")
             return
-        self.size_result = None
-        self._write(
-            [
-                f"symbol={self.snapshot.symbol}",
-                f"bid={self.snapshot.bid}",
-                f"ask={self.snapshot.ask}",
-                f"spread_points={self.snapshot.spread_points:.2f}",
-                f"equity={self.snapshot.account.equity}",
-                f"free_margin={self.snapshot.account.free_margin}",
-                f"allocation_mode={self.allocation_mode_var.get()}",
-                f"allocation_value={self.allocation_var.get()}",
-                f"trade_allowed={self.snapshot.symbol_snapshot.trade_allowed}",
-                f"trade_mode={self.snapshot.symbol_snapshot.trade_mode}",
-                f"order_mode={self.snapshot.symbol_snapshot.order_mode}",
-                f"execution_mode={self.snapshot.symbol_snapshot.execution_mode}",
-                f"filling_mode={self.snapshot.symbol_snapshot.filling_mode}",
-            ]
-        )
+        try:
+            self.size_result = self._size_result()
+        except Exception as exc:
+            self.size_result = None
+            self._handle_panel_error(exc, fallback_status="Sizing preview failed")
+            return
+        self._write(self._snapshot_lines() + [""] + self._sizing_snapshot_lines())
         self.status_var.set("Snapshot refreshed")
+        self._sync_runtime_controls()
 
     def preflight(self) -> None:
         if self.snapshot is None:
@@ -451,8 +443,10 @@ class LiveControlPanel:
             lines.append(f"rejection_reason={self.size_result.rejection_reason}")
         for warning in self.size_result.warnings:
             lines.append(f"warning={warning}")
+        lines.extend(["", *self._sizing_snapshot_lines()])
         self._write(lines)
         self.status_var.set("Preflight complete")
+        self._sync_runtime_controls()
 
     def execute(self) -> None:
         if self.snapshot is None or self.size_result is None:
@@ -675,6 +669,54 @@ class LiveControlPanel:
             news_state="unknown",
         )
 
+    def _snapshot_lines(self) -> list[str]:
+        assert self.snapshot is not None
+        return [
+            f"symbol={self.snapshot.symbol}",
+            f"bid={self.snapshot.bid}",
+            f"ask={self.snapshot.ask}",
+            f"spread_points={self.snapshot.spread_points:.2f}",
+            f"equity={self.snapshot.account.equity}",
+            f"free_margin={self.snapshot.account.free_margin}",
+            f"allocation_mode={self.allocation_mode_var.get()}",
+            f"allocation_value={self.allocation_var.get()}",
+            f"trade_allowed={self.snapshot.symbol_snapshot.trade_allowed}",
+            f"trade_mode={self.snapshot.symbol_snapshot.trade_mode}",
+            f"order_mode={self.snapshot.symbol_snapshot.order_mode}",
+            f"execution_mode={self.snapshot.symbol_snapshot.execution_mode}",
+            f"filling_mode={self.snapshot.symbol_snapshot.filling_mode}",
+        ]
+
+    def _sizing_snapshot_lines(self) -> list[str]:
+        if self.snapshot is None or self.size_result is None:
+            return ["sizing_snapshot=unavailable"]
+        size = self.size_result
+        symbol = self.snapshot.symbol_snapshot
+        lot_at_min = symbol.volume_min if symbol.volume_min > 0 else 0.0
+        min_lot_risk_cash = lot_at_min * size.loss_per_lot if lot_at_min > 0 and size.loss_per_lot > 0 else 0.0
+        risk_pct_of_capital = (
+            (size.risk_cash_budget / size.capital_base_cash) * 100.0
+            if size.capital_base_cash > 0
+            else 0.0
+        )
+        return [
+            "sizing_snapshot:",
+            f"- final_lot={size.normalized_volume:.4f}",
+            f"- raw_lot_before_broker_rounding={size.raw_volume:.6f}",
+            f"- broker_min_lot={size.volume_min:.4f}",
+            f"- broker_max_lot={size.volume_max:.4f}",
+            f"- broker_lot_step={size.volume_step:.4f}",
+            f"- capital_basis_usd={size.capital_base_cash:.2f}",
+            f"- effective_risk_pct={size.effective_risk_pct:.2f}%",
+            f"- risk_cash_budget_usd={size.risk_cash_budget:.2f}",
+            f"- estimated_loss_at_final_lot_usd={size.estimated_loss_cash:.2f}",
+            f"- estimated_loss_at_min_lot_usd={min_lot_risk_cash:.2f}",
+            f"- broker_minimum_capital_hint_usd={size.recommended_minimum_allocation_cash:.2f}",
+            f"- risk_budget_as_pct_of_capital={risk_pct_of_capital:.2f}%",
+            f"- sizing_result={'ok' if size.accepted else 'blocked'}",
+            f"- why_blocked={size.rejection_reason or 'n/a'}",
+        ]
+
     def _size_result(self):
         return self.risk_engine.compute_position_size(
             PositionSizeRequest(
@@ -805,6 +847,11 @@ class LiveControlPanel:
         running = self.runtime_coordinator.is_running
         live_enabled = self.runtime_coordinator.live_enabled
         pending = self.runtime_coordinator.pending_approval is not None
+        manual_execute_allowed = bool(
+            self.size_result
+            and self.size_result.accepted
+            and self.size_result.normalized_volume > 0
+        )
         if self.play_button is not None:
             self.play_button.state(["disabled"] if running else ["!disabled"])
         if self.stop_button is not None:
@@ -815,6 +862,8 @@ class LiveControlPanel:
             self.approve_button.state(["!disabled"] if pending else ["disabled"])
         if self.reject_button is not None:
             self.reject_button.state(["!disabled"] if pending else ["disabled"])
+        if self.execute_button is not None:
+            self.execute_button.state(["!disabled"] if manual_execute_allowed else ["disabled"])
         self.live_button_text_var.set("Disable Live" if live_enabled else "Enable Live")
 
     def _handle_panel_error(self, exc: Exception, *, fallback_status: str) -> None:

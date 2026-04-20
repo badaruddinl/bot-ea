@@ -215,6 +215,9 @@ class RiskEngine:
                 estimated_loss_cash=0.0,
                 stop_distance_points=request.stop_distance_points,
                 rejection_reason="allocated capital must be positive",
+                volume_min=request.symbol.volume_min,
+                volume_max=request.symbol.volume_max,
+                volume_step=request.symbol.volume_step,
             )
 
         if request.stop_distance_points <= 0:
@@ -229,6 +232,9 @@ class RiskEngine:
                 estimated_loss_cash=0.0,
                 stop_distance_points=request.stop_distance_points,
                 rejection_reason="stop distance must be positive",
+                volume_min=request.symbol.volume_min,
+                volume_max=request.symbol.volume_max,
+                volume_step=request.symbol.volume_step,
             )
 
         if request.stop_distance_points < request.symbol.stops_level_points:
@@ -243,6 +249,9 @@ class RiskEngine:
                 estimated_loss_cash=0.0,
                 stop_distance_points=request.stop_distance_points,
                 rejection_reason="stop distance below broker stop level",
+                volume_min=request.symbol.volume_min,
+                volume_max=request.symbol.volume_max,
+                volume_step=request.symbol.volume_step,
             )
 
         if allocation_assessment.status == "rejection":
@@ -257,6 +266,9 @@ class RiskEngine:
                 estimated_loss_cash=0.0,
                 stop_distance_points=request.stop_distance_points,
                 rejection_reason=allocation_assessment.message,
+                volume_min=request.symbol.volume_min,
+                volume_max=request.symbol.volume_max,
+                volume_step=request.symbol.volume_step,
             )
 
         suitability = self.assess_suitability(
@@ -283,6 +295,9 @@ class RiskEngine:
                 stop_distance_points=request.stop_distance_points,
                 rejection_reason="no remaining risk budget",
                 warnings=suitability.warnings,
+                volume_min=request.symbol.volume_min,
+                volume_max=request.symbol.volume_max,
+                volume_step=request.symbol.volume_step,
             )
 
         loss_per_lot = self._loss_per_lot(request)
@@ -299,6 +314,9 @@ class RiskEngine:
                 stop_distance_points=request.stop_distance_points,
                 rejection_reason="invalid symbol tick configuration",
                 warnings=suitability.warnings,
+                volume_min=request.symbol.volume_min,
+                volume_max=request.symbol.volume_max,
+                volume_step=request.symbol.volume_step,
             )
 
         if risk_cash_budget < request.policy.min_effective_risk_cash:
@@ -314,6 +332,10 @@ class RiskEngine:
                 stop_distance_points=request.stop_distance_points,
                 rejection_reason="allocated risk cash below minimum effective risk threshold",
                 warnings=suitability.warnings,
+                loss_per_lot=loss_per_lot,
+                volume_min=request.symbol.volume_min,
+                volume_max=request.symbol.volume_max,
+                volume_step=request.symbol.volume_step,
             )
 
         raw_volume = risk_cash_budget / loss_per_lot
@@ -332,6 +354,11 @@ class RiskEngine:
                 stop_distance_points=request.stop_distance_points,
                 rejection_reason="allocated capital too small for minimum volume and stop distance",
                 warnings=suitability.warnings,
+                raw_volume=raw_volume,
+                loss_per_lot=loss_per_lot,
+                volume_min=request.symbol.volume_min,
+                volume_max=request.symbol.volume_max,
+                volume_step=request.symbol.volume_step,
             )
 
         estimated_loss_cash = normalized_volume * loss_per_lot
@@ -352,6 +379,11 @@ class RiskEngine:
             estimated_loss_cash=estimated_loss_cash,
             stop_distance_points=request.stop_distance_points,
             warnings=warnings,
+            raw_volume=raw_volume,
+            loss_per_lot=loss_per_lot,
+            volume_min=request.symbol.volume_min,
+            volume_max=request.symbol.volume_max,
+            volume_step=request.symbol.volume_step,
         )
 
     @staticmethod

@@ -10,6 +10,7 @@ import tkinter as tk  # noqa: E402
 
 from bot_ea.gui_app import LiveControlPanel  # noqa: E402
 from bot_ea.models import CapitalAllocationMode  # noqa: E402
+from bot_ea.mt5_adapter import MockMT5Adapter  # noqa: E402
 
 
 class FakeRuntimeCoordinator:
@@ -75,6 +76,29 @@ class FakeRuntimeCoordinator:
 
 
 class GuiAppTests(unittest.TestCase):
+    def _make_adapter(self) -> MockMT5Adapter:
+        return MockMT5Adapter(
+            account_info={"equity": 1000.0, "balance": 1000.0, "margin_free": 900.0, "margin_level": 400.0},
+            symbols={
+                "XAUUSD": {
+                    "name": "XAUUSD",
+                    "point": 0.01,
+                    "trade_tick_size": 0.01,
+                    "trade_tick_value": 0.1,
+                    "volume_min": 0.01,
+                    "volume_max": 50.0,
+                    "volume_step": 0.01,
+                    "spread": 17,
+                    "trade_stops_level": 0,
+                    "trade_freeze_level": 0,
+                    "visible": True,
+                    "bid": 4797.74,
+                    "ask": 4797.91,
+                    "price": 4797.91,
+                }
+            },
+        )
+
     def _make_root(self) -> tk.Tk:
         try:
             root = tk.Tk()
@@ -168,6 +192,25 @@ class GuiAppTests(unittest.TestCase):
             assert panel.reject_button is not None
             self.assertFalse(panel.approve_button.instate(["disabled"]))
             self.assertFalse(panel.reject_button.instate(["disabled"]))
+        finally:
+            root.destroy()
+
+    def test_refresh_shows_sizing_snapshot_and_disables_execute_when_lot_is_zero(self) -> None:
+        root = self._make_root()
+        coordinator = FakeRuntimeCoordinator()
+        try:
+            panel = LiveControlPanel(root, runtime_coordinator=coordinator, adapter=self._make_adapter())
+            panel.symbol_var.set("XAUUSD")
+            panel.stop_var.set("10")
+            panel.allocation_mode_var.set(CapitalAllocationMode.FIXED_CASH.value)
+            panel.allocation_var.set("20")
+            panel.refresh()
+            assert panel.execute_button is not None
+            self.assertTrue(panel.execute_button.instate(["disabled"]))
+            output = panel.output.get("1.0", tk.END)
+            self.assertIn("sizing_snapshot:", output)
+            self.assertIn("final_lot=0.0000", output)
+            self.assertIn("why_blocked=", output)
         finally:
             root.destroy()
 
