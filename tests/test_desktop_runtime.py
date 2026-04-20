@@ -397,9 +397,12 @@ class DesktopRuntimeCoordinatorTests(unittest.TestCase):
                 deadline = time.time() + 2.5
                 seen_kinds: list[str] = []
                 cycle_payload = None
+                contract_payload = None
                 while time.time() < deadline and cycle_payload is None:
                     for event in coordinator.drain_events():
                         seen_kinds.append(event.kind)
+                        if event.kind == "codex_contract_invalid":
+                            contract_payload = event.payload
                         if event.kind == "runtime_cycle":
                             cycle_payload = event.payload
                     time.sleep(0.05)
@@ -412,6 +415,9 @@ class DesktopRuntimeCoordinatorTests(unittest.TestCase):
                 self.assertEqual(cycle_payload["action"], "NO_TRADE")
                 self.assertIn("contract invalid", cycle_payload["detail"])
                 self.assertNotIn("runtime_error", seen_kinds)
+                self.assertIsNotNone(contract_payload)
+                assert contract_payload is not None
+                self.assertIn("raw_response", contract_payload)
             finally:
                 coordinator.stop()
 

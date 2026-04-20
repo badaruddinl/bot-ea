@@ -211,14 +211,14 @@ class TimeoutTolerantDecisionEngine:
             self.event_callback(
                 "codex_contract_invalid",
                 "codex returned an invalid response contract; using NO_TRADE fallback",
-                {"error": str(exc)},
+                {"error": str(exc), "raw_response": getattr(exc, "raw_response", None)},
             )
             return AIIntent(
                 action=DecisionAction.NO_TRADE,
                 side=None,
                 reason=f"codex contract invalid: {exc}",
                 stop_distance_points=snapshot.stop_distance_points,
-                payload={"error": str(exc)},
+                payload={"error": str(exc), "raw_response": getattr(exc, "raw_response", None)},
             )
 
     def _cooldown_remaining_seconds(self) -> int:

@@ -407,6 +407,9 @@ class BotEaQtWindow(QMainWindow):
         self._runtime_running = False
         self._live_enabled = False
         self._pending_approval: dict[str, Any] | None = None
+        self._telemetry_overview: dict[str, Any] | None = None
+        self._telemetry_health: dict[str, Any] | None = None
+        self._telemetry_validation: dict[str, Any] | None = None
         self._preview_debounce_ms = 150
         self._preview_refresh_inflight = False
 
@@ -454,6 +457,10 @@ class BotEaQtWindow(QMainWindow):
             QWidget#leftRail {
                 min-width: 280px;
                 max-width: 320px;
+            }
+            QGroupBox#sidebarPanel {
+                background: #10161a;
+                border-color: #1d2a31;
             }
             QGroupBox {
                 background: #11161a;
@@ -560,6 +567,18 @@ class BotEaQtWindow(QMainWindow):
             }
             QPushButton:hover {
                 background: #1b2a30;
+            }
+            QPushButton#navButton {
+                text-align: left;
+                padding: 10px 12px;
+                font: 700 10pt "Segoe UI";
+                background: #10171b;
+                border-color: #203039;
+            }
+            QPushButton#navButton:checked {
+                background: #1f3841;
+                border-color: #4d8ea0;
+                color: #f8f3ea;
             }
             QPushButton:disabled {
                 color: #718186;
@@ -699,6 +718,7 @@ class BotEaQtWindow(QMainWindow):
         left_layout.addWidget(self.sidebar_intro_card)
 
         self.nav_group = QGroupBox("Navigation", self)
+        self.nav_group.setObjectName("sidebarPanel")
         nav_layout = QVBoxLayout(self.nav_group)
         nav_layout.setContentsMargins(12, 20, 12, 12)
         nav_layout.setSpacing(8)
@@ -707,6 +727,7 @@ class BotEaQtWindow(QMainWindow):
             button = QPushButton(label, self)
             button.setCheckable(True)
             button.setChecked(index == 0)
+            button.setObjectName("navButton")
             self.nav_buttons.append(button)
             nav_layout.addWidget(button)
         left_layout.addWidget(self.nav_group)
@@ -739,6 +760,7 @@ class BotEaQtWindow(QMainWindow):
         right_layout.addWidget(self.hero_card)
 
         self.service_group = QGroupBox("Backend Service", self)
+        self.service_group.setObjectName("sidebarPanel")
         service_form = QFormLayout(self.service_group)
         self._configure_form_layout(service_form)
         self.service_host_input = QLineEdit("127.0.0.1", self)
@@ -825,6 +847,7 @@ class BotEaQtWindow(QMainWindow):
         ):
             button.setToolTip(tooltip)
         self.sidebar_actions_group = QGroupBox("Quick Actions", self)
+        self.sidebar_actions_group.setObjectName("sidebarPanel")
         sidebar_actions_layout = QVBoxLayout(self.sidebar_actions_group)
         sidebar_actions_layout.setContentsMargins(12, 20, 12, 12)
         sidebar_actions_layout.setSpacing(8)
@@ -838,6 +861,22 @@ class BotEaQtWindow(QMainWindow):
         ):
             sidebar_actions_layout.addWidget(button)
         left_layout.addWidget(self.sidebar_actions_group)
+        self.sidebar_summary_card = QFrame(self)
+        self.sidebar_summary_card.setObjectName("metricCard")
+        sidebar_summary_layout = QVBoxLayout(self.sidebar_summary_card)
+        sidebar_summary_layout.setContentsMargins(14, 14, 14, 14)
+        sidebar_summary_layout.setSpacing(4)
+        self.sidebar_mode_label = QLabel("Current page", self.sidebar_summary_card)
+        self.sidebar_mode_label.setObjectName("metricTitle")
+        self.sidebar_mode_value = QLabel("Dashboard", self.sidebar_summary_card)
+        self.sidebar_mode_value.setObjectName("metricValue")
+        self.sidebar_endpoint_note = QLabel("Runtime endpoint not connected", self.sidebar_summary_card)
+        self.sidebar_endpoint_note.setObjectName("cardCaption")
+        self.sidebar_endpoint_note.setWordWrap(True)
+        sidebar_summary_layout.addWidget(self.sidebar_mode_label)
+        sidebar_summary_layout.addWidget(self.sidebar_mode_value)
+        sidebar_summary_layout.addWidget(self.sidebar_endpoint_note)
+        left_layout.addWidget(self.sidebar_summary_card)
         for idx, button in enumerate(
             [
                 self.check_mt5_button,
@@ -974,8 +1013,39 @@ class BotEaQtWindow(QMainWindow):
         )
         dashboard_caption.setObjectName("cardCaption")
         dashboard_caption.setWordWrap(True)
+        self.dashboard_overview_frame = QFrame(self.dashboard_page)
+        self.dashboard_overview_frame.setObjectName("dataCard")
+        dashboard_overview_layout = QGridLayout(self.dashboard_overview_frame)
+        dashboard_overview_layout.setContentsMargins(14, 14, 14, 14)
+        dashboard_overview_layout.setHorizontalSpacing(12)
+        dashboard_overview_layout.setVerticalSpacing(12)
+        self.dashboard_connection_value = QLabel("Offline", self.dashboard_overview_frame)
+        self.dashboard_symbol_value = QLabel("EURUSD", self.dashboard_overview_frame)
+        self.dashboard_lot_value = QLabel("--", self.dashboard_overview_frame)
+        self.dashboard_risk_value = QLabel("--", self.dashboard_overview_frame)
+        dashboard_overview_layout.addWidget(
+            self._make_metric_card("Connection", self.dashboard_connection_value, "Transport + runtime readiness"),
+            0,
+            0,
+        )
+        dashboard_overview_layout.addWidget(
+            self._make_metric_card("Focus Symbol", self.dashboard_symbol_value, "Current symbol and side context"),
+            0,
+            1,
+        )
+        dashboard_overview_layout.addWidget(
+            self._make_metric_card("Manual Lot", self.dashboard_lot_value, "Normalized order size from preview"),
+            1,
+            0,
+        )
+        dashboard_overview_layout.addWidget(
+            self._make_metric_card("Risk Budget", self.dashboard_risk_value, "Current risk budget from sizing snapshot"),
+            1,
+            1,
+        )
         dashboard_page_layout.addWidget(dashboard_title)
         dashboard_page_layout.addWidget(dashboard_caption)
+        dashboard_page_layout.addWidget(self.dashboard_overview_frame)
         dashboard_page_layout.addWidget(self.snapshot_dashboard, 1)
 
         self.strategy_page = QWidget(self)
@@ -1006,22 +1076,110 @@ class BotEaQtWindow(QMainWindow):
         )
         history_caption.setObjectName("cardCaption")
         history_caption.setWordWrap(True)
+        self.history_metric_row = QGridLayout()
+        self.history_metric_row.setHorizontalSpacing(12)
+        self.history_metric_row.setVerticalSpacing(12)
+        self.history_status_value = QLabel("No run loaded", self.history_page)
+        self.history_action_value = QLabel("NO_TRADE", self.history_page)
+        self.history_trade_count_value = QLabel("--", self.history_page)
+        self.history_expectancy_value = QLabel("--", self.history_page)
+        self.history_metric_row.addWidget(
+            self._make_metric_card("Run Status", self.history_status_value, "Latest telemetry status"),
+            0,
+            0,
+        )
+        self.history_metric_row.addWidget(
+            self._make_metric_card("Last Action", self.history_action_value, "Latest recorded runtime decision"),
+            0,
+            1,
+        )
+        self.history_metric_row.addWidget(
+            self._make_metric_card("Trades", self.history_trade_count_value, "Validated trade count"),
+            0,
+            2,
+        )
+        self.history_metric_row.addWidget(
+            self._make_metric_card("Expectancy", self.history_expectancy_value, "Validation expectancy in R"),
+            0,
+            3,
+        )
         self.history_panel = QFrame(self)
         self.history_panel.setObjectName("dataCard")
         history_panel_layout = QVBoxLayout(self.history_panel)
         history_panel_layout.setContentsMargins(14, 14, 14, 14)
         history_panel_layout.setSpacing(10)
         self.history_load_button = QPushButton("Load Telemetry", self.history_panel)
-        history_panel_layout.addWidget(self.history_load_button)
-        history_panel_layout.addWidget(self.validation_text, 1)
+        self.history_summary_text = QPlainTextEdit(self.history_panel)
+        self.history_summary_text.setReadOnly(True)
+        self.history_summary_text.setMaximumBlockCount(200)
+        self.history_splitter = QSplitter(Qt.Horizontal, self.history_panel)
+        self.history_summary_card = QFrame(self.history_splitter)
+        self.history_summary_card.setObjectName("dataCard")
+        history_summary_card_layout = QVBoxLayout(self.history_summary_card)
+        history_summary_card_layout.setContentsMargins(12, 12, 12, 12)
+        history_summary_card_layout.setSpacing(8)
+        history_summary_card_layout.addWidget(self.history_load_button)
+        history_summary_card_layout.addWidget(self.history_summary_text, 1)
+        self.history_validation_card = QFrame(self.history_splitter)
+        self.history_validation_card.setObjectName("dataCard")
+        history_validation_card_layout = QVBoxLayout(self.history_validation_card)
+        history_validation_card_layout.setContentsMargins(12, 12, 12, 12)
+        history_validation_card_layout.setSpacing(8)
+        history_validation_title = QLabel("Validation Detail", self.history_validation_card)
+        history_validation_title.setObjectName("cardTitle")
+        history_validation_card_layout.addWidget(history_validation_title)
+        history_validation_card_layout.addWidget(self.validation_text, 1)
+        self.history_splitter.addWidget(self.history_summary_card)
+        self.history_splitter.addWidget(self.history_validation_card)
+        self.history_splitter.setSizes([420, 720])
         history_page_layout.addWidget(history_title)
         history_page_layout.addWidget(history_caption)
+        history_page_layout.addLayout(self.history_metric_row)
         history_page_layout.addWidget(self.history_panel, 1)
+        history_panel_layout.addWidget(self.history_splitter, 1)
 
         self.logs_page = QWidget(self)
         logs_page_layout = QVBoxLayout(self.logs_page)
         logs_page_layout.setContentsMargins(0, 0, 0, 0)
         logs_page_layout.setSpacing(12)
+        self.logs_metric_row = QGridLayout()
+        self.logs_metric_row.setHorizontalSpacing(12)
+        self.logs_metric_row.setVerticalSpacing(12)
+        self.logs_endpoint_value = QLabel("Disconnected", self.logs_page)
+        self.logs_runtime_value = QLabel("Stopped", self.logs_page)
+        self.logs_tick_value = QLabel("n/a", self.logs_page)
+        self.logs_metric_row.addWidget(
+            self._make_metric_card("Endpoint", self.logs_endpoint_value, "Connected websocket service"),
+            0,
+            0,
+        )
+        self.logs_metric_row.addWidget(
+            self._make_metric_card("Runtime", self.logs_runtime_value, "Runtime loop and live mode status"),
+            0,
+            1,
+        )
+        self.logs_metric_row.addWidget(
+            self._make_metric_card("Last Tick", self.logs_tick_value, "Most recent market tick seen in UI"),
+            0,
+            2,
+        )
+        self.logs_operator_note = QFrame(self.logs_page)
+        self.logs_operator_note.setObjectName("dataCard")
+        logs_operator_note_layout = QVBoxLayout(self.logs_operator_note)
+        logs_operator_note_layout.setContentsMargins(14, 14, 14, 14)
+        logs_operator_note_layout.setSpacing(6)
+        logs_operator_title = QLabel("Operator Log Deck", self.logs_operator_note)
+        logs_operator_title.setObjectName("cardTitle")
+        logs_operator_caption = QLabel(
+            "Runtime feed stays on one tab, event console on another. Use this page as the focused audit surface during sessions.",
+            self.logs_operator_note,
+        )
+        logs_operator_caption.setObjectName("cardCaption")
+        logs_operator_caption.setWordWrap(True)
+        logs_operator_note_layout.addWidget(logs_operator_title)
+        logs_operator_note_layout.addWidget(logs_operator_caption)
+        logs_page_layout.addLayout(self.logs_metric_row)
+        logs_page_layout.addWidget(self.logs_operator_note)
         logs_page_layout.addWidget(self.logs_group, 1)
 
         self.settings_page = QWidget(self)
@@ -1036,16 +1194,48 @@ class BotEaQtWindow(QMainWindow):
         )
         settings_caption.setObjectName("cardCaption")
         settings_caption.setWordWrap(True)
+        self.settings_metric_row = QGridLayout()
+        self.settings_metric_row.setHorizontalSpacing(12)
+        self.settings_metric_row.setVerticalSpacing(12)
+        self.settings_endpoint_value = QLabel("ws://127.0.0.1:8765", self.settings_page)
+        self.settings_model_value = QLabel(self.model_combo.currentText() or "default", self.settings_page)
+        self.settings_poll_value = QLabel(self.poll_interval_input.text(), self.settings_page)
+        self.settings_db_value = QLabel(Path(self.db_input.text()).name, self.settings_page)
+        self.settings_metric_row.addWidget(
+            self._make_metric_card("Endpoint", self.settings_endpoint_value, "Current websocket target"),
+            0,
+            0,
+        )
+        self.settings_metric_row.addWidget(
+            self._make_metric_card("Model", self.settings_model_value, "Codex model preset for runtime"),
+            0,
+            1,
+        )
+        self.settings_metric_row.addWidget(
+            self._make_metric_card("Poll (s)", self.settings_poll_value, "Runtime market polling interval"),
+            0,
+            2,
+        )
+        self.settings_metric_row.addWidget(
+            self._make_metric_card("DB", self.settings_db_value, "Runtime database file"),
+            0,
+            3,
+        )
         self.settings_panel = QFrame(self)
         self.settings_panel.setObjectName("dataCard")
         settings_panel_layout = QVBoxLayout(self.settings_panel)
         settings_panel_layout.setContentsMargins(14, 14, 14, 14)
         settings_panel_layout.setSpacing(12)
+        self.settings_summary_text = QPlainTextEdit(self.settings_panel)
+        self.settings_summary_text.setReadOnly(True)
+        self.settings_summary_text.setMaximumBlockCount(100)
         settings_panel_layout.addWidget(self.service_group)
         settings_panel_layout.addWidget(self.codex_group)
+        settings_panel_layout.addWidget(self.settings_summary_text)
         settings_panel_layout.addStretch(1)
         settings_page_layout.addWidget(settings_title)
         settings_page_layout.addWidget(settings_caption)
+        settings_page_layout.addLayout(self.settings_metric_row)
         settings_page_layout.addWidget(self.settings_panel, 1)
 
         for page in (
@@ -1123,6 +1313,64 @@ class BotEaQtWindow(QMainWindow):
             self._set_chip_tone("approval", "idle")
 
         self._set_metric_tone("live" if self._runtime_running and self.run_id_status.text().strip() != "-" else "idle")
+        self._refresh_page_summaries()
+
+    def _refresh_page_summaries(self) -> None:
+        current_page = self.nav_buttons[self.page_stack.currentIndex()].text() if self.nav_buttons else "Dashboard"
+        self.sidebar_mode_value.setText(current_page)
+        self.sidebar_endpoint_note.setText(self._service_url() if self._service_connected else "Runtime endpoint not connected")
+
+        snapshot = self.snapshot or {}
+        size_result = self.size_result or {}
+        manual = self.manual_order_snapshot or {}
+        self.dashboard_connection_value.setText("Connected" if self._service_connected else "Offline")
+        self.dashboard_symbol_value.setText(str(snapshot.get("symbol") or self.symbol_combo.currentText() or "-"))
+        final_lot = self._float_value(manual.get("final_lot"))
+        self.dashboard_lot_value.setText(f"{final_lot:.2f}" if final_lot > 0 else "--")
+        risk_budget = self._float_value(size_result.get("risk_cash_budget_usd"))
+        self.dashboard_risk_value.setText(f"${risk_budget:.2f}" if risk_budget > 0 else "--")
+
+        overview = self._telemetry_overview or {}
+        validation = self._telemetry_validation or {}
+        self.history_status_value.setText(str(overview.get("status") or self.runtime_status.text() or "No run loaded"))
+        self.history_action_value.setText(str(overview.get("last_action") or "NO_TRADE"))
+        total_trades = validation.get("total_trades")
+        self.history_trade_count_value.setText(str(total_trades) if total_trades is not None else "--")
+        expectancy = validation.get("expectancy_r")
+        expectancy_value = self._float_value(expectancy) if expectancy is not None else 0.0
+        self.history_expectancy_value.setText(f"{expectancy_value:.2f}R" if expectancy is not None else "--")
+        if not self.history_summary_text.toPlainText().strip():
+            self.history_summary_text.setPlainText(
+                "\n".join(
+                    [
+                        "Load telemetry to populate run summaries, validation context, and lifecycle highlights.",
+                        "",
+                        "This page is intended for historical review rather than live execution.",
+                    ]
+                )
+            )
+
+        self.logs_endpoint_value.setText("Managed" if self._managed_service_owned else ("Connected" if self._service_connected else "Offline"))
+        self.logs_runtime_value.setText("Live" if self._runtime_running and self._live_enabled else ("Running" if self._runtime_running else "Stopped"))
+        self.logs_tick_value.setText(str(snapshot.get("tick_time") or "n/a"))
+
+        self.settings_endpoint_value.setText(self._service_url())
+        self.settings_model_value.setText(self._optional_str(self.model_combo.currentText()) or "default")
+        self.settings_poll_value.setText(self.poll_interval_input.text().strip() or "30")
+        self.settings_db_value.setText(Path(self.db_input.text().strip() or "bot_ea_runtime.db").name)
+        self.settings_summary_text.setPlainText(
+            "\n".join(
+                [
+                    f"service_url={self._service_url()}",
+                    f"service_mode={'managed' if self._managed_service_owned else 'external'}",
+                    f"codex_command={self.codex_command_input.text().strip() or 'codex'}",
+                    f"codex_model={self._optional_str(self.model_combo.currentText()) or 'default'}",
+                    f"codex_cwd={self._optional_str(self.codex_cwd_input.text()) or Path.cwd()}",
+                    f"poll_interval_seconds={self.poll_interval_input.text().strip() or '30'}",
+                    f"runtime_db={self.db_input.text().strip()}",
+                ]
+            )
+        )
 
     def _select_page(self, index: int) -> None:
         if index < 0 or index >= self.page_stack.count():
@@ -1140,6 +1388,7 @@ class BotEaQtWindow(QMainWindow):
         title, subtitle = page_titles.get(index, ("Runtime Dashboard", self.hero_subtitle.text()))
         self.hero_title.setText(title)
         self.hero_subtitle.setText(subtitle)
+        self._refresh_page_summaries()
 
     def _wire_events(self) -> None:
         self.connect_service_button.clicked.connect(self.connect_service)
@@ -1440,6 +1689,9 @@ class BotEaQtWindow(QMainWindow):
         health = result.get("health") or {}
         validation = result.get("validation") or {}
         lifecycle_rows = result.get("lifecycle_rows") or []
+        self._telemetry_overview = dict(overview)
+        self._telemetry_health = dict(health)
+        self._telemetry_validation = dict(validation)
         self.run_id_status.setText(run_id)
         self.runtime_text.setPlainText(
             "\n".join(
@@ -1456,6 +1708,22 @@ class BotEaQtWindow(QMainWindow):
                 ]
             )
         )
+        self.history_summary_text.setPlainText(
+            "\n".join(
+                [
+                    f"run_id={run_id}",
+                    f"status={overview.get('status')}",
+                    f"last_action={overview.get('last_action')}",
+                    f"filled_events={health.get('filled_events')}",
+                    f"dry_run_events={health.get('dry_run_events')}",
+                    f"reject_rate={self._float_value(health.get('reject_rate')):.2%}",
+                    "",
+                    "Recent lifecycle:",
+                    *[f"- {row.get('symbol')} {row.get('side')} pnl={row.get('realized_pnl_cash')}" for row in lifecycle_rows[:10]],
+                ]
+            )
+        )
+        self._refresh_page_summaries()
         warnings = list(validation.get("warnings") or [])
         self.validation_text.setPlainText(
             "\n".join(

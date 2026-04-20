@@ -29,9 +29,100 @@ class CodexCLIEngineTests(unittest.TestCase):
         self.assertAlmostEqual(intent.confidence, 0.82)
         self.assertAlmostEqual(intent.stop_distance_points, 55.0)
 
+    def test_parse_response_supports_single_line_contract(self) -> None:
+        response = "ACTION=NO_TRADE SYMBOL=NONE SIDE=NONE CONFIDENCE=0 REASON=INSUFFICIENT_DATA"
+
+        intent = CodexCLIEngine.parse_response(response)
+
+        self.assertEqual(intent.action, DecisionAction.NO_TRADE)
+        self.assertIsNone(intent.side)
+        self.assertEqual(intent.confidence, 0.0)
+        self.assertIsNone(intent.stop_distance_points)
+        self.assertEqual(intent.reason, "INSUFFICIENT_DATA")
+
+    def test_parse_response_allows_missing_stop_distance_points(self) -> None:
+        response = "\n".join(
+            [
+                "ACTION=NO_TRADE",
+                "SIDE=none",
+                "CONFIDENCE=0.15",
+                "REASON=waiting for confirmation",
+            ]
+        )
+
+        intent = CodexCLIEngine.parse_response(response)
+
+        self.assertEqual(intent.action, DecisionAction.NO_TRADE)
+        self.assertIsNone(intent.stop_distance_points)
+
+    def test_parse_response_allows_empty_stop_distance_points(self) -> None:
+        response = "\n".join(
+            [
+                "ACTION=OPEN",
+                "SIDE=buy",
+                "CONFIDENCE=0.67",
+                "STOP_DISTANCE_POINTS=",
+                "REASON=breakout continuation",
+            ]
+        )
+
+        intent = CodexCLIEngine.parse_response(response)
+
+        self.assertEqual(intent.action, DecisionAction.OPEN)
+        self.assertIsNone(intent.stop_distance_points)
+
+    def test_parse_response_rejects_invalid_action(self) -> None:
+        response = "\n".join(
+            [
+                "ACTION=WAIT",
+                "SIDE=none",
+                "CONFIDENCE=0.2",
+                "REASON=invalid action",
+            ]
+        )
+
+        with self.assertRaisesRegex(CodexContractError, "invalid ACTION"):
+            CodexCLIEngine.parse_response(response)
+
+    def test_parse_response_rejects_invalid_confidence(self) -> None:
+        response = "\n".join(
+            [
+                "ACTION=NO_TRADE",
+                "SIDE=none",
+                "CONFIDENCE=high",
+                "REASON=invalid confidence",
+            ]
+        )
+
+        with self.assertRaisesRegex(CodexContractError, "invalid CONFIDENCE"):
+            CodexCLIEngine.parse_response(response)
+
+    def test_parse_response_rejects_invalid_stop_distance_points(self) -> None:
+        response = "\n".join(
+            [
+                "ACTION=OPEN",
+                "SIDE=buy",
+                "CONFIDENCE=0.8",
+                "STOP_DISTANCE_POINTS=abc",
+                "REASON=invalid stop",
+            ]
+        )
+
+        with self.assertRaisesRegex(CodexContractError, "invalid STOP_DISTANCE_POINTS"):
+            CodexCLIEngine.parse_response(response)
+
     def test_parse_response_rejects_non_contract_output(self) -> None:
         with self.assertRaisesRegex(CodexContractError, "missing required keys"):
             CodexCLIEngine.parse_response("Please provide the exact lines to output.")
+
+    def test_parse_response_accepts_single_line_no_trade_contract(self) -> None:
+        response = "ACTION=NO_TRADE SYMBOL=NONE SIDE=NONE CONFIDENCE=0 REASON=INSUFFICIENT_DATA"
+        intent = CodexCLIEngine.parse_response(response)
+        self.assertEqual(intent.action, DecisionAction.NO_TRADE)
+        self.assertIsNone(intent.side)
+        self.assertEqual(intent.confidence, 0.0)
+        self.assertEqual(intent.reason, "INSUFFICIENT_DATA")
+        self.assertIsNone(intent.stop_distance_points)
 
     @patch("bot_ea.codex_cli_engine.subprocess.run")
     def test_probe_returns_version_output(self, run_mock) -> None:

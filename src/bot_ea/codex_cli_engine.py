@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -15,6 +16,10 @@ class CodexTimeoutError(RuntimeError):
 
 class CodexContractError(RuntimeError):
     """Raised when `codex exec` returns text outside the required KEY=VALUE contract."""
+
+    def __init__(self, message: str, *, raw_response: str | None = None) -> None:
+        super().__init__(message)
+        self.raw_response = raw_response
 
 
 class CodexCLIEngine:
@@ -86,36 +91,85 @@ class CodexCLIEngine:
 
     @staticmethod
     def parse_response(response: str) -> AIIntent:
-        lines = [line.strip() for line in response.splitlines() if line.strip()]
-        pairs: dict[str, str] = {}
-        for line in lines:
-            if "=" not in line:
-                continue
-            key, value = line.split("=", 1)
-            pairs[key.strip().upper()] = value.strip()
+        pairs = CodexCLIEngine._extract_pairs(response)
 
-        required_keys = {"ACTION", "SIDE", "CONFIDENCE", "STOP_DISTANCE_POINTS", "REASON"}
+        required_keys = {"ACTION", "CONFIDENCE", "REASON"}
         missing_keys = sorted(required_keys.difference(pairs))
         if missing_keys:
             raise CodexContractError(
-                f"codex response missing required keys {', '.join(missing_keys)}: {CodexCLIEngine._shorten(response)}"
+                f"codex response missing required keys {', '.join(missing_keys)}: {CodexCLIEngine._shorten(response)}",
+                raw_response=response,
             )
 
-        action = DecisionAction(pairs["ACTION"])
-        side_value = pairs.get("SIDE", "").lower() or None
+        try:
+            action = DecisionAction(pairs["ACTION"].strip().upper())
+        except ValueError as exc:
+            raise CodexContractError(
+                f"codex response has invalid ACTION={pairs.get('ACTION')!r}: {CodexCLIEngine._shorten(response)}",
+                raw_response=response,
+            ) from exc
+        side_raw = (pairs.get("SIDE") or ("none" if action in {DecisionAction.NO_TRADE, DecisionAction.HALT} else "")).lower()
+        side_value = side_raw or None
         if side_value == "none":
             side_value = None
+        elif side_value not in {"buy", "sell"}:
+            raise CodexContractError(
+                f"codex response has invalid SIDE={pairs.get('SIDE')!r}: {CodexCLIEngine._shorten(response)}",
+                raw_response=response,
+            )
         confidence_raw = pairs.get("CONFIDENCE")
         stop_raw = pairs.get("STOP_DISTANCE_POINTS")
+
+        try:
+            confidence = float(confidence_raw) if confidence_raw not in {None, "", "none"} else None
+        except ValueError as exc:
+            raise CodexContractError(
+                f"codex response has invalid CONFIDENCE={confidence_raw!r}: {CodexCLIEngine._shorten(response)}",
+                raw_response=response,
+            ) from exc
+        if confidence is not None and not (0.0 <= confidence <= 1.0):
+            raise CodexContractError(
+                f"codex response has out-of-range CONFIDENCE={confidence_raw!r}: {CodexCLIEngine._shorten(response)}",
+                raw_response=response,
+            )
+
+        try:
+            stop_distance_points = float(stop_raw) if stop_raw not in {None, "", "none", "NONE"} else None
+        except ValueError as exc:
+            raise CodexContractError(
+                f"codex response has invalid STOP_DISTANCE_POINTS={stop_raw!r}: {CodexCLIEngine._shorten(response)}",
+                raw_response=response,
+            ) from exc
 
         return AIIntent(
             action=action,
             side=side_value,
-            confidence=float(confidence_raw) if confidence_raw not in {None, "", "none"} else None,
+            confidence=confidence,
             reason=pairs.get("REASON"),
-            stop_distance_points=float(stop_raw) if stop_raw not in {None, "", "none"} else None,
+            stop_distance_points=stop_distance_points,
             payload={"raw_response": response},
         )
+
+    @staticmethod
+    def _extract_pairs(response: str) -> dict[str, str]:
+        normalized = str(response or "").strip()
+        if not normalized:
+            return {}
+
+        # Support both the documented multi-line contract and the single-line
+        # fallback shape sometimes returned by the CLI.
+        matches = list(re.finditer(r"(?<!\S)([A-Z_]+)=", normalized))
+        if not matches:
+            return {}
+
+        pairs: dict[str, str] = {}
+        for index, match in enumerate(matches):
+            key = match.group(1).strip().upper()
+            value_start = match.end()
+            value_end = matches[index + 1].start() if index + 1 < len(matches) else len(normalized)
+            value = normalized[value_start:value_end].strip()
+            pairs[key] = value
+        return pairs
 
     def _build_exec_command(self, *, prompt: str, output_file: Path) -> list[str]:
         command = [
@@ -162,18 +216,12 @@ class CodexCLIEngine:
     def _build_prompt(snapshot: RuntimeSnapshot) -> str:
         return (
             "You are the decision brain for an MT5 trading bot. "
-            "Output exactly 5 lines in KEY=VALUE format and nothing else. "
-            "Do not ask clarifying questions. "
-            "Do not include angle brackets. "
-            "If uncertain, choose ACTION=NO_TRADE.\n"
-            "Allowed ACTION values: NO_TRADE, OPEN, ADD, REDUCE, CLOSE, CANCEL_PENDING, HALT.\n"
-            "Allowed SIDE values: buy, sell, none.\n"
-            "Example valid output:\n"
-            "ACTION=NO_TRADE\n"
-            "SIDE=none\n"
-            "CONFIDENCE=0.20\n"
-            "STOP_DISTANCE_POINTS=50\n"
-            "REASON=spread too wide\n\n"
+            "Return only KEY=VALUE pairs for ACTION, SIDE, CONFIDENCE, STOP_DISTANCE_POINTS, and REASON. "
+            "No markdown. No explanation. No questions. "
+            "ACTION must be one of NO_TRADE, OPEN, ADD, REDUCE, CLOSE, CANCEL_PENDING, HALT. "
+            "SIDE must be buy, sell, or none. "
+            "STOP_DISTANCE_POINTS may be none for NO_TRADE or HALT. "
+            "If uncertain, return ACTION=NO_TRADE SIDE=none CONFIDENCE=0.0 STOP_DISTANCE_POINTS=none REASON=insufficient_data.\n\n"
             f"SYMBOL={snapshot.symbol}\n"
             f"TIMEFRAME={snapshot.timeframe}\n"
             f"BID={snapshot.bid}\n"
