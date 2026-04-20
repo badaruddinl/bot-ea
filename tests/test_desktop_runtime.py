@@ -8,7 +8,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from bot_ea.codex_cli_engine import CodexTimeoutError  # noqa: E402
+from bot_ea.codex_cli_engine import CodexContractError, CodexTimeoutError  # noqa: E402
 from bot_ea.desktop_runtime import DesktopRuntimeConfig, DesktopRuntimeCoordinator  # noqa: E402
 from bot_ea.models import (  # noqa: E402
     AccountSnapshot,
@@ -167,6 +167,18 @@ class TimeoutingCodexEngine:
     def decide(self, snapshot) -> AIIntent:
         self.decide_calls += 1
         raise CodexTimeoutError("codex exec timed out after 60 seconds")
+
+
+class InvalidContractCodexEngine:
+    def __init__(self, **_: object) -> None:
+        self.decide_calls = 0
+
+    def probe(self) -> str:
+        return "codex-cli fake"
+
+    def decide(self, snapshot) -> AIIntent:
+        self.decide_calls += 1
+        raise CodexContractError("codex response missing required keys ACTION, SIDE")
 
 
 class DesktopRuntimeCoordinatorTests(unittest.TestCase):
@@ -352,6 +364,53 @@ class DesktopRuntimeCoordinatorTests(unittest.TestCase):
                 self.assertEqual(engines[0].decide_calls, 1)
                 self.assertIn("codex_timeout", seen_kinds)
                 self.assertGreaterEqual(cycle_count, 2)
+                self.assertNotIn("runtime_error", seen_kinds)
+            finally:
+                coordinator.stop()
+
+    def test_runtime_invalid_codex_contract_uses_no_trade_fallback(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            engines: list[InvalidContractCodexEngine] = []
+
+            def codex_engine_factory(**_: object) -> InvalidContractCodexEngine:
+                engine = InvalidContractCodexEngine()
+                engines.append(engine)
+                return engine
+
+            coordinator = DesktopRuntimeCoordinator(
+                adapter_factory=FakeAdapter,
+                codex_engine_factory=codex_engine_factory,
+                risk_policy=RiskPolicy(base_risk_pct=1.0, max_total_open_risk_pct=2.0, daily_loss_limit_pct=3.0),
+            )
+            config = DesktopRuntimeConfig(
+                symbol="EURUSD",
+                timeframe="M5",
+                trading_style=TradingStyle.INTRADAY,
+                stop_distance_points=20.0,
+                capital_allocation=CapitalAllocation(mode=CapitalAllocationMode.FIXED_CASH, value=1000.0),
+                db_path=str(Path(tmpdir) / "runtime.db"),
+                poll_interval_seconds=1,
+            )
+
+            try:
+                coordinator.start(config)
+                deadline = time.time() + 2.5
+                seen_kinds: list[str] = []
+                cycle_payload = None
+                while time.time() < deadline and cycle_payload is None:
+                    for event in coordinator.drain_events():
+                        seen_kinds.append(event.kind)
+                        if event.kind == "runtime_cycle":
+                            cycle_payload = event.payload
+                    time.sleep(0.05)
+
+                self.assertEqual(len(engines), 1)
+                self.assertEqual(engines[0].decide_calls, 1)
+                self.assertIn("codex_contract_invalid", seen_kinds)
+                self.assertIsNotNone(cycle_payload)
+                assert cycle_payload is not None
+                self.assertEqual(cycle_payload["action"], "NO_TRADE")
+                self.assertIn("contract invalid", cycle_payload["detail"])
                 self.assertNotIn("runtime_error", seen_kinds)
             finally:
                 coordinator.stop()

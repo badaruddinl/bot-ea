@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QScrollArea,
     QSplitter,
+    QStackedWidget,
     QTabWidget,
     QVBoxLayout,
     QWidget,
@@ -702,7 +703,7 @@ class BotEaQtWindow(QMainWindow):
         nav_layout.setContentsMargins(12, 20, 12, 12)
         nav_layout.setSpacing(8)
         self.nav_buttons: list[QPushButton] = []
-        for index, label in enumerate(("Dashboard", "Trade Controls", "Snapshots", "Console")):
+        for index, label in enumerate(("Dashboard", "Strategy", "History", "Logs", "Settings")):
             button = QPushButton(label, self)
             button.setCheckable(True)
             button.setChecked(index == 0)
@@ -887,15 +888,8 @@ class BotEaQtWindow(QMainWindow):
         status_grid.addWidget(self.run_id_card, 0, 0, 1, 2)
         status_grid.addWidget(self.status_group_summary, 1, 0, 1, 2)
 
-        self.dashboard_splitter = QSplitter(Qt.Vertical, self)
-        right_layout.addWidget(self.dashboard_splitter, 1)
-        self.dashboard_top = QWidget(self)
-        dashboard_top_layout = QVBoxLayout(self.dashboard_top)
-        dashboard_top_layout.setContentsMargins(0, 0, 0, 0)
-        dashboard_top_layout.setSpacing(12)
-        self.dashboard_body_splitter = QSplitter(Qt.Horizontal, self)
-        dashboard_top_layout.addWidget(self.dashboard_body_splitter, 1)
-        self.dashboard_splitter.addWidget(self.dashboard_top)
+        self.page_stack = QStackedWidget(self)
+        right_layout.addWidget(self.page_stack, 1)
 
         self.trade_control_panel = QFrame(self)
         self.trade_control_panel.setObjectName("dataCard")
@@ -913,7 +907,6 @@ class BotEaQtWindow(QMainWindow):
         trade_control_layout.addWidget(trade_panel_title)
         trade_control_layout.addWidget(trade_panel_caption)
         trade_control_layout.addWidget(self.trade_group)
-        trade_control_layout.addWidget(self.codex_group)
         trade_control_layout.addWidget(self.action_group)
         self.hint_label = QLabel(
             "Operator hint: manual lot requests are still normalized by broker/capital constraints from the backend preview.",
@@ -927,7 +920,6 @@ class BotEaQtWindow(QMainWindow):
         self.trade_control_scroll.setWidgetResizable(True)
         self.trade_control_scroll.setWidget(self.trade_control_panel)
         self.trade_control_scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
-        self.dashboard_body_splitter.addWidget(self.trade_control_scroll)
 
         self.snapshot_dashboard = QFrame(self)
         self.snapshot_dashboard.setObjectName("dataCard")
@@ -956,11 +948,6 @@ class BotEaQtWindow(QMainWindow):
         summary_row.addWidget(self.manual_card["frame"], 1, 0)
         summary_row.addWidget(self.risk_card["frame"], 1, 1)
         snapshot_dashboard_layout.addLayout(summary_row)
-        self.dashboard_body_splitter.addWidget(self.snapshot_dashboard)
-        self.dashboard_body_splitter.setSizes([460, 760])
-        self.dashboard_body_splitter.setStretchFactor(0, 0)
-        self.dashboard_body_splitter.setStretchFactor(1, 1)
-
         self.logs_group = QGroupBox("Telemetry / Logs", self)
         logs_layout = QVBoxLayout(self.logs_group)
         logs_layout.setContentsMargins(10, 18, 10, 10)
@@ -972,11 +959,103 @@ class BotEaQtWindow(QMainWindow):
         self.events_text = QPlainTextEdit(self)
         self.events_text.setReadOnly(True)
         self.tabs.addTab(self.runtime_text, "Runtime Feed")
-        self.tabs.addTab(self.validation_text, "Risk Validation")
         self.tabs.addTab(self.events_text, "Log Console")
         logs_layout.addWidget(self.tabs)
-        self.dashboard_splitter.addWidget(self.logs_group)
-        self.dashboard_splitter.setSizes([640, 260])
+
+        self.dashboard_page = QWidget(self)
+        dashboard_page_layout = QVBoxLayout(self.dashboard_page)
+        dashboard_page_layout.setContentsMargins(0, 0, 0, 0)
+        dashboard_page_layout.setSpacing(12)
+        dashboard_title = QLabel("Dashboard Overview", self.dashboard_page)
+        dashboard_title.setObjectName("cardTitle")
+        dashboard_caption = QLabel(
+            "Live readiness, market snapshot, and operator summary in one place.",
+            self.dashboard_page,
+        )
+        dashboard_caption.setObjectName("cardCaption")
+        dashboard_caption.setWordWrap(True)
+        dashboard_page_layout.addWidget(dashboard_title)
+        dashboard_page_layout.addWidget(dashboard_caption)
+        dashboard_page_layout.addWidget(self.snapshot_dashboard, 1)
+
+        self.strategy_page = QWidget(self)
+        strategy_page_layout = QVBoxLayout(self.strategy_page)
+        strategy_page_layout.setContentsMargins(0, 0, 0, 0)
+        strategy_page_layout.setSpacing(12)
+        strategy_title = QLabel("Strategy Workspace", self.strategy_page)
+        strategy_title.setObjectName("cardTitle")
+        strategy_caption = QLabel(
+            "Configure trade setup, capital management, and execution controls from one focused page.",
+            self.strategy_page,
+        )
+        strategy_caption.setObjectName("cardCaption")
+        strategy_caption.setWordWrap(True)
+        strategy_page_layout.addWidget(strategy_title)
+        strategy_page_layout.addWidget(strategy_caption)
+        strategy_page_layout.addWidget(self.trade_control_scroll, 1)
+
+        self.history_page = QWidget(self)
+        history_page_layout = QVBoxLayout(self.history_page)
+        history_page_layout.setContentsMargins(0, 0, 0, 0)
+        history_page_layout.setSpacing(12)
+        history_title = QLabel("History + Validation", self.history_page)
+        history_title.setObjectName("cardTitle")
+        history_caption = QLabel(
+            "Use telemetry loads to inspect validation output and historical runtime notes.",
+            self.history_page,
+        )
+        history_caption.setObjectName("cardCaption")
+        history_caption.setWordWrap(True)
+        self.history_panel = QFrame(self)
+        self.history_panel.setObjectName("dataCard")
+        history_panel_layout = QVBoxLayout(self.history_panel)
+        history_panel_layout.setContentsMargins(14, 14, 14, 14)
+        history_panel_layout.setSpacing(10)
+        self.history_load_button = QPushButton("Load Telemetry", self.history_panel)
+        history_panel_layout.addWidget(self.history_load_button)
+        history_panel_layout.addWidget(self.validation_text, 1)
+        history_page_layout.addWidget(history_title)
+        history_page_layout.addWidget(history_caption)
+        history_page_layout.addWidget(self.history_panel, 1)
+
+        self.logs_page = QWidget(self)
+        logs_page_layout = QVBoxLayout(self.logs_page)
+        logs_page_layout.setContentsMargins(0, 0, 0, 0)
+        logs_page_layout.setSpacing(12)
+        logs_page_layout.addWidget(self.logs_group, 1)
+
+        self.settings_page = QWidget(self)
+        settings_page_layout = QVBoxLayout(self.settings_page)
+        settings_page_layout.setContentsMargins(0, 0, 0, 0)
+        settings_page_layout.setSpacing(12)
+        settings_title = QLabel("Settings + Transport", self.settings_page)
+        settings_title.setObjectName("cardTitle")
+        settings_caption = QLabel(
+            "Manage websocket transport, Codex defaults, and service ownership from this page.",
+            self.settings_page,
+        )
+        settings_caption.setObjectName("cardCaption")
+        settings_caption.setWordWrap(True)
+        self.settings_panel = QFrame(self)
+        self.settings_panel.setObjectName("dataCard")
+        settings_panel_layout = QVBoxLayout(self.settings_panel)
+        settings_panel_layout.setContentsMargins(14, 14, 14, 14)
+        settings_panel_layout.setSpacing(12)
+        settings_panel_layout.addWidget(self.service_group)
+        settings_panel_layout.addWidget(self.codex_group)
+        settings_panel_layout.addStretch(1)
+        settings_page_layout.addWidget(settings_title)
+        settings_page_layout.addWidget(settings_caption)
+        settings_page_layout.addWidget(self.settings_panel, 1)
+
+        for page in (
+            self.dashboard_page,
+            self.strategy_page,
+            self.history_page,
+            self.logs_page,
+            self.settings_page,
+        ):
+            self.page_stack.addWidget(page)
         self._sync_button_states()
 
     def _make_text_card(self, title: str, caption: str) -> dict[str, QWidget | QPlainTextEdit]:
@@ -1045,6 +1124,23 @@ class BotEaQtWindow(QMainWindow):
 
         self._set_metric_tone("live" if self._runtime_running and self.run_id_status.text().strip() != "-" else "idle")
 
+    def _select_page(self, index: int) -> None:
+        if index < 0 or index >= self.page_stack.count():
+            return
+        self.page_stack.setCurrentIndex(index)
+        for idx, button in enumerate(self.nav_buttons):
+            button.setChecked(idx == index)
+        page_titles = {
+            0: ("Runtime Dashboard", "Live readiness, market snapshot, and operator summary."),
+            1: ("Strategy Workspace", "Configure trade setup, capital management, and execution controls."),
+            2: ("History + Validation", "Inspect validation output and telemetry history."),
+            3: ("Runtime Console", "Read runtime feed and event logs without leaving the terminal."),
+            4: ("Settings + Transport", "Manage websocket transport and Codex defaults."),
+        }
+        title, subtitle = page_titles.get(index, ("Runtime Dashboard", self.hero_subtitle.text()))
+        self.hero_title.setText(title)
+        self.hero_subtitle.setText(subtitle)
+
     def _wire_events(self) -> None:
         self.connect_service_button.clicked.connect(self.connect_service)
         self.check_mt5_button.clicked.connect(self.check_mt5)
@@ -1058,6 +1154,9 @@ class BotEaQtWindow(QMainWindow):
         self.approve_button.clicked.connect(self.approve_pending)
         self.reject_button.clicked.connect(self.reject_pending)
         self.load_telemetry_button.clicked.connect(self.load_telemetry)
+        self.history_load_button.clicked.connect(self.load_telemetry)
+        for index, button in enumerate(self.nav_buttons):
+            button.clicked.connect(lambda _checked=False, idx=index: self._select_page(idx))
 
         for widget in (
             self.symbol_combo.lineEdit(),

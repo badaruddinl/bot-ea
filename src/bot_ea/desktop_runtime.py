@@ -9,7 +9,7 @@ from time import monotonic
 from typing import Any, Callable
 from uuid import uuid4
 
-from .codex_cli_engine import CodexCLIEngine, CodexTimeoutError
+from .codex_cli_engine import CodexCLIEngine, CodexContractError, CodexTimeoutError
 from .models import CapitalAllocation, RiskPolicy, TradingStyle
 from .mt5_adapter import LiveMT5Adapter, TerminalStatusSnapshot
 from .mt5_execution_runtime import MT5ExecutionRuntime
@@ -206,6 +206,19 @@ class TimeoutTolerantDecisionEngine:
                 reason=f"codex timeout fallback: {exc}",
                 stop_distance_points=snapshot.stop_distance_points,
                 payload={"error": str(exc), "cooldown_seconds": self.cooldown_seconds},
+            )
+        except CodexContractError as exc:
+            self.event_callback(
+                "codex_contract_invalid",
+                "codex returned an invalid response contract; using NO_TRADE fallback",
+                {"error": str(exc)},
+            )
+            return AIIntent(
+                action=DecisionAction.NO_TRADE,
+                side=None,
+                reason=f"codex contract invalid: {exc}",
+                stop_distance_points=snapshot.stop_distance_points,
+                payload={"error": str(exc)},
             )
 
     def _cooldown_remaining_seconds(self) -> int:

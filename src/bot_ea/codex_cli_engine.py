@@ -13,6 +13,10 @@ class CodexTimeoutError(RuntimeError):
     """Raised when `codex exec` exceeds the allowed decision timeout."""
 
 
+class CodexContractError(RuntimeError):
+    """Raised when `codex exec` returns text outside the required KEY=VALUE contract."""
+
+
 class CodexCLIEngine:
     """Subprocess adapter for `codex exec` using a plain-text response contract."""
 
@@ -90,7 +94,14 @@ class CodexCLIEngine:
             key, value = line.split("=", 1)
             pairs[key.strip().upper()] = value.strip()
 
-        action = DecisionAction(pairs.get("ACTION", "NO_TRADE"))
+        required_keys = {"ACTION", "SIDE", "CONFIDENCE", "STOP_DISTANCE_POINTS", "REASON"}
+        missing_keys = sorted(required_keys.difference(pairs))
+        if missing_keys:
+            raise CodexContractError(
+                f"codex response missing required keys {', '.join(missing_keys)}: {CodexCLIEngine._shorten(response)}"
+            )
+
+        action = DecisionAction(pairs["ACTION"])
         side_value = pairs.get("SIDE", "").lower() or None
         if side_value == "none":
             side_value = None
@@ -151,12 +162,18 @@ class CodexCLIEngine:
     def _build_prompt(snapshot: RuntimeSnapshot) -> str:
         return (
             "You are the decision brain for an MT5 trading bot. "
-            "Respond with exactly these lines and no extra text:\n"
-            "ACTION=<NO_TRADE|OPEN|ADD|REDUCE|CLOSE|CANCEL_PENDING|HALT>\n"
-            "SIDE=<buy|sell|none>\n"
-            "CONFIDENCE=<0.0-1.0 or none>\n"
-            "STOP_DISTANCE_POINTS=<number or none>\n"
-            "REASON=<one short sentence>\n\n"
+            "Output exactly 5 lines in KEY=VALUE format and nothing else. "
+            "Do not ask clarifying questions. "
+            "Do not include angle brackets. "
+            "If uncertain, choose ACTION=NO_TRADE.\n"
+            "Allowed ACTION values: NO_TRADE, OPEN, ADD, REDUCE, CLOSE, CANCEL_PENDING, HALT.\n"
+            "Allowed SIDE values: buy, sell, none.\n"
+            "Example valid output:\n"
+            "ACTION=NO_TRADE\n"
+            "SIDE=none\n"
+            "CONFIDENCE=0.20\n"
+            "STOP_DISTANCE_POINTS=50\n"
+            "REASON=spread too wide\n\n"
             f"SYMBOL={snapshot.symbol}\n"
             f"TIMEFRAME={snapshot.timeframe}\n"
             f"BID={snapshot.bid}\n"

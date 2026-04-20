@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from bot_ea.codex_cli_engine import CodexCLIEngine, CodexTimeoutError  # noqa: E402
+from bot_ea.codex_cli_engine import CodexCLIEngine, CodexContractError, CodexTimeoutError  # noqa: E402
 from bot_ea.polling_runtime import DecisionAction  # noqa: E402
 
 
@@ -28,6 +28,10 @@ class CodexCLIEngineTests(unittest.TestCase):
         self.assertEqual(intent.side, "buy")
         self.assertAlmostEqual(intent.confidence, 0.82)
         self.assertAlmostEqual(intent.stop_distance_points, 55.0)
+
+    def test_parse_response_rejects_non_contract_output(self) -> None:
+        with self.assertRaisesRegex(CodexContractError, "missing required keys"):
+            CodexCLIEngine.parse_response("Please provide the exact lines to output.")
 
     @patch("bot_ea.codex_cli_engine.subprocess.run")
     def test_probe_returns_version_output(self, run_mock) -> None:
