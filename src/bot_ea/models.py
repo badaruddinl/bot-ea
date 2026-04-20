@@ -29,6 +29,8 @@ class AccountSnapshot:
     balance: float
     free_margin: float
     margin_level: float
+    trade_allowed: bool = True
+    trade_expert: bool = True
     current_open_risk_pct: float = 0.0
     daily_realized_loss_pct: float = 0.0
     positions_total: int = 0
@@ -56,6 +58,11 @@ class SymbolSnapshot:
     trade_session_active: bool = True
     trade_allowed: bool = True
     volatility_points: float | None = None
+    price: float | None = None
+    bid: float | None = None
+    ask: float | None = None
+    contract_size: float | None = None
+    margin_rate: float | None = None
 
 
 @dataclass(slots=True)

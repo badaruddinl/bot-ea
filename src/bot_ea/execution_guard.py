@@ -8,6 +8,20 @@ def evaluate_execution_guards(account, symbol, policy: RiskPolicy, mode: Operati
 
     checks.append(
         GateCheck(
+            name="account_trade_allowed",
+            passed=account.trade_allowed,
+            detail="account trading allowed" if account.trade_allowed else "account trading disabled",
+        )
+    )
+    checks.append(
+        GateCheck(
+            name="account_trade_expert",
+            passed=account.trade_expert,
+            detail="expert trading allowed" if account.trade_expert else "expert trading disabled",
+        )
+    )
+    checks.append(
+        GateCheck(
             name="trade_allowed",
             passed=symbol.trade_allowed,
             detail="symbol is trade-allowed" if symbol.trade_allowed else "symbol trading disabled",
@@ -49,6 +63,28 @@ def evaluate_execution_guards(account, symbol, policy: RiskPolicy, mode: Operati
             else "open risk cap hit",
         )
     )
+    side_mode = (symbol.trade_mode or "").lower()
+    if side_mode:
+        checks.append(
+            GateCheck(
+                name="trade_mode_supported",
+                passed=side_mode not in {"disabled", "closeonly"},
+                detail="trade mode allows opening positions"
+                if side_mode not in {"disabled", "closeonly"}
+                else f"trade mode {side_mode} blocks opening positions",
+            )
+        )
+    order_mode = (symbol.order_mode or "").lower()
+    if order_mode:
+        checks.append(
+            GateCheck(
+                name="market_order_capability",
+                passed="market" in order_mode or order_mode.isdigit(),
+                detail="market order capability available"
+                if "market" in order_mode or order_mode.isdigit()
+                else f"order mode {order_mode} does not expose market orders",
+            )
+        )
 
     if symbol.volatility_points and symbol.volatility_points > 0:
         spread_ratio = symbol.spread_points / symbol.volatility_points

@@ -18,6 +18,8 @@ def build_account_snapshot(account_info) -> AccountSnapshot:
         balance=float(_read(account_info, "balance", 0.0) or 0.0),
         free_margin=float(_read(account_info, "margin_free", 0.0) or 0.0),
         margin_level=float(_read(account_info, "margin_level", 0.0) or 0.0),
+        trade_allowed=bool(_read(account_info, "trade_allowed", True)),
+        trade_expert=bool(_read(account_info, "trade_expert", True)),
         current_open_risk_pct=0.0,
         daily_realized_loss_pct=0.0,
         positions_total=int(_read(account_info, "positions", 0) or 0),
@@ -29,6 +31,8 @@ def build_symbol_snapshot(symbol_info, *, quote_session_active: bool, trade_sess
     instrument_class = infer_instrument_class(name)
     trade_mode = str(_read(symbol_info, "trade_mode", "") or "")
     trade_allowed = bool(_read(symbol_info, "visible", True))
+    margin_initial = float(_read(symbol_info, "margin_initial", 0.0) or 0.0)
+    margin_rate = margin_initial if 0.0 < margin_initial <= 1.0 else 0.0
     if trade_mode:
         trade_allowed = trade_allowed and trade_mode.lower() not in {"disabled", "closeonly"}
     return SymbolSnapshot(
@@ -52,4 +56,9 @@ def build_symbol_snapshot(symbol_info, *, quote_session_active: bool, trade_sess
         trade_session_active=trade_session_active,
         trade_allowed=trade_allowed,
         volatility_points=volatility_points,
+        price=float(_read(symbol_info, "ask", 0.0) or _read(symbol_info, "bid", 0.0) or _read(symbol_info, "last", 0.0) or 0.0),
+        bid=float(_read(symbol_info, "bid", 0.0) or 0.0),
+        ask=float(_read(symbol_info, "ask", 0.0) or 0.0),
+        contract_size=float(_read(symbol_info, "trade_contract_size", 0.0) or 0.0),
+        margin_rate=margin_rate,
     )

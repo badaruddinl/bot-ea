@@ -83,3 +83,28 @@ Recommended outputs:
   - timeframe
   - test mode
   - parameter profile
+- `oos_windows.json`
+- `promotion_decision.json`
+- `promotion_report.md`
+
+## Promotion artifacts
+
+Promotion decisions should be portable and auditable without the original MT5 terminal.
+
+Minimum files:
+
+- `trade_log.json` or CSV
+- `summary.md`
+- `oos_windows.json`
+- `promotion_decision.json`
+- `promotion_report.md`
+
+Promotion artifacts should capture:
+
+- champion label
+- challenger label
+- thresholds used
+- checks run
+- pass/fail result
+- reasons and warnings
+- references to supporting artifacts

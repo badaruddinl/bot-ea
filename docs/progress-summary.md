@@ -4,7 +4,7 @@ Date: 2026-04-20
 
 ## Project status
 
-Phase: `research, architecture, and initial scaffold`
+Phase: `live MT5 integration, execution telemetry, and validation hardening`
 
 Research depth: `stage 5`
 
@@ -48,6 +48,20 @@ Research depth: `stage 5`
   - SQLite runtime store scaffold
   - stop-policy module
   - Codex polling runtime scaffold
+- integrated:
+  - live MT5 adapter with `symbol_info`, `symbol_select`, `order_check`, and `order_send` support
+  - MT5 snapshot provider for live account, symbol, and tick hydration
+  - broker preflight and execution runtime with safe default `dry-run`
+  - richer execution guard checks around account and broker tradability
+  - runtime telemetry for quoted price, executed price, slippage, fill latency, retcode, order ticket, and deal ticket
+  - attempt-level execution lifecycle logging with `INTENT`, `PRECHECK`, and `FILL` phases
+  - promotion gate artifacts and markdown/json audit export
+  - simple live GUI panel for refresh, preflight, execute, and runtime telemetry review
+  - allocation mode support for `fixed_cash`, `percent_equity`, and `full_equity` in the GUI
+- documented:
+  - live MT5 Python integration notes
+  - trading foundation and tuning notes
+  - promotion artifact expectations in validation harness docs
 
 ## Key decisions already made
 
@@ -59,15 +73,15 @@ Research depth: `stage 5`
 
 ## Immediate next step
 
-Turn the scaffold into MT5-aware integration modules:
+Turn the integrated runtime into a feedback-driven live-validation loop:
 
-1. real MT5-backed symbol/account introspection module
-2. MT5 adapter for margin/check/session snapshots
-3. execution module
-4. broker-aware session/news state loading
-5. connect polling runtime to real Codex runtime / codex-cli
-6. artifact writers for validation runs
-7. optional bar-structure confirmation layer
+1. bridge runtime telemetry into `TradeRecord` and execution-quality validation summaries
+2. capture close/modify lifecycle, including realized commission, swap, and exit pnl
+3. add broker-aware execution drift monitoring and optional auto-halt thresholds
+4. expand GUI from text panel into structured health, reject, and ledger widgets
+5. add validation artifact writers for live/demo runs
+6. continue broker-specific tuning with fresh out-of-sample slices
+7. add strategy-level decision evaluation on top of the now-live execution substrate
 
 ## What another host needs to resume
 
@@ -76,3 +90,4 @@ Turn the scaffold into MT5-aware integration modules:
 - target broker credentials
 - optional Python runtime for hybrid mode
 - a working Python runtime if continuing the scaffold locally
+- runtime database and exported validation artifacts if reviewing execution quality on another host

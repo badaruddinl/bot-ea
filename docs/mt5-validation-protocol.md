@@ -77,6 +77,12 @@ Pass conditions:
 - multiple windows remain acceptable
 - no dependence on one special period
 
+Implementation note:
+
+- each out-of-sample slice should be recorded as one `OOSWindowResult`
+- promotion should require a configurable minimum pass ratio across windows
+- do not collapse all walk-forward slices into one opaque aggregate without preserving per-window evidence
+
 ## 5. Cost stress
 
 Run sensitivity tests for:

@@ -1,10 +1,13 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Protocol
+from uuid import uuid4
 
+from .mt5_adapter import MT5Adapter
+from .execution_guard import evaluate_execution_guards
 from .models import AccountSnapshot, CapitalAllocation, PositionSizeRequest, RiskPolicy, SymbolSnapshot, TradingStyle
 from .risk_engine import RiskEngine
 from .runtime_store import RuntimeStore
@@ -77,8 +80,73 @@ class DecisionEngine(Protocol):
 
 
 class ExecutionRuntime(Protocol):
-    def execute(self, intent: AIIntent, size_result) -> dict:
+    def preflight(self, snapshot: RuntimeSnapshot, intent: AIIntent, size_result) -> dict:
         raise NotImplementedError
+
+    def execute(self, snapshot: RuntimeSnapshot, intent: AIIntent, size_result, preflight_result: dict | None = None) -> dict:
+        raise NotImplementedError
+
+
+class MT5SnapshotProvider:
+    """Concrete snapshot provider that hydrates RuntimeSnapshot from an MT5 adapter."""
+
+    def __init__(
+        self,
+        *,
+        adapter: MT5Adapter,
+        symbol: str,
+        timeframe: str,
+        risk_policy: RiskPolicy,
+        trading_style: TradingStyle,
+        stop_distance_points: float,
+        capital_allocation: CapitalAllocation | None = None,
+        session_state: str = "",
+        news_state: str = "",
+        context: dict[str, Any] | None = None,
+    ) -> None:
+        self.adapter = adapter
+        self.symbol = symbol
+        self.timeframe = timeframe
+        self.risk_policy = risk_policy
+        self.trading_style = trading_style
+        self.stop_distance_points = stop_distance_points
+        self.capital_allocation = capital_allocation
+        self.session_state = session_state
+        self.news_state = news_state
+        self.context = context or {}
+
+    def get_snapshot(self) -> RuntimeSnapshot:
+        account = self.adapter.load_account_snapshot()
+        symbol_snapshot = self.adapter.load_symbol_snapshot(self.symbol)
+        tick = self.adapter.load_price_tick(self.symbol)
+        enriched_symbol = replace(
+            symbol_snapshot,
+            bid=tick.bid,
+            ask=tick.ask,
+            price=tick.ask or tick.bid or symbol_snapshot.price,
+        )
+        spread_points = 0.0
+        if enriched_symbol.point and enriched_symbol.point > 0 and tick.ask and tick.bid:
+            spread_points = (tick.ask - tick.bid) / enriched_symbol.point
+
+        context = dict(self.context)
+        context["tick_time"] = tick.time
+        return RuntimeSnapshot(
+            symbol=self.symbol,
+            timeframe=self.timeframe,
+            bid=tick.bid,
+            ask=tick.ask,
+            spread_points=spread_points,
+            account=account,
+            symbol_snapshot=enriched_symbol,
+            risk_policy=self.risk_policy,
+            trading_style=self.trading_style,
+            stop_distance_points=self.stop_distance_points,
+            capital_allocation=self.capital_allocation,
+            session_state=self.session_state,
+            news_state=self.news_state,
+            context=context,
+        )
 
 
 class PollingRuntime:
@@ -197,18 +265,106 @@ class PollingRuntime:
                 action="RISK_REJECTED",
             )
 
-        execution_result = self.execution_runtime.execute(intent, size_result)
+        attempt_id = uuid4().hex
+        intended_price = float(intent.entry_price or snapshot.ask if intent.side == "buy" else snapshot.bid)
         self.store.record_execution_event(
             run_id=run_id,
             cycle_id=cycle_id,
-            event_type="ORDER_INTENT",
+            attempt_id=attempt_id,
+            event_type="ORDER_ATTEMPT",
+            phase="INTENT",
+            status="READY",
+            symbol=snapshot.symbol,
+            side=intent.side,
+            volume=size_result.normalized_volume,
+            price=intended_price,
+            detail=intent.reason or "execution intent created",
+            payload={"confidence": intent.confidence, "payload": intent.payload},
+        )
+
+        try:
+            preflight_result = self.execution_runtime.preflight(snapshot, intent, size_result)
+        except Exception as exc:
+            preflight_result = {"status": "ERROR", "retcode": "", "detail": f"execution preflight failure: {exc}"}
+        preflight_status = str(preflight_result.get("status", "UNKNOWN"))
+        preflight_phase = "GUARD" if preflight_status == "GUARD_REJECTED" else "PRECHECK"
+        self.store.record_execution_event(
+            run_id=run_id,
+            cycle_id=cycle_id,
+            attempt_id=attempt_id,
+            event_type="ORDER_ATTEMPT",
+            phase=preflight_phase,
+            status=preflight_status,
+            symbol=snapshot.symbol,
+            side=intent.side,
+            volume=size_result.normalized_volume,
+            price=intended_price,
+            quoted_price=preflight_result.get("request", {}).get("price"),
+            retcode=str(preflight_result.get("retcode", "")),
+            detail=str(preflight_result.get("detail", "")),
+            payload=preflight_result,
+        )
+        if preflight_status == "GUARD_REJECTED":
+            return PollingCycleResult(
+                cycle_id=cycle_id,
+                halted=False,
+                detail=str(preflight_result.get("detail", "execution guard rejected")),
+                action="EXECUTION_GUARD_REJECTED",
+            )
+        if preflight_status != "PRECHECK_OK":
+            return PollingCycleResult(
+                cycle_id=cycle_id,
+                halted=False,
+                detail=str(preflight_result.get("detail", "broker precheck rejected")),
+                action="PRECHECK_REJECTED",
+            )
+
+        try:
+            execution_result = self.execution_runtime.execute(snapshot, intent, size_result, preflight_result=preflight_result)
+        except Exception as exc:
+            execution_result = {"status": "ERROR", "retcode": "", "detail": f"execution runtime failure: {exc}"}
+        final_phase = "FILL" if execution_result.get("status") in {"FILLED", "DRY_RUN_OK", "REJECTED", "ERROR"} else "SEND"
+        self.store.record_execution_event(
+            run_id=run_id,
+            cycle_id=cycle_id,
+            attempt_id=attempt_id,
+            event_type="ORDER_ATTEMPT",
+            phase=final_phase,
             status=str(execution_result.get("status", "UNKNOWN")),
             symbol=snapshot.symbol,
             side=intent.side,
             volume=size_result.normalized_volume,
-            price=float(intent.entry_price or snapshot.ask if intent.side == "buy" else snapshot.bid),
+            price=intended_price,
+            quoted_price=execution_result.get("quoted_price"),
+            executed_price=execution_result.get("realized_price", execution_result.get("price")),
+            slippage_points=execution_result.get("slippage_points"),
+            fill_latency_ms=execution_result.get("fill_latency_ms"),
+            order_ticket=None if execution_result.get("order") is None else str(execution_result.get("order")),
+            deal_ticket=None if execution_result.get("deal") is None else str(execution_result.get("deal")),
             retcode=str(execution_result.get("retcode", "")),
             detail=str(execution_result.get("detail", "")),
             payload=execution_result,
         )
+        if execution_result.get("status") == "FILLED" and execution_result.get("order") is not None:
+            self.store.record_position_event(
+                run_id=run_id,
+                cycle_id=cycle_id,
+                broker_position_id=str(execution_result.get("order")),
+                symbol=snapshot.symbol,
+                side=intent.side,
+                volume=execution_result.get("volume", size_result.normalized_volume),
+                status="OPENED",
+                entry_price=execution_result.get("realized_price", execution_result.get("price")),
+                opened_at=datetime.now(timezone.utc).isoformat(),
+                commission_cash=execution_result.get("commission_cash"),
+                swap_cash=execution_result.get("swap_cash"),
+                payload={
+                    "deal": execution_result.get("deal"),
+                    "quoted_price": execution_result.get("quoted_price"),
+                    "slippage_points": execution_result.get("slippage_points"),
+                    "fill_latency_ms": execution_result.get("fill_latency_ms"),
+                    "commission_cash": execution_result.get("commission_cash"),
+                    "swap_cash": execution_result.get("swap_cash"),
+                },
+            )
         return PollingCycleResult(cycle_id=cycle_id, halted=False, detail="cycle executed", action=intent.action.value)

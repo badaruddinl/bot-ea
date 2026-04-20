@@ -147,10 +147,10 @@ class RiskEngineTests(unittest.TestCase):
 
         self.assertTrue(result.accepted)
         self.assertEqual(result.capital_base_cash, 100.0)
-        self.assertEqual(result.recommended_minimum_allocation_cash, 75.0)
+        self.assertEqual(result.recommended_minimum_allocation_cash, 100.0)
         self.assertAlmostEqual(result.risk_cash_budget, 1.0)
 
-    def test_tiny_fixed_allocation_is_rejected_as_unrealistic(self) -> None:
+    def test_tiny_fixed_allocation_is_rejected_by_hard_floor(self) -> None:
         request = PositionSizeRequest(
             account=self.account,
             symbol=self.symbol,
@@ -163,8 +163,8 @@ class RiskEngineTests(unittest.TestCase):
 
         self.assertFalse(result.accepted)
         self.assertEqual(result.capital_base_cash, 10.0)
-        self.assertEqual(result.recommended_minimum_allocation_cash, 100.0)
-        self.assertEqual(result.rejection_reason, "allocated risk cash below practical minimum for scalping setup")
+        self.assertEqual(result.recommended_minimum_allocation_cash, 50.0)
+        self.assertIn("ditolak", result.rejection_reason)
 
     def test_warning_contains_recommended_minimum_for_symbol_and_style(self) -> None:
         micro_symbol = SymbolSnapshot(
@@ -193,8 +193,72 @@ class RiskEngineTests(unittest.TestCase):
         result = self.engine.compute_position_size(request)
 
         self.assertTrue(result.accepted)
+        self.assertEqual(result.recommended_minimum_allocation_cash, 250.0)
+        self.assertTrue(any("kurang realistis" in warning for warning in result.warnings))
+
+    def test_price_aware_hard_floor_rejects_underfunded_xauusd(self) -> None:
+        xau_symbol = SymbolSnapshot(
+            name="XAUUSD",
+            instrument_class="metal",
+            risk_weight=1.3,
+            point=0.01,
+            tick_size=0.01,
+            tick_value=0.1,
+            volume_min=0.01,
+            volume_max=50.0,
+            volume_step=0.01,
+            spread_points=25.0,
+            stops_level_points=50.0,
+            freeze_level_points=10.0,
+            volatility_points=500.0,
+            price=4_800.0,
+            contract_size=100.0,
+            margin_rate=0.005,
+        )
+        request = PositionSizeRequest(
+            account=self.account,
+            symbol=xau_symbol,
+            policy=self.policy,
+            stop_distance_points=100.0,
+            trading_style=TradingStyle.SCALPING,
+            capital_allocation=CapitalAllocation(mode=CapitalAllocationMode.FIXED_CASH, value=25.0),
+        )
+
+        result = self.engine.compute_position_size(request)
+
+        self.assertFalse(result.accepted)
         self.assertEqual(result.recommended_minimum_allocation_cash, 150.0)
-        self.assertTrue(any("recommended minimum allocation" in warning for warning in result.warnings))
+        self.assertIn("tidak realistis", result.rejection_reason)
+
+    def test_practical_risk_pressure_can_reject_index_intraday(self) -> None:
+        request = PositionSizeRequest(
+            account=self.account,
+            symbol=SymbolSnapshot(
+                name="NAS100",
+                instrument_class="index_cfd",
+                risk_weight=1.5,
+                point=1.0,
+                tick_size=1.0,
+                tick_value=0.1,
+                volume_min=0.1,
+                volume_max=100.0,
+                volume_step=0.1,
+                spread_points=10.0,
+                stops_level_points=5.0,
+                freeze_level_points=0.0,
+                volatility_points=200.0,
+            ),
+            policy=self.policy,
+            stop_distance_points=20.0,
+            trading_style=TradingStyle.INTRADAY,
+            capital_allocation=CapitalAllocation(mode=CapitalAllocationMode.FIXED_CASH, value=80.0),
+        )
+
+        result = self.engine.compute_position_size(request)
+
+        self.assertFalse(result.accepted)
+        self.assertEqual(result.recommended_minimum_allocation_cash, 200.0)
+        self.assertIn("ditolak", result.rejection_reason)
 
 
 if __name__ == "__main__":
