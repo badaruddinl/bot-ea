@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import socket
 import sys
 import unittest
 from pathlib import Path
@@ -15,6 +16,9 @@ class FakeBackend:
         self.connected_urls: list[str] = []
         self.requests: list[tuple[str, dict]] = []
         self.events: list[dict] = []
+        self.start_managed_calls = 0
+        self.stop_managed_calls = 0
+        self._managed_running = False
         self.refresh_counter = 0
         self._manual_snapshot = {
             "lot_mode": "manual",
@@ -36,6 +40,24 @@ class FakeBackend:
     def connect(self, url: str) -> dict:
         self.connected_urls.append(url)
         return {"host": "127.0.0.1", "port": 8765}
+
+    def start_managed_service(self) -> dict:
+        self.start_managed_calls += 1
+        self._managed_running = True
+        return {"host": "127.0.0.1", "port": 8765}
+
+    def stop_managed_service(self) -> None:
+        self.stop_managed_calls += 1
+        self._managed_running = False
+
+    def is_managed_service_running(self) -> bool:
+        return self._managed_running
+
+    def managed_service_url(self) -> str:
+        return "ws://127.0.0.1:8765"
+
+    def managed_service_label(self) -> str:
+        return "App-managed"
 
     def request(self, name: str, params: dict, timeout: float = 15.0):
         _ = timeout
@@ -135,6 +157,27 @@ class FakeBackend:
                     },
                 }
             )
+            self.events.append(
+                {
+                    "name": "runtime_cycle",
+                    "payload": {
+                        "message": "runtime cycle",
+                        "run_id": "run-123",
+                        "snapshot": {
+                            "symbol": "XAUUSD",
+                            "bid": 4803.0,
+                            "ask": 4803.17,
+                            "spread_points": 17.0,
+                            "tick_time": "2026-04-21T00:00:11+00:00",
+                            "equity": 999.0,
+                            "free_margin": 888.0,
+                            "trade_mode": "full",
+                            "execution_mode": "market",
+                            "filling_mode": "fok",
+                        },
+                    },
+                }
+            )
             return "run-123"
         if name == "stop_runtime":
             self.events.append(
@@ -188,6 +231,7 @@ class FakeBackend:
         return events
 
     def close(self) -> None:
+        self.stop_managed_service()
         return None
 
     def request_count(self, name: str) -> int:
@@ -195,6 +239,44 @@ class FakeBackend:
 
 
 class QtAppTests(unittest.TestCase):
+    def _make_adapter(self):
+        from bot_ea.mt5_adapter import MockMT5Adapter
+
+        return MockMT5Adapter(
+            account_info={
+                "equity": 1000.0,
+                "balance": 1000.0,
+                "margin_free": 900.0,
+                "margin_level": 400.0,
+                "trade_allowed": True,
+                "trade_expert": True,
+            },
+            symbols={
+                "XAUUSD": {
+                    "name": "XAUUSD",
+                    "point": 0.01,
+                    "trade_tick_size": 0.01,
+                    "trade_tick_value": 0.1,
+                    "volume_min": 0.01,
+                    "volume_max": 50.0,
+                    "volume_step": 0.01,
+                    "spread": 17,
+                    "trade_stops_level": 10,
+                    "trade_freeze_level": 0,
+                    "visible": True,
+                    "bid": 4797.74,
+                    "ask": 4797.91,
+                    "price": 4797.91,
+                }
+            },
+        )
+
+    @staticmethod
+    def _free_port() -> int:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.bind(("127.0.0.1", 0))
+            return int(sock.getsockname()[1])
+
     def test_qt_window_constructs(self) -> None:
         try:
             from PySide6.QtWidgets import QApplication
@@ -211,11 +293,13 @@ class QtAppTests(unittest.TestCase):
             self.assertEqual(window.windowTitle(), "bot-ea Qt Desktop Runtime")
             self.assertEqual(window.symbol_combo.currentText(), "EURUSD")
             self.assertEqual(window.timeframe_combo.currentText(), "M15")
-            self.assertEqual(window.service_status.text(), "Connected 127.0.0.1:8765")
+            self.assertEqual(window.service_status.text(), "App-managed connected 127.0.0.1:8765")
             self.assertEqual(backend.connected_urls[-1], "ws://127.0.0.1:8765")
+            self.assertEqual(backend.start_managed_calls, 1)
             self.assertTrue(window.preview_poll_timer.isActive())
         finally:
             window.close()
+            self.assertEqual(backend.stop_managed_calls, 1)
 
     def test_qt_primary_actions_use_websocket_backend(self) -> None:
         try:
@@ -243,6 +327,7 @@ class QtAppTests(unittest.TestCase):
             window.execute_manual()
             window.play_runtime()
             window._pump_runtime_events()
+            self.assertIn("tick_time=2026-04-21T00:00:11+00:00", window.market_card["text"].toPlainText())
             self.assertFalse(window.check_mt5_button.isEnabled())
             self.assertFalse(window.refresh_button.isEnabled())
             self.assertFalse(window.execute_button.isEnabled())
@@ -265,7 +350,7 @@ class QtAppTests(unittest.TestCase):
                 self.assertIn(required, commands)
 
             self.assertIn("symbol=XAUUSD", window.market_card["text"].toPlainText())
-            self.assertIn("tick_time=2026-04-21T00:00:10+00:00", window.market_card["text"].toPlainText())
+            self.assertIn("tick_time=2026-04-21T00:00:11+00:00", window.market_card["text"].toPlainText())
             self.assertIn("manual_order_snapshot:", window.manual_card["text"].toPlainText())
             self.assertIn("sizing_snapshot:", window.risk_card["text"].toPlainText())
             self.assertEqual(window.run_id_status.text(), "run-123")
@@ -318,6 +403,42 @@ class QtAppTests(unittest.TestCase):
             self.assertTrue(window.execute_button.isEnabled())
         finally:
             window.close()
+
+    def test_qt_backend_can_run_app_managed_service_without_external_shell(self) -> None:
+        from bot_ea.qt_app import QtBotEaWebSocketBackend
+
+        backend = QtBotEaWebSocketBackend(
+            host="127.0.0.1",
+            port=self._free_port(),
+            adapter=self._make_adapter(),
+        )
+        try:
+            self.assertFalse(backend.is_managed_service_running())
+            backend.start_managed_service()
+            self.assertTrue(backend.is_managed_service_running())
+            info = backend.connect(backend.managed_service_url())
+            self.assertEqual(info["host"], "127.0.0.1")
+            result = backend.request(
+                "refresh_manual",
+                {
+                    "symbol": "XAUUSD",
+                    "timeframe": "M15",
+                    "trading_style": "intraday",
+                    "stop_distance_points": 10,
+                    "capital_mode": "fixed_cash",
+                    "capital_value": 100,
+                    "lot_mode": "manual",
+                    "manual_lot": 0.01,
+                    "side": "buy",
+                    "db_path": str(Path.cwd() / "bot_ea_runtime.db"),
+                },
+                timeout=10.0,
+            )
+            self.assertEqual(result["snapshot"]["symbol"], "XAUUSD")
+            self.assertIn("manual_order_snapshot", result)
+        finally:
+            backend.close()
+            self.assertFalse(backend.is_managed_service_running())
 
 
 if __name__ == "__main__":

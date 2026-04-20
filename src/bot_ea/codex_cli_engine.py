@@ -9,6 +9,10 @@ from pathlib import Path
 from .polling_runtime import AIIntent, DecisionAction, RuntimeSnapshot
 
 
+class CodexTimeoutError(RuntimeError):
+    """Raised when `codex exec` exceeds the allowed decision timeout."""
+
+
 class CodexCLIEngine:
     """Subprocess adapter for `codex exec` using a plain-text response contract."""
 
@@ -42,7 +46,7 @@ class CodexCLIEngine:
                     cwd=self.cwd,
                 )
             except subprocess.TimeoutExpired as exc:
-                raise RuntimeError(f"codex exec timed out after {self.timeout_seconds} seconds") from exc
+                raise CodexTimeoutError(f"codex exec timed out after {self.timeout_seconds} seconds") from exc
             except FileNotFoundError as exc:
                 raise RuntimeError(f"codex executable not found: {self.executable}") from exc
             except subprocess.CalledProcessError as exc:

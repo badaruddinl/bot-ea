@@ -5,14 +5,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 from queue import Empty, Queue
 from threading import Event, Thread
+from time import monotonic
 from typing import Any, Callable
 from uuid import uuid4
 
-from .codex_cli_engine import CodexCLIEngine
+from .codex_cli_engine import CodexCLIEngine, CodexTimeoutError
 from .models import CapitalAllocation, RiskPolicy, TradingStyle
 from .mt5_adapter import LiveMT5Adapter, TerminalStatusSnapshot
 from .mt5_execution_runtime import MT5ExecutionRuntime
-from .polling_runtime import MT5SnapshotProvider, PollingConfig, PollingRuntime
+from .polling_runtime import AIIntent, DecisionAction, MT5SnapshotProvider, PollingConfig, PollingRuntime
 from .risk_engine import RiskEngine
 from .runtime_store import RuntimeStore
 from .stop_policy import SessionPerformance, StopPolicy
@@ -30,6 +31,7 @@ class DesktopRuntimeConfig:
     codex_model: str | None = None
     codex_cwd: str | None = None
     codex_timeout_seconds: int = 60
+    codex_timeout_cooldown_seconds: int = 30
     poll_interval_seconds: int = 30
     session_state: str = "desktop_runtime"
     news_state: str = "unknown"
@@ -163,6 +165,52 @@ class SupervisedExecutionRuntime:
                 f"{price:.6f}",
             ]
         )
+
+
+class TimeoutTolerantDecisionEngine:
+    def __init__(
+        self,
+        *,
+        engine: Any,
+        event_callback: Callable[[str, str, dict[str, Any]], None],
+        cooldown_seconds: int,
+    ) -> None:
+        self.engine = engine
+        self.event_callback = event_callback
+        self.cooldown_seconds = max(int(cooldown_seconds), 0)
+        self._cooldown_until = 0.0
+
+    def decide(self, snapshot) -> AIIntent:
+        remaining = self._cooldown_remaining_seconds()
+        if remaining > 0:
+            return AIIntent(
+                action=DecisionAction.NO_TRADE,
+                side=None,
+                reason=f"codex timeout cooldown active for {remaining}s",
+                stop_distance_points=snapshot.stop_distance_points,
+                payload={"timeout_cooldown_seconds_remaining": remaining},
+            )
+        try:
+            return self.engine.decide(snapshot)
+        except CodexTimeoutError as exc:
+            if self.cooldown_seconds > 0:
+                self._cooldown_until = monotonic() + self.cooldown_seconds
+            self.event_callback(
+                "codex_timeout",
+                f"codex decision timed out; using NO_TRADE fallback for {self.cooldown_seconds}s",
+                {"error": str(exc), "cooldown_seconds": self.cooldown_seconds},
+            )
+            return AIIntent(
+                action=DecisionAction.NO_TRADE,
+                side=None,
+                reason=f"codex timeout fallback: {exc}",
+                stop_distance_points=snapshot.stop_distance_points,
+                payload={"error": str(exc), "cooldown_seconds": self.cooldown_seconds},
+            )
+
+    def _cooldown_remaining_seconds(self) -> int:
+        remaining = self._cooldown_until - monotonic()
+        return int(remaining) if remaining.is_integer() else int(remaining) + (1 if remaining > 0 else 0)
 
 
 class DesktopRuntimeCoordinator:
@@ -344,6 +392,8 @@ class DesktopRuntimeCoordinator:
                     "codex_executable": config.codex_executable,
                     "codex_model": config.codex_model,
                     "codex_cwd": config.codex_cwd,
+                    "codex_timeout_seconds": config.codex_timeout_seconds,
+                    "codex_timeout_cooldown_seconds": config.codex_timeout_cooldown_seconds,
                     "poll_interval_seconds": config.poll_interval_seconds,
                     "stop_distance_points": config.stop_distance_points,
                 },
@@ -400,6 +450,7 @@ class DesktopRuntimeCoordinator:
                         "action": result.action,
                         "detail": result.detail,
                         "halted": result.halted,
+                        "snapshot": result.snapshot,
                         "overview": overview or {},
                         "health": health,
                         "live_enabled": supervised_runtime.live_enabled,
@@ -466,6 +517,16 @@ class DesktopRuntimeCoordinator:
         supervised_runtime.set_live_enabled(self._desired_live_enabled)
         self._execution_runtime = live_execution_runtime
         self._supervised_runtime = supervised_runtime
+        decision_engine = TimeoutTolerantDecisionEngine(
+            engine=self.codex_engine_factory(
+                executable=config.codex_executable,
+                model=config.codex_model,
+                cwd=config.codex_cwd,
+                timeout_seconds=config.codex_timeout_seconds,
+            ),
+            event_callback=self._emit,
+            cooldown_seconds=config.codex_timeout_cooldown_seconds,
+        )
         runtime = PollingRuntime(
             store=store,
             snapshot_provider=self._build_provider(
@@ -478,12 +539,7 @@ class DesktopRuntimeCoordinator:
                 session_state=config.session_state,
                 news_state=config.news_state,
             ),
-            decision_engine=self.codex_engine_factory(
-                executable=config.codex_executable,
-                model=config.codex_model,
-                cwd=config.codex_cwd,
-                timeout_seconds=config.codex_timeout_seconds,
-            ),
+            decision_engine=decision_engine,
             execution_runtime=supervised_runtime,
             risk_engine=self.risk_engine_factory(),
             stop_policy=self.stop_policy_factory(),

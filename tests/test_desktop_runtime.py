@@ -8,6 +8,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+from bot_ea.codex_cli_engine import CodexTimeoutError  # noqa: E402
 from bot_ea.desktop_runtime import DesktopRuntimeConfig, DesktopRuntimeCoordinator  # noqa: E402
 from bot_ea.models import (  # noqa: E402
     AccountSnapshot,
@@ -156,6 +157,18 @@ class OpenCodexEngine:
         )
 
 
+class TimeoutingCodexEngine:
+    def __init__(self, **_: object) -> None:
+        self.decide_calls = 0
+
+    def probe(self) -> str:
+        return "codex-cli fake"
+
+    def decide(self, snapshot) -> AIIntent:
+        self.decide_calls += 1
+        raise CodexTimeoutError("codex exec timed out after 60 seconds")
+
+
 class DesktopRuntimeCoordinatorTests(unittest.TestCase):
     def test_probe_methods_return_runtime_readiness(self) -> None:
         coordinator = DesktopRuntimeCoordinator(
@@ -197,9 +210,12 @@ class DesktopRuntimeCoordinatorTests(unittest.TestCase):
             run_id = coordinator.start(config)
             deadline = time.time() + 3.0
             seen_kinds: set[str] = set()
+            last_cycle_payload = None
             while time.time() < deadline and "runtime_cycle" not in seen_kinds:
                 for event in coordinator.drain_events():
                     seen_kinds.add(event.kind)
+                    if event.kind == "runtime_cycle":
+                        last_cycle_payload = event.payload
                 time.sleep(0.05)
             coordinator.set_live_enabled(True)
             coordinator.stop()
@@ -213,6 +229,8 @@ class DesktopRuntimeCoordinatorTests(unittest.TestCase):
             self.assertIn("runtime_stopped", seen_kinds)
             self.assertFalse(coordinator.is_running)
             self.assertFalse(coordinator.live_enabled)
+            assert last_cycle_payload is not None
+            self.assertEqual(last_cycle_payload["snapshot"]["symbol"], "EURUSD")
 
     def test_live_mode_requires_operator_approval_before_submission(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -290,6 +308,51 @@ class DesktopRuntimeCoordinatorTests(unittest.TestCase):
                 self.assertNotIn("runtime_error", seen_kinds)
                 self.assertGreaterEqual(len(adapters), 2)
                 self.assertEqual(adapters[0].shutdown_calls, 1)
+            finally:
+                coordinator.stop()
+
+    def test_runtime_codex_timeout_uses_bounded_cooldown_fallback(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            engines: list[TimeoutingCodexEngine] = []
+
+            def codex_engine_factory(**_: object) -> TimeoutingCodexEngine:
+                engine = TimeoutingCodexEngine()
+                engines.append(engine)
+                return engine
+
+            coordinator = DesktopRuntimeCoordinator(
+                adapter_factory=FakeAdapter,
+                codex_engine_factory=codex_engine_factory,
+                risk_policy=RiskPolicy(base_risk_pct=1.0, max_total_open_risk_pct=2.0, daily_loss_limit_pct=3.0),
+            )
+            config = DesktopRuntimeConfig(
+                symbol="EURUSD",
+                timeframe="M5",
+                trading_style=TradingStyle.INTRADAY,
+                stop_distance_points=20.0,
+                capital_allocation=CapitalAllocation(mode=CapitalAllocationMode.FIXED_CASH, value=1000.0),
+                db_path=str(Path(tmpdir) / "runtime.db"),
+                codex_timeout_cooldown_seconds=2,
+                poll_interval_seconds=1,
+            )
+
+            try:
+                coordinator.start(config)
+                deadline = time.time() + 3.5
+                cycle_count = 0
+                seen_kinds: list[str] = []
+                while time.time() < deadline and cycle_count < 2:
+                    for event in coordinator.drain_events():
+                        seen_kinds.append(event.kind)
+                        if event.kind == "runtime_cycle":
+                            cycle_count += 1
+                    time.sleep(0.05)
+
+                self.assertEqual(len(engines), 1)
+                self.assertEqual(engines[0].decide_calls, 1)
+                self.assertIn("codex_timeout", seen_kinds)
+                self.assertGreaterEqual(cycle_count, 2)
+                self.assertNotIn("runtime_error", seen_kinds)
             finally:
                 coordinator.stop()
 

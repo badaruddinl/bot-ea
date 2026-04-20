@@ -67,6 +67,7 @@ class PollingCycleResult:
     halted: bool
     detail: str
     action: str
+    snapshot: dict[str, Any] = field(default_factory=dict)
 
 
 class SnapshotProvider(Protocol):
@@ -187,6 +188,7 @@ class PollingRuntime:
             return PollingCycleResult(cycle_id=cycle_id, halted=True, detail=stop_decision.detail, action=DecisionAction.HALT.value)
 
         snapshot = self.snapshot_provider.get_snapshot()
+        snapshot_payload = self._snapshot_payload(snapshot)
         self.store.record_market_snapshot(
             run_id=run_id,
             cycle_id=cycle_id,
@@ -230,8 +232,20 @@ class PollingRuntime:
                     detail=intent.reason or "AI requested halt",
                 )
                 self.store.update_run_status(run_id, status="HALTED", stop_reason=StopReason.SESSION_TIMEOUT.value)
-                return PollingCycleResult(cycle_id=cycle_id, halted=True, detail=intent.reason or "halted", action=intent.action.value)
-            return PollingCycleResult(cycle_id=cycle_id, halted=False, detail=intent.reason or "no trade", action=intent.action.value)
+                return PollingCycleResult(
+                    cycle_id=cycle_id,
+                    halted=True,
+                    detail=intent.reason or "halted",
+                    action=intent.action.value,
+                    snapshot=snapshot_payload,
+                )
+            return PollingCycleResult(
+                cycle_id=cycle_id,
+                halted=False,
+                detail=intent.reason or "no trade",
+                action=intent.action.value,
+                snapshot=snapshot_payload,
+            )
 
         position_request = PositionSizeRequest(
             account=snapshot.account,
@@ -263,6 +277,7 @@ class PollingRuntime:
                 halted=False,
                 detail=size_result.rejection_reason or "risk guard rejected",
                 action="RISK_REJECTED",
+                snapshot=snapshot_payload,
             )
 
         attempt_id = uuid4().hex
@@ -310,6 +325,7 @@ class PollingRuntime:
                 halted=False,
                 detail=str(preflight_result.get("detail", "execution guard rejected")),
                 action="EXECUTION_GUARD_REJECTED",
+                snapshot=snapshot_payload,
             )
         if preflight_status != "PRECHECK_OK":
             return PollingCycleResult(
@@ -317,6 +333,7 @@ class PollingRuntime:
                 halted=False,
                 detail=str(preflight_result.get("detail", "broker precheck rejected")),
                 action="PRECHECK_REJECTED",
+                snapshot=snapshot_payload,
             )
 
         try:
@@ -351,6 +368,7 @@ class PollingRuntime:
                 halted=False,
                 detail=str(execution_result.get("detail", "operator approval required")),
                 action="APPROVAL_REQUIRED",
+                snapshot=snapshot_payload,
             )
         if execution_result.get("status") == "FILLED" and execution_result.get("order") is not None:
             self.store.record_position_event(
@@ -374,4 +392,26 @@ class PollingRuntime:
                     "swap_cash": execution_result.get("swap_cash"),
                 },
             )
-        return PollingCycleResult(cycle_id=cycle_id, halted=False, detail="cycle executed", action=intent.action.value)
+        return PollingCycleResult(
+            cycle_id=cycle_id,
+            halted=False,
+            detail="cycle executed",
+            action=intent.action.value,
+            snapshot=snapshot_payload,
+        )
+
+    @staticmethod
+    def _snapshot_payload(snapshot: RuntimeSnapshot) -> dict[str, Any]:
+        return {
+            "symbol": snapshot.symbol,
+            "timeframe": snapshot.timeframe,
+            "bid": snapshot.bid,
+            "ask": snapshot.ask,
+            "spread_points": snapshot.spread_points,
+            "tick_time": snapshot.context.get("tick_time"),
+            "equity": snapshot.account.equity,
+            "free_margin": snapshot.account.free_margin,
+            "trade_mode": snapshot.symbol_snapshot.trade_mode,
+            "execution_mode": snapshot.symbol_snapshot.execution_mode,
+            "filling_mode": snapshot.symbol_snapshot.filling_mode,
+        }

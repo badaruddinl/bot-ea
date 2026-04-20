@@ -72,6 +72,10 @@ class QtBotEaLocalServiceRunner:
         self._stop_requested = threading.Event()
         self._start_error: Exception | None = None
 
+    @property
+    def is_running(self) -> bool:
+        return self._thread is not None and self._thread.is_alive()
+
     def start(self, timeout: float = 5.0) -> None:
         if self._thread is not None and self._thread.is_alive():
             return
@@ -298,7 +302,38 @@ class QtBotEaWebSocketBackend:
             max_total_open_risk_pct=2.0,
             daily_loss_limit_pct=3.0,
         )
+        adapter_factory = (lambda: adapter) if adapter is not None else LiveMT5Adapter
+        coordinator = runtime_coordinator or DesktopRuntimeCoordinator(
+            adapter_factory=adapter_factory,
+            risk_policy=self.risk_policy,
+        )
+        service = QtBotEaWebSocketService(
+            host=host,
+            port=port,
+            adapter_factory=adapter_factory,
+            runtime_coordinator=coordinator,
+            risk_engine=risk_engine,
+            risk_policy=self.risk_policy,
+        )
+        self._local_runner = QtBotEaLocalServiceRunner(service)
         self._client = QtBotEaWebSocketClient(self._url(host, port))
+
+    def start_managed_service(self) -> dict[str, Any]:
+        self._local_runner.start()
+        return {"host": self.host, "port": self.port}
+
+    def stop_managed_service(self) -> None:
+        self._client.close()
+        self._local_runner.stop()
+
+    def is_managed_service_running(self) -> bool:
+        return self._local_runner.is_running
+
+    def managed_service_url(self) -> str:
+        return self._url(self.host, self.port)
+
+    def managed_service_label(self) -> str:
+        return "App-managed"
 
     def connect(self, url: str) -> dict[str, Any]:
         return self._client.connect(url)
@@ -310,7 +345,7 @@ class QtBotEaWebSocketBackend:
         return self._client.drain_events()
 
     def close(self) -> None:
-        self._client.close()
+        self.stop_managed_service()
 
     @staticmethod
     def _url(host: str, port: int) -> str:
@@ -366,6 +401,7 @@ class BotEaQtWindow(QMainWindow):
         self.manual_order_snapshot: dict[str, Any] | None = None
         self._field_guard = False
         self._service_connected = False
+        self._managed_service_owned = False
         self._runtime_running = False
         self._live_enabled = False
         self._pending_approval: dict[str, Any] | None = None
@@ -472,7 +508,7 @@ class BotEaQtWindow(QMainWindow):
 
         self.action_group = QGroupBox("Actions", self)
         action_layout = QGridLayout(self.action_group)
-        self.connect_service_button = QPushButton("Connect Service", self)
+        self.connect_service_button = QPushButton("Start / Connect Service", self)
         self.check_mt5_button = QPushButton("Check MT5", self)
         self.load_codex_button = QPushButton("Load Codex", self)
         self.refresh_button = QPushButton("Refresh", self)
@@ -608,11 +644,15 @@ class BotEaQtWindow(QMainWindow):
 
     def connect_service(self, checked: bool = False, *, show_errors: bool = True) -> bool:
         _ = checked
+        url = self._service_url()
         try:
-            info = self.backend.connect(self._service_url())
+            if url == self.backend.managed_service_url():
+                self.backend.start_managed_service()
+            info = self.backend.connect(url)
         except Exception as exc:
             detail = self._format_exception_detail(exc)
             self._service_connected = False
+            self._managed_service_owned = False
             self.service_status.setText(detail)
             self._append_log([f"service_error: {detail}"])
             self._sync_button_states()
@@ -622,8 +662,11 @@ class BotEaQtWindow(QMainWindow):
         host = str(info.get("host") or self.service_host_input.text().strip())
         port = str(info.get("port") or self.service_port_input.text().strip())
         self._service_connected = True
-        self.service_status.setText(f"Connected {host}:{port}")
-        self._append_log([f"service_connected ws://{host}:{port}"])
+        managed_url = self.backend.managed_service_url()
+        self._managed_service_owned = bool(url == managed_url and self.backend.is_managed_service_running())
+        service_label = self.backend.managed_service_label() if self._managed_service_owned else "External"
+        self.service_status.setText(f"{service_label} connected {host}:{port}")
+        self._append_log([f"service_connected mode={service_label.lower()} ws://{host}:{port}"])
         self._sync_button_states()
         return True
 
@@ -978,8 +1021,10 @@ class BotEaQtWindow(QMainWindow):
             message = str(payload.get("message") or "")
             if name == "service_ready":
                 self._service_connected = True
+                self._managed_service_owned = bool(self.backend.is_managed_service_running())
+                service_label = self.backend.managed_service_label() if self._managed_service_owned else "External"
                 self.service_status.setText(
-                    f"Connected {payload.get('host', self.service_host_input.text().strip())}:{payload.get('port', self.service_port_input.text().strip())}"
+                    f"{service_label} connected {payload.get('host', self.service_host_input.text().strip())}:{payload.get('port', self.service_port_input.text().strip())}"
                 )
             elif name == "runtime_started":
                 self._runtime_running = True
@@ -988,6 +1033,10 @@ class BotEaQtWindow(QMainWindow):
                     self.run_id_status.setText(str(payload["run_id"]))
             elif name == "runtime_cycle":
                 self.runtime_status.setText(self._short(message))
+                runtime_snapshot = payload.get("snapshot")
+                if isinstance(runtime_snapshot, dict) and runtime_snapshot:
+                    self.snapshot = dict(runtime_snapshot)
+                    self._update_summary_cards()
             elif name in {"runtime_error", "runtime_halted", "runtime_stopped"}:
                 self._runtime_running = False
                 self.runtime_status.setText(self._short(message))
@@ -1190,6 +1239,7 @@ class BotEaQtWindow(QMainWindow):
         ):
             widget.setEnabled(trade_setup_enabled)
         self.manual_lot_input.setEnabled(trade_setup_enabled and self.lot_mode_combo.currentText().strip() == "manual")
+        self.connect_service_button.setEnabled(not self._runtime_running)
 
     def _append_log(self, lines: list[str]) -> None:
         current = self.events_text.toPlainText().strip()

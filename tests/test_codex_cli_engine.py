@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from bot_ea.codex_cli_engine import CodexCLIEngine  # noqa: E402
+from bot_ea.codex_cli_engine import CodexCLIEngine, CodexTimeoutError  # noqa: E402
 from bot_ea.polling_runtime import DecisionAction  # noqa: E402
 
 
@@ -86,7 +86,7 @@ class CodexCLIEngineTests(unittest.TestCase):
             capital_allocation=CapitalAllocation(mode=CapitalAllocationMode.FIXED_CASH, value=250.0),
         )
 
-        with self.assertRaisesRegex(RuntimeError, "codex exec timed out after 60 seconds"):
+        with self.assertRaisesRegex(CodexTimeoutError, "codex exec timed out after 60 seconds"):
             engine.decide(snapshot)
 
     @patch("bot_ea.codex_cli_engine.shutil.which")
