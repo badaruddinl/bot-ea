@@ -195,7 +195,7 @@ class GuiAppTests(unittest.TestCase):
         finally:
             root.destroy()
 
-    def test_refresh_shows_sizing_snapshot_and_disables_execute_when_lot_is_zero(self) -> None:
+    def test_refresh_shows_manual_snapshot_even_when_risk_sizing_blocks(self) -> None:
         root = self._make_root()
         coordinator = FakeRuntimeCoordinator()
         try:
@@ -206,11 +206,30 @@ class GuiAppTests(unittest.TestCase):
             panel.allocation_var.set("20")
             panel.refresh()
             assert panel.execute_button is not None
-            self.assertTrue(panel.execute_button.instate(["disabled"]))
             output = panel.output.get("1.0", tk.END)
             self.assertIn("sizing_snapshot:", output)
-            self.assertIn("final_lot=0.0000", output)
+            self.assertIn("manual_order_snapshot:", output)
             self.assertIn("why_blocked=", output)
+        finally:
+            root.destroy()
+
+    def test_manual_lot_mode_resizes_down_to_affordable_lot(self) -> None:
+        root = self._make_root()
+        coordinator = FakeRuntimeCoordinator()
+        try:
+            panel = LiveControlPanel(root, runtime_coordinator=coordinator, adapter=self._make_adapter())
+            panel.symbol_var.set("XAUUSD")
+            panel.allocation_mode_var.set(CapitalAllocationMode.FIXED_CASH.value)
+            panel.allocation_var.set("20")
+            panel.lot_mode_var.set("manual")
+            panel.manual_lot_var.set("1.00")
+            panel.refresh()
+            assert panel.execute_button is not None
+            output = panel.output.get("1.0", tk.END)
+            self.assertIn("lot_mode=manual", output)
+            self.assertIn("requested_lot=1.0000", output)
+            self.assertIn("resized_down=True", output)
+            self.assertFalse(panel.execute_button.instate(["disabled"]))
         finally:
             root.destroy()
 

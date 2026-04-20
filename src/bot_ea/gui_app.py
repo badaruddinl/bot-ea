@@ -20,6 +20,7 @@ class LiveControlPanel:
     STYLE_OPTIONS = tuple(style.value for style in TradingStyle)
     ALLOCATION_MODE_OPTIONS = tuple(mode.value for mode in CapitalAllocationMode)
     MANUAL_SIDE_OPTIONS = ("buy", "sell")
+    LOT_MODE_OPTIONS = ("auto_max", "manual")
     CODEX_MODEL_PRESETS = (
         "",
         "gpt-5.4",
@@ -57,6 +58,8 @@ class LiveControlPanel:
         self.allocation_mode_var = tk.StringVar(value=CapitalAllocationMode.FIXED_CASH.value)
         self.allocation_label_var = tk.StringVar(value="Capital To Use (USD)")
         self.allocation_var = tk.StringVar(value="250")
+        self.lot_mode_var = tk.StringVar(value="auto_max")
+        self.manual_lot_var = tk.StringVar(value="0.01")
         self.side_var = tk.StringVar(value="buy")
         self.db_path_var = tk.StringVar(value=str(Path.cwd() / "bot_ea_runtime.db"))
         self.codex_executable_var = tk.StringVar(value="codex")
@@ -103,6 +106,8 @@ class LiveControlPanel:
             ("Stop Distance (points)", self.stop_var),
             ("Capital Mode", self.allocation_mode_var),
             (self.allocation_label_var, self.allocation_var),
+            ("Lot Mode", self.lot_mode_var),
+            ("Manual Lot Request", self.manual_lot_var),
             ("Manual Side Only", self.side_var),
             ("Log File (Runtime DB)", self.db_path_var),
         ]
@@ -163,7 +168,7 @@ class LiveControlPanel:
 
         ttk.Label(
             frame,
-            text="Manual Side Only dipakai untuk tombol Execute manual. Saat memakai Play Runtime, arah trade diputuskan runtime AI.",
+            text="Manual Side Only dipakai untuk tombol Execute manual. Lot Mode=manual berarti lot Anda dicek lalu di-resize turun jika terlalu besar.",
         ).grid(row=4, column=0, columnspan=2, sticky="w", pady=(0, 4))
         ttk.Label(
             frame,
@@ -183,7 +188,7 @@ class LiveControlPanel:
             else:
                 ttk.Label(parent, text=label).grid(row=row, column=0, sticky="w", padx=(0, 8), pady=4)
                 label_key = label
-            if label_key in {"Symbol (from MT5)", "Timeframe", "Strategy Style", "Capital Mode", "Manual Side Only", "AI Model (preset/manual)"}:
+            if label_key in {"Symbol (from MT5)", "Timeframe", "Strategy Style", "Capital Mode", "Lot Mode", "Manual Side Only", "AI Model (preset/manual)"}:
                 if label_key == "Symbol (from MT5)":
                     values = [self.symbol_var.get()]
                     state = "normal"
@@ -195,6 +200,9 @@ class LiveControlPanel:
                     state = "readonly"
                 elif label_key == "Capital Mode":
                     values = list(self.ALLOCATION_MODE_OPTIONS)
+                    state = "readonly"
+                elif label_key == "Lot Mode":
+                    values = list(self.LOT_MODE_OPTIONS)
                     state = "readonly"
                 elif label_key == "Manual Side Only":
                     values = list(self.MANUAL_SIDE_OPTIONS)
@@ -721,12 +729,14 @@ class LiveControlPanel:
             return None
         symbol = self.snapshot.symbol_snapshot
         side = self.side_var.get()
+        lot_mode = self.lot_mode_var.get().strip() or "auto_max"
         order_price = float(self.snapshot.ask if side == "buy" else self.snapshot.bid)
         allocation_cap = self._allocation_capital_basis()
         if allocation_cap <= 0:
             return {
                 "accepted": False,
                 "final_lot": 0.0,
+                "lot_mode": lot_mode,
                 "why_blocked": "capital allocation must be positive",
             }
         min_lot = float(symbol.volume_min or 0.0)
@@ -736,6 +746,7 @@ class LiveControlPanel:
             return {
                 "accepted": False,
                 "final_lot": 0.0,
+                "lot_mode": lot_mode,
                 "why_blocked": "symbol volume or price configuration is invalid",
             }
         margin_min = self.adapter.estimate_margin(self.snapshot.symbol, min_lot, side, order_price)
@@ -743,6 +754,7 @@ class LiveControlPanel:
             return {
                 "accepted": False,
                 "final_lot": 0.0,
+                "lot_mode": lot_mode,
                 "why_blocked": margin_min.detail,
             }
         available_budget = min(allocation_cap, float(self.snapshot.account.free_margin))
@@ -750,6 +762,7 @@ class LiveControlPanel:
             return {
                 "accepted": False,
                 "final_lot": 0.0,
+                "lot_mode": lot_mode,
                 "allocation_cap_usd": allocation_cap,
                 "available_margin_cap_usd": available_budget,
                 "broker_min_lot": min_lot,
@@ -770,18 +783,55 @@ class LiveControlPanel:
             final_lot = next_lot
             margin_for_final = margin.required_margin
             current = next_lot
+        requested_lot = 0.0
+        resized = False
+        why_blocked = "n/a"
+        if lot_mode == "manual":
+            try:
+                requested_lot = float(self.manual_lot_var.get())
+            except ValueError:
+                return {
+                    "accepted": False,
+                    "final_lot": 0.0,
+                    "lot_mode": lot_mode,
+                    "why_blocked": "manual lot must be a valid number",
+                }
+            if requested_lot <= 0:
+                return {
+                    "accepted": False,
+                    "final_lot": 0.0,
+                    "lot_mode": lot_mode,
+                    "why_blocked": "manual lot must be positive",
+                }
+            normalized_requested = round((int(requested_lot / step) * step), 8)
+            if normalized_requested < min_lot:
+                return {
+                    "accepted": False,
+                    "final_lot": 0.0,
+                    "lot_mode": lot_mode,
+                    "requested_lot": requested_lot,
+                    "broker_min_lot": min_lot,
+                    "why_blocked": "manual lot is below broker minimum lot",
+                }
+            if normalized_requested > final_lot:
+                resized = True
+                why_blocked = "manual lot resized down to max allowed by capital, margin, and broker"
+            final_lot = min(normalized_requested, final_lot)
         return {
             "accepted": final_lot > 0,
+            "lot_mode": lot_mode,
             "allocation_cap_usd": allocation_cap,
             "available_margin_cap_usd": available_budget,
             "broker_min_lot": min_lot,
             "broker_max_lot": max_lot,
             "broker_lot_step": step,
             "order_price": order_price,
+            "requested_lot": requested_lot,
+            "resized_down": resized,
             "final_lot": final_lot,
             "margin_for_min_lot_usd": margin_min.required_margin,
             "margin_for_final_lot_usd": margin_for_final,
-            "why_blocked": "n/a" if final_lot > 0 else "allocation cannot cover broker minimum lot margin",
+            "why_blocked": why_blocked if final_lot > 0 else "allocation cannot cover broker minimum lot margin",
         }
 
     def _manual_order_snapshot_lines(self) -> list[str]:
@@ -790,6 +840,8 @@ class LiveControlPanel:
         snap = self.manual_order_snapshot
         return [
             "manual_order_snapshot:",
+            f"- lot_mode={snap.get('lot_mode') or 'auto_max'}",
+            f"- requested_lot={float(snap.get('requested_lot') or 0.0):.4f}",
             f"- final_lot={float(snap.get('final_lot') or 0.0):.4f}",
             f"- capital_basis_usd={float(snap.get('allocation_cap_usd') or 0.0):.2f}",
             f"- free_margin_cap_usd={float(snap.get('available_margin_cap_usd') or 0.0):.2f}",
@@ -799,6 +851,7 @@ class LiveControlPanel:
             f"- margin_for_min_lot_usd={float(snap.get('margin_for_min_lot_usd') or 0.0):.2f}",
             f"- margin_for_final_lot_usd={float(snap.get('margin_for_final_lot_usd') or 0.0):.2f}",
             f"- order_price={float(snap.get('order_price') or 0.0):.5f}",
+            f"- resized_down={bool(snap.get('resized_down'))}",
             f"- manual_order_result={'ok' if bool(snap.get('accepted')) else 'blocked'}",
             f"- why_blocked={snap.get('why_blocked') or 'n/a'}",
         ]
@@ -974,9 +1027,9 @@ class LiveControlPanel:
         live_enabled = self.runtime_coordinator.live_enabled
         pending = self.runtime_coordinator.pending_approval is not None
         manual_execute_allowed = bool(
-            self.size_result
-            and self.size_result.accepted
-            and self.size_result.normalized_volume > 0
+            self.manual_order_snapshot
+            and bool(self.manual_order_snapshot.get("accepted"))
+            and float(self.manual_order_snapshot.get("final_lot") or 0.0) > 0
         )
         if self.play_button is not None:
             self.play_button.state(["disabled"] if running else ["!disabled"])
