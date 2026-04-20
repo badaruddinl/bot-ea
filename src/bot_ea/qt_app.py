@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QPlainTextEdit,
+    QScrollArea,
     QSplitter,
     QTabWidget,
     QVBoxLayout,
@@ -449,6 +450,10 @@ class BotEaQtWindow(QMainWindow):
             QWidget#leftRail, QWidget#rightRail {
                 background: transparent;
             }
+            QWidget#leftRail {
+                min-width: 280px;
+                max-width: 320px;
+            }
             QGroupBox {
                 background: #11161a;
                 border: 1px solid #1e2a31;
@@ -534,7 +539,7 @@ class BotEaQtWindow(QMainWindow):
                 font: 10pt "Cascadia Mono";
             }
             QLineEdit, QComboBox {
-                padding: 8px 10px;
+                padding: 6px 8px;
                 min-height: 22px;
             }
             QComboBox::drop-down {
@@ -549,8 +554,8 @@ class BotEaQtWindow(QMainWindow):
                 color: #f2eadf;
                 border: 1px solid #27414b;
                 border-radius: 12px;
-                padding: 10px 12px;
-                font: 700 10pt "Cascadia Mono";
+                padding: 8px 10px;
+                font: 700 9.3pt "Cascadia Mono";
             }
             QPushButton:hover {
                 background: #1b2a30;
@@ -627,6 +632,15 @@ class BotEaQtWindow(QMainWindow):
         layout.addWidget(caption_label)
         return frame
 
+    @staticmethod
+    def _configure_form_layout(form: QFormLayout) -> None:
+        form.setFieldGrowthPolicy(QFormLayout.ExpandingFieldsGrow)
+        form.setRowWrapPolicy(QFormLayout.WrapLongRows)
+        form.setLabelAlignment(Qt.AlignLeft | Qt.AlignTop)
+        form.setFormAlignment(Qt.AlignTop)
+        form.setHorizontalSpacing(12)
+        form.setVerticalSpacing(10)
+
     def _build_ui(self) -> None:
         central = QWidget(self)
         central.setObjectName("workspaceRoot")
@@ -636,13 +650,10 @@ class BotEaQtWindow(QMainWindow):
         root.setContentsMargins(18, 18, 18, 18)
         root.setSpacing(14)
 
-        toolbar = self.addToolBar("Main")
-        toolbar.setMovable(False)
-        runbook_action = QAction("Runbook", self)
-        runbook_action.triggered.connect(
+        self.runbook_button = QPushButton("Runbook", self)
+        self.runbook_button.clicked.connect(
             lambda: self._append_log([f"Runbook: {Path.cwd() / 'docs' / 'desktop-runtime-runbook.md'}"])
         )
-        toolbar.addAction(runbook_action)
 
         splitter = QSplitter(Qt.Horizontal, self)
         root.addWidget(splitter)
@@ -653,6 +664,8 @@ class BotEaQtWindow(QMainWindow):
         left_layout.setContentsMargins(0, 0, 0, 0)
         left_layout.setSpacing(12)
         splitter.addWidget(left_panel)
+        left_panel.setMinimumWidth(280)
+        left_panel.setMaximumWidth(320)
 
         right_panel = QWidget(self)
         right_panel.setObjectName("rightRail")
@@ -660,7 +673,42 @@ class BotEaQtWindow(QMainWindow):
         right_layout.setContentsMargins(0, 0, 0, 0)
         right_layout.setSpacing(12)
         splitter.addWidget(right_panel)
-        splitter.setSizes([480, 980])
+        splitter.setSizes([300, 1180])
+        splitter.setStretchFactor(0, 0)
+        splitter.setStretchFactor(1, 1)
+
+        self.sidebar_intro_card = QFrame(self)
+        self.sidebar_intro_card.setObjectName("heroCard")
+        sidebar_intro_layout = QVBoxLayout(self.sidebar_intro_card)
+        sidebar_intro_layout.setContentsMargins(16, 14, 16, 14)
+        sidebar_intro_layout.setSpacing(4)
+        sidebar_intro_eyebrow = QLabel("Navigation", self.sidebar_intro_card)
+        sidebar_intro_eyebrow.setObjectName("heroEyebrow")
+        sidebar_intro_title = QLabel("Runtime Shell", self.sidebar_intro_card)
+        sidebar_intro_title.setObjectName("heroTitle")
+        sidebar_intro_subtitle = QLabel(
+            "Sidebar for navigation and service transport. Main execution controls live in the dashboard body.",
+            self.sidebar_intro_card,
+        )
+        sidebar_intro_subtitle.setObjectName("heroSubtitle")
+        sidebar_intro_subtitle.setWordWrap(True)
+        sidebar_intro_layout.addWidget(sidebar_intro_eyebrow)
+        sidebar_intro_layout.addWidget(sidebar_intro_title)
+        sidebar_intro_layout.addWidget(sidebar_intro_subtitle)
+        left_layout.addWidget(self.sidebar_intro_card)
+
+        self.nav_group = QGroupBox("Navigation", self)
+        nav_layout = QVBoxLayout(self.nav_group)
+        nav_layout.setContentsMargins(12, 20, 12, 12)
+        nav_layout.setSpacing(8)
+        self.nav_buttons: list[QPushButton] = []
+        for index, label in enumerate(("Dashboard", "Trade Controls", "Snapshots", "Console")):
+            button = QPushButton(label, self)
+            button.setCheckable(True)
+            button.setChecked(index == 0)
+            self.nav_buttons.append(button)
+            nav_layout.addWidget(button)
+        left_layout.addWidget(self.nav_group)
 
         self.hero_card = QFrame(self)
         self.hero_card.setObjectName("heroCard")
@@ -669,10 +717,10 @@ class BotEaQtWindow(QMainWindow):
         hero_layout.setSpacing(4)
         self.hero_eyebrow = QLabel("Operator Console", self.hero_card)
         self.hero_eyebrow.setObjectName("heroEyebrow")
-        self.hero_title = QLabel("Obsidian Runtime Monitor", self.hero_card)
+        self.hero_title = QLabel("Runtime Dashboard", self.hero_card)
         self.hero_title.setObjectName("heroTitle")
         self.hero_subtitle = QLabel(
-            "Single-window terminal for MT5 readiness, manual execution, risk preview, and runtime telemetry.",
+            "Top app bar for readiness chips and operator actions. The dashboard body below separates trade controls from live market cards.",
             self.hero_card,
         )
         self.hero_subtitle.setObjectName("heroSubtitle")
@@ -680,10 +728,18 @@ class BotEaQtWindow(QMainWindow):
         hero_layout.addWidget(self.hero_eyebrow)
         hero_layout.addWidget(self.hero_title)
         hero_layout.addWidget(self.hero_subtitle)
+        self.top_status_row = QGridLayout()
+        self.top_status_row.setHorizontalSpacing(10)
+        self.top_status_row.setVerticalSpacing(10)
+        hero_layout.addLayout(self.top_status_row)
+        self.app_bar_actions = QHBoxLayout()
+        self.app_bar_actions.setSpacing(8)
+        hero_layout.addLayout(self.app_bar_actions)
         right_layout.addWidget(self.hero_card)
 
         self.service_group = QGroupBox("Backend Service", self)
         service_form = QFormLayout(self.service_group)
+        self._configure_form_layout(service_form)
         self.service_host_input = QLineEdit("127.0.0.1", self)
         self.service_port_input = QLineEdit("8765", self)
         service_form.addRow("Host", self.service_host_input)
@@ -692,6 +748,7 @@ class BotEaQtWindow(QMainWindow):
 
         self.trade_group = QGroupBox("Trade Setup", self)
         trade_form = QFormLayout(self.trade_group)
+        self._configure_form_layout(trade_form)
         self.symbol_combo = QComboBox(self)
         self.symbol_combo.setEditable(True)
         self.symbol_combo.addItem("EURUSD")
@@ -724,10 +781,10 @@ class BotEaQtWindow(QMainWindow):
         trade_form.addRow("Manual Lot Request", self.manual_lot_input)
         trade_form.addRow("Manual Side Only", self.side_combo)
         trade_form.addRow("Log File (Runtime DB)", self.db_input)
-        left_layout.addWidget(self.trade_group)
 
         self.codex_group = QGroupBox("Codex", self)
         codex_form = QFormLayout(self.codex_group)
+        self._configure_form_layout(codex_form)
         self.codex_command_input = QLineEdit("codex", self)
         self.model_combo = QComboBox(self)
         self.model_combo.setEditable(True)
@@ -739,40 +796,61 @@ class BotEaQtWindow(QMainWindow):
         codex_form.addRow("AI Model", self.model_combo)
         codex_form.addRow("Codex Work Folder", self.codex_cwd_input)
         codex_form.addRow("Check Market Every (s)", self.poll_interval_input)
-        left_layout.addWidget(self.codex_group)
 
         self.action_group = QGroupBox("Actions", self)
         action_layout = QGridLayout(self.action_group)
-        self.connect_service_button = QPushButton("Start / Connect Service", self)
+        action_layout.setHorizontalSpacing(10)
+        action_layout.setVerticalSpacing(10)
+        self.connect_service_button = QPushButton("Service", self)
         self.check_mt5_button = QPushButton("Check MT5", self)
         self.load_codex_button = QPushButton("Load Codex", self)
-        self.refresh_button = QPushButton("Refresh", self)
+        self.refresh_button = QPushButton("Preview", self)
         self.preflight_button = QPushButton("Preflight", self)
-        self.execute_button = QPushButton("Execute Manual Order", self)
+        self.execute_button = QPushButton("Execute", self)
         self.play_button = QPushButton("Play Runtime", self)
         self.stop_button = QPushButton("Stop Runtime", self)
-        self.live_button = QPushButton("Enable Live", self)
-        self.approve_button = QPushButton("Approve Pending", self)
-        self.reject_button = QPushButton("Reject Pending", self)
-        self.load_telemetry_button = QPushButton("Load Telemetry", self)
+        self.live_button = QPushButton("Live Mode", self)
+        self.approve_button = QPushButton("Approve", self)
+        self.reject_button = QPushButton("Reject", self)
+        self.load_telemetry_button = QPushButton("Telemetry", self)
+        for button, tooltip in (
+            (self.connect_service_button, "Start or connect the websocket service"),
+            (self.refresh_button, "Refresh manual preview from broker snapshot"),
+            (self.execute_button, "Execute a manual order when runtime is idle"),
+            (self.live_button, "Arm or disarm live runtime submissions"),
+            (self.approve_button, "Approve the pending live order"),
+            (self.reject_button, "Reject the pending live order"),
+            (self.load_telemetry_button, "Load runtime telemetry and validation"),
+        ):
+            button.setToolTip(tooltip)
+        self.sidebar_actions_group = QGroupBox("Quick Actions", self)
+        sidebar_actions_layout = QVBoxLayout(self.sidebar_actions_group)
+        sidebar_actions_layout.setContentsMargins(12, 20, 12, 12)
+        sidebar_actions_layout.setSpacing(8)
+        for button in (
+            self.connect_service_button,
+            self.play_button,
+            self.stop_button,
+            self.live_button,
+            self.load_telemetry_button,
+            self.runbook_button,
+        ):
+            sidebar_actions_layout.addWidget(button)
+        left_layout.addWidget(self.sidebar_actions_group)
         for idx, button in enumerate(
             [
-                self.connect_service_button,
                 self.check_mt5_button,
                 self.load_codex_button,
                 self.refresh_button,
                 self.preflight_button,
                 self.execute_button,
-                self.play_button,
-                self.stop_button,
-                self.live_button,
                 self.approve_button,
                 self.reject_button,
-                self.load_telemetry_button,
             ]
         ):
             action_layout.addWidget(button, idx // 2, idx % 2)
-        left_layout.addWidget(self.action_group)
+        action_layout.setColumnStretch(0, 1)
+        action_layout.setColumnStretch(1, 1)
         left_layout.addStretch(1)
 
         self.status_group = QGroupBox("Readiness", self)
@@ -794,23 +872,94 @@ class BotEaQtWindow(QMainWindow):
             "approval": {"frame": self._make_status_chip("Approval", self.approval_status), "value": self.approval_status},
         }
         self.run_id_card = self._make_metric_card("Run ID", self.run_id_status, "Active runtime session / audit cursor")
-        status_grid.addWidget(self.readiness_chips["service"]["frame"], 0, 0)
-        status_grid.addWidget(self.readiness_chips["mt5"]["frame"], 0, 1)
-        status_grid.addWidget(self.readiness_chips["codex"]["frame"], 0, 2)
-        status_grid.addWidget(self.readiness_chips["runtime"]["frame"], 1, 0)
-        status_grid.addWidget(self.readiness_chips["approval"]["frame"], 1, 1)
-        status_grid.addWidget(self.run_id_card, 1, 2)
-        right_layout.addWidget(self.status_group)
+        for idx, key in enumerate(("service", "mt5", "codex", "runtime", "approval")):
+            self.top_status_row.addWidget(self.readiness_chips[key]["frame"], idx // 3, idx % 3)
+        for button in (self.check_mt5_button, self.load_codex_button, self.refresh_button):
+            self.app_bar_actions.addWidget(button)
+        self.app_bar_actions.addStretch(1)
 
-        summary_row = QHBoxLayout()
-        summary_row.setSpacing(12)
+        self.status_group_summary = QLabel(
+            "Top app bar carries live readiness chips. This panel keeps the active run cursor and dashboard guidance.",
+            self.status_group,
+        )
+        self.status_group_summary.setObjectName("cardCaption")
+        self.status_group_summary.setWordWrap(True)
+        status_grid.addWidget(self.run_id_card, 0, 0, 1, 2)
+        status_grid.addWidget(self.status_group_summary, 1, 0, 1, 2)
+
+        self.dashboard_splitter = QSplitter(Qt.Vertical, self)
+        right_layout.addWidget(self.dashboard_splitter, 1)
+        self.dashboard_top = QWidget(self)
+        dashboard_top_layout = QVBoxLayout(self.dashboard_top)
+        dashboard_top_layout.setContentsMargins(0, 0, 0, 0)
+        dashboard_top_layout.setSpacing(12)
+        self.dashboard_body_splitter = QSplitter(Qt.Horizontal, self)
+        dashboard_top_layout.addWidget(self.dashboard_body_splitter, 1)
+        self.dashboard_splitter.addWidget(self.dashboard_top)
+
+        self.trade_control_panel = QFrame(self)
+        self.trade_control_panel.setObjectName("dataCard")
+        trade_control_layout = QVBoxLayout(self.trade_control_panel)
+        trade_control_layout.setContentsMargins(14, 14, 14, 14)
+        trade_control_layout.setSpacing(10)
+        trade_panel_title = QLabel("Trade Control Panel", self.trade_control_panel)
+        trade_panel_title.setObjectName("cardTitle")
+        trade_panel_caption = QLabel(
+            "Primary execution controls, runtime configuration, and approval actions.",
+            self.trade_control_panel,
+        )
+        trade_panel_caption.setObjectName("cardCaption")
+        trade_panel_caption.setWordWrap(True)
+        trade_control_layout.addWidget(trade_panel_title)
+        trade_control_layout.addWidget(trade_panel_caption)
+        trade_control_layout.addWidget(self.trade_group)
+        trade_control_layout.addWidget(self.codex_group)
+        trade_control_layout.addWidget(self.action_group)
+        self.hint_label = QLabel(
+            "Operator hint: manual lot requests are still normalized by broker/capital constraints from the backend preview.",
+            self.trade_control_panel,
+        )
+        self.hint_label.setObjectName("heroSubtitle")
+        self.hint_label.setWordWrap(True)
+        trade_control_layout.addWidget(self.hint_label)
+        trade_control_layout.addStretch(1)
+        self.trade_control_scroll = QScrollArea(self)
+        self.trade_control_scroll.setWidgetResizable(True)
+        self.trade_control_scroll.setWidget(self.trade_control_panel)
+        self.trade_control_scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
+        self.dashboard_body_splitter.addWidget(self.trade_control_scroll)
+
+        self.snapshot_dashboard = QFrame(self)
+        self.snapshot_dashboard.setObjectName("dataCard")
+        snapshot_dashboard_layout = QVBoxLayout(self.snapshot_dashboard)
+        snapshot_dashboard_layout.setContentsMargins(14, 14, 14, 14)
+        snapshot_dashboard_layout.setSpacing(12)
+        snapshot_dashboard_title = QLabel("Snapshot Cards", self.snapshot_dashboard)
+        snapshot_dashboard_title.setObjectName("cardTitle")
+        snapshot_dashboard_caption = QLabel(
+            "Live market state, manual order envelope, and sizing/risk projections.",
+            self.snapshot_dashboard,
+        )
+        snapshot_dashboard_caption.setObjectName("cardCaption")
+        snapshot_dashboard_caption.setWordWrap(True)
+        snapshot_dashboard_layout.addWidget(snapshot_dashboard_title)
+        snapshot_dashboard_layout.addWidget(snapshot_dashboard_caption)
+        snapshot_dashboard_layout.addWidget(self.status_group)
+
+        summary_row = QGridLayout()
+        summary_row.setHorizontalSpacing(12)
+        summary_row.setVerticalSpacing(12)
         self.market_card = self._make_text_card("Market Snapshot", "Realtime symbol/tick and broker execution context")
         self.manual_card = self._make_text_card("Manual Order Envelope", "Normalized lot, margin envelope, and order path")
         self.risk_card = self._make_text_card("Risk Envelope", "Sizing projection, loss budget, and blockers")
-        summary_row.addWidget(self.market_card["frame"])
-        summary_row.addWidget(self.manual_card["frame"])
-        summary_row.addWidget(self.risk_card["frame"])
-        right_layout.addLayout(summary_row)
+        summary_row.addWidget(self.market_card["frame"], 0, 0, 1, 2)
+        summary_row.addWidget(self.manual_card["frame"], 1, 0)
+        summary_row.addWidget(self.risk_card["frame"], 1, 1)
+        snapshot_dashboard_layout.addLayout(summary_row)
+        self.dashboard_body_splitter.addWidget(self.snapshot_dashboard)
+        self.dashboard_body_splitter.setSizes([460, 760])
+        self.dashboard_body_splitter.setStretchFactor(0, 0)
+        self.dashboard_body_splitter.setStretchFactor(1, 1)
 
         self.logs_group = QGroupBox("Telemetry / Logs", self)
         logs_layout = QVBoxLayout(self.logs_group)
@@ -826,16 +975,8 @@ class BotEaQtWindow(QMainWindow):
         self.tabs.addTab(self.validation_text, "Risk Validation")
         self.tabs.addTab(self.events_text, "Log Console")
         logs_layout.addWidget(self.tabs)
-        right_layout.addWidget(self.logs_group)
-
-        self.hint_label = QLabel(
-            "Operator hint: the GUI keeps websocket/runtime behavior intact. Market, manual, risk, and logs now render as terminal cards; "
-            "lot-mode manual is still normalized by broker/capital constraints from the backend preview.",
-            self,
-        )
-        self.hint_label.setObjectName("heroSubtitle")
-        self.hint_label.setWordWrap(True)
-        right_layout.addWidget(self.hint_label)
+        self.dashboard_splitter.addWidget(self.logs_group)
+        self.dashboard_splitter.setSizes([640, 260])
         self._sync_button_states()
 
     def _make_text_card(self, title: str, caption: str) -> dict[str, QWidget | QPlainTextEdit]:
