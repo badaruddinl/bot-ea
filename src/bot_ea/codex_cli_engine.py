@@ -35,7 +35,10 @@ class CodexCLIEngine:
                 check=True,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 timeout=self.timeout_seconds,
+                cwd=self.cwd,
             )
             response = output_file.read_text(encoding="utf-8").strip()
         return self.parse_response(response)
@@ -46,6 +49,8 @@ class CodexCLIEngine:
             check=True,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=self.timeout_seconds,
             cwd=self.cwd,
         )

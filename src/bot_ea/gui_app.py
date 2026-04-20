@@ -124,15 +124,15 @@ class LiveControlPanel:
         status_frame.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(0, 8))
         status_frame.columnconfigure(1, weight=1)
         ttk.Label(status_frame, text="MT5").grid(row=0, column=0, sticky="w", padx=(0, 8), pady=2)
-        ttk.Label(status_frame, textvariable=self.mt5_status_var).grid(row=0, column=1, sticky="w", pady=2)
+        ttk.Label(status_frame, textvariable=self.mt5_status_var, wraplength=900, justify="left").grid(row=0, column=1, sticky="w", pady=2)
         ttk.Label(status_frame, text="Codex CLI").grid(row=1, column=0, sticky="w", padx=(0, 8), pady=2)
-        ttk.Label(status_frame, textvariable=self.codex_status_var).grid(row=1, column=1, sticky="w", pady=2)
+        ttk.Label(status_frame, textvariable=self.codex_status_var, wraplength=900, justify="left").grid(row=1, column=1, sticky="w", pady=2)
         ttk.Label(status_frame, text="Background Runtime").grid(row=2, column=0, sticky="w", padx=(0, 8), pady=2)
-        ttk.Label(status_frame, textvariable=self.runtime_status_var).grid(row=2, column=1, sticky="w", pady=2)
+        ttk.Label(status_frame, textvariable=self.runtime_status_var, wraplength=900, justify="left").grid(row=2, column=1, sticky="w", pady=2)
         ttk.Label(status_frame, text="Current Run").grid(row=3, column=0, sticky="w", padx=(0, 8), pady=2)
-        ttk.Label(status_frame, textvariable=self.current_run_id_var).grid(row=3, column=1, sticky="w", pady=2)
+        ttk.Label(status_frame, textvariable=self.current_run_id_var, wraplength=900, justify="left").grid(row=3, column=1, sticky="w", pady=2)
         ttk.Label(status_frame, text="Approval").grid(row=4, column=0, sticky="w", padx=(0, 8), pady=2)
-        ttk.Label(status_frame, textvariable=self.approval_status_var).grid(row=4, column=1, sticky="w", pady=2)
+        ttk.Label(status_frame, textvariable=self.approval_status_var, wraplength=900, justify="left").grid(row=4, column=1, sticky="w", pady=2)
 
         control_bar = ttk.Frame(frame)
         control_bar.grid(row=2, column=0, columnspan=2, sticky="w", pady=(0, 8))
@@ -736,7 +736,7 @@ class LiveControlPanel:
 
     def _handle_runtime_event(self, kind: str, message: str, payload: dict[str, object]) -> None:
         if kind == "runtime_started":
-            self.runtime_status_var.set(message)
+            self.runtime_status_var.set(self._summarize_runtime_message(message))
             db_path = payload.get("db_path")
             if isinstance(db_path, str):
                 self.db_path_var.set(db_path)
@@ -744,7 +744,7 @@ class LiveControlPanel:
             if isinstance(run_id, str):
                 self.current_run_id_var.set(run_id)
         elif kind == "runtime_cycle":
-            self.runtime_status_var.set(message)
+            self.runtime_status_var.set(self._summarize_runtime_message(message))
             overview = payload.get("overview") if isinstance(payload.get("overview"), dict) else {}
             health = payload.get("health") if isinstance(payload.get("health"), dict) else {}
             if isinstance(payload.get("run_id"), str):
@@ -764,20 +764,28 @@ class LiveControlPanel:
             if self.db_path_var.get().strip():
                 self.load_telemetry()
         elif kind in {"runtime_stopped", "runtime_error", "runtime_halted"}:
-            self.runtime_status_var.set(message)
+            self.runtime_status_var.set(self._summarize_runtime_message(message))
+            if kind == "runtime_error":
+                self._append_output(
+                    [
+                        "runtime_error_detail:",
+                        f"- {message}",
+                        "- hint=lihat MT5 terminal, lalu klik Check MT5 lagi. Jika error terkait Codex, klik Load Codex lagi.",
+                    ]
+                )
             if kind != "runtime_error":
                 self.approval_status_var.set("No pending live approval")
         elif kind == "mt5_ready":
-            self.mt5_status_var.set(message)
+            self.mt5_status_var.set(self._summarize_runtime_message(message))
         elif kind == "codex_ready":
             version = payload.get("version")
-            self.codex_status_var.set(str(version or message))
+            self.codex_status_var.set(self._summarize_runtime_message(str(version or message)))
         elif kind == "live_toggle":
             enabled = bool(payload.get("enabled"))
             self.allow_live_var.set(enabled)
-            self.runtime_status_var.set(message)
+            self.runtime_status_var.set(self._summarize_runtime_message(message))
         elif kind == "approval_pending":
-            self.approval_status_var.set(message)
+            self.approval_status_var.set(self._summarize_runtime_message(message))
             self._append_output(
                 [
                     "approval_pending:",
@@ -789,8 +797,8 @@ class LiveControlPanel:
                 ]
             )
         elif kind in {"approval_armed", "approval_rejected", "approval_status"}:
-            self.approval_status_var.set(message)
-        self.status_var.set(message)
+            self.approval_status_var.set(self._summarize_runtime_message(message))
+        self.status_var.set(self._summarize_runtime_message(message))
         self._sync_runtime_controls()
 
     def _sync_runtime_controls(self) -> None:
@@ -810,8 +818,9 @@ class LiveControlPanel:
         self.live_button_text_var.set("Disable Live" if live_enabled else "Enable Live")
 
     def _handle_panel_error(self, exc: Exception, *, fallback_status: str) -> None:
-        self.status_var.set(fallback_status)
-        self._write([f"error={exc}"])
+        detailed = self._format_exception_detail(exc)
+        self.status_var.set(self._summarize_runtime_message(f"{fallback_status}: {detailed}"))
+        self._write([f"error={detailed}"])
 
     def _write(self, lines: list[str]) -> None:
         self.output.delete("1.0", tk.END)
@@ -833,6 +842,24 @@ class LiveControlPanel:
     def _optional_str(value: str) -> str | None:
         normalized = value.strip()
         return normalized or None
+
+    @staticmethod
+    def _summarize_runtime_message(message: str, *, limit: int = 120) -> str:
+        normalized = " ".join(str(message).split())
+        if len(normalized) <= limit:
+            return normalized
+        return f"{normalized[: limit - 3]}..."
+
+    @staticmethod
+    def _format_exception_detail(exc: Exception) -> str:
+        message = str(exc).strip() or exc.__class__.__name__
+        if "No IPC connection" in message:
+            return "MT5 lost IPC connection. Reopen or refocus MT5, then click Check MT5 again."
+        if "account_info() failed" in message:
+            return "MT5 account info could not be read. Check terminal connection and account login."
+        if "Command '['" in message and "codex" in message:
+            return "Codex runtime command failed. Click Load Codex again and check model/work folder."
+        return message
 
 
 def main() -> None:
