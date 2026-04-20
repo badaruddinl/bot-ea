@@ -268,6 +268,8 @@ class DesktopRuntimeCoordinator:
                     "account_trade_allowed": snapshot.account.trade_allowed,
                     "account_trade_expert": snapshot.account.trade_expert,
                     "symbol_trade_allowed": snapshot.symbol_snapshot.trade_allowed,
+                    "stops_level_points": snapshot.symbol_snapshot.stops_level_points,
+                    "freeze_level_points": snapshot.symbol_snapshot.freeze_level_points,
                 },
                 "symbols": adapter.load_available_symbols(),
             }

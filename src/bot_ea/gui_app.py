@@ -55,6 +55,7 @@ class LiveControlPanel:
         self.timeframe_var = tk.StringVar(value="M15")
         self.style_var = tk.StringVar(value=TradingStyle.INTRADAY.value)
         self.stop_var = tk.StringVar(value="200")
+        self.stop_label_var = tk.StringVar(value="Stop Distance (points)")
         self.allocation_mode_var = tk.StringVar(value=CapitalAllocationMode.FIXED_CASH.value)
         self.allocation_label_var = tk.StringVar(value="Capital To Use (USD)")
         self.allocation_var = tk.StringVar(value="250")
@@ -103,7 +104,7 @@ class LiveControlPanel:
             ("Symbol (from MT5)", self.symbol_var),
             ("Timeframe", self.timeframe_var),
             ("Strategy Style", self.style_var),
-            ("Stop Distance (points)", self.stop_var),
+            (self.stop_label_var, self.stop_var),
             ("Capital Mode", self.allocation_mode_var),
             (self.allocation_label_var, self.allocation_var),
             ("Lot Mode", self.lot_mode_var),
@@ -239,6 +240,7 @@ class LiveControlPanel:
         terminal = result["terminal"]
         snapshot = result["snapshot"]
         self._set_symbol_choices(result.get("symbols") or [])
+        self._sync_stop_distance_from_probe(snapshot)
         self.mt5_status_var.set(
             " ".join(
                 [
@@ -269,6 +271,8 @@ class LiveControlPanel:
                 f"- spread_points={snapshot.get('spread_points')}",
                 f"- equity={snapshot.get('equity')}",
                 f"- free_margin={snapshot.get('free_margin')}",
+                f"- broker_stop_min_points={snapshot.get('stops_level_points')}",
+                f"- broker_freeze_points={snapshot.get('freeze_level_points')}",
                 f"- available_symbols={len(result.get('symbols') or [])}",
             ]
         )
@@ -409,6 +413,7 @@ class LiveControlPanel:
         except Exception as exc:
             self._handle_panel_error(exc, fallback_status="Snapshot refresh failed")
             return
+        self._sync_stop_distance_from_symbol_snapshot(self.snapshot.symbol_snapshot)
         try:
             self.size_result = self._size_result()
         except Exception as exc:
@@ -694,13 +699,14 @@ class LiveControlPanel:
         )
 
     def _provider(self) -> MT5SnapshotProvider:
+        stop_distance_points = self._normalized_stop_distance_value()
         return MT5SnapshotProvider(
             adapter=self.adapter,
             symbol=self.symbol_var.get().strip(),
             timeframe=self.timeframe_var.get().strip(),
             risk_policy=self.risk_policy,
             trading_style=TradingStyle(self.style_var.get()),
-            stop_distance_points=float(self.stop_var.get()),
+            stop_distance_points=stop_distance_points,
             capital_allocation=self._capital_allocation(),
             session_state="manual",
             news_state="unknown",
@@ -887,12 +893,13 @@ class LiveControlPanel:
         ]
 
     def _size_result(self):
+        stop_distance_points = self._normalized_stop_distance_value()
         return self.risk_engine.compute_position_size(
             PositionSizeRequest(
                 account=self.snapshot.account,
                 symbol=self.snapshot.symbol_snapshot,
                 policy=self.snapshot.risk_policy,
-                stop_distance_points=float(self.stop_var.get()),
+                stop_distance_points=stop_distance_points,
                 trading_style=TradingStyle(self.style_var.get()),
                 capital_allocation=self._capital_allocation(),
             )
@@ -910,11 +917,12 @@ class LiveControlPanel:
 
     def _intent(self, reason: str) -> AIIntent:
         side = self.side_var.get()
+        stop_distance_points = self._normalized_stop_distance_value()
         return AIIntent(
             action=DecisionAction.OPEN,
             side=side,
             reason=reason,
-            stop_distance_points=float(self.stop_var.get()),
+            stop_distance_points=stop_distance_points,
             entry_price=self.snapshot.ask if side == "buy" else self.snapshot.bid,
         )
 
@@ -947,6 +955,39 @@ class LiveControlPanel:
         current = self.symbol_var.get().strip()
         if current not in values and values:
             self.symbol_var.set(values[0])
+
+    def _sync_stop_distance_from_probe(self, snapshot: dict[str, object]) -> None:
+        stop_min = float(snapshot.get("stops_level_points") or 0.0)
+        self._apply_stop_distance_floor(stop_min)
+
+    def _sync_stop_distance_from_symbol_snapshot(self, symbol_snapshot) -> None:
+        stop_min = float(getattr(symbol_snapshot, "stops_level_points", 0.0) or 0.0)
+        self._apply_stop_distance_floor(stop_min)
+
+    def _apply_stop_distance_floor(self, stop_min: float) -> None:
+        if stop_min > 0:
+            self.stop_label_var.set(f"Stop Distance (points, min {stop_min:.0f})")
+        else:
+            self.stop_label_var.set("Stop Distance (points)")
+        try:
+            current = float(self.stop_var.get())
+        except ValueError:
+            current = stop_min
+        if stop_min > 0 and current < stop_min:
+            self.stop_var.set(f"{stop_min:.0f}")
+
+    def _normalized_stop_distance_value(self) -> float:
+        try:
+            current = float(self.stop_var.get())
+        except ValueError as exc:
+            raise ValueError("stop distance must be a valid number") from exc
+        if self.snapshot is None:
+            return current
+        stop_min = float(self.snapshot.symbol_snapshot.stops_level_points or 0.0)
+        if stop_min > 0 and current < stop_min:
+            self.stop_var.set(f"{stop_min:.0f}")
+            return stop_min
+        return current
 
     def _pump_runtime_events(self) -> None:
         try:

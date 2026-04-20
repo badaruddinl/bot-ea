@@ -41,6 +41,8 @@ class FakeRuntimeCoordinator:
                 "equity": 1000.0,
                 "free_margin": 900.0,
                 "symbol_trade_allowed": True,
+                "stops_level_points": 25.0,
+                "freeze_level_points": 0.0,
             },
             "symbols": ["AUDUSD", "EURUSD", "GBPUSD"],
         }
@@ -173,10 +175,13 @@ class GuiAppTests(unittest.TestCase):
         coordinator = FakeRuntimeCoordinator()
         try:
             panel = LiveControlPanel(root, runtime_coordinator=coordinator)
+            panel.stop_var.set("10")
             panel.check_mt5()
             assert panel.symbol_combo is not None
             self.assertIn("AUDUSD", panel.symbol_combo.cget("values"))
             self.assertIn("EURUSD", panel.symbol_combo.cget("values"))
+            self.assertEqual(panel.stop_var.get(), "25")
+            self.assertIn("min 25", panel.stop_label_var.get())
         finally:
             root.destroy()
 
