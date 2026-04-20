@@ -15,6 +15,20 @@ from .validation import build_runtime_validation_report
 
 
 class LiveControlPanel:
+    TIMEFRAME_OPTIONS = ("M1", "M5", "M15", "M30", "H1", "H4", "D1")
+    STYLE_OPTIONS = tuple(style.value for style in TradingStyle)
+    ALLOCATION_MODE_OPTIONS = tuple(mode.value for mode in CapitalAllocationMode)
+    MANUAL_SIDE_OPTIONS = ("buy", "sell")
+    CODEX_MODEL_PRESETS = (
+        "",
+        "gpt-5.4",
+        "gpt-5.4-mini",
+        "gpt-5.3-codex",
+        "gpt-5.3-codex-spark",
+        "gpt-5.2-codex",
+        "gpt-5.1-codex-mini",
+    )
+
     def __init__(
         self,
         root: tk.Tk,
@@ -40,7 +54,7 @@ class LiveControlPanel:
         self.style_var = tk.StringVar(value=TradingStyle.INTRADAY.value)
         self.stop_var = tk.StringVar(value="200")
         self.allocation_mode_var = tk.StringVar(value=CapitalAllocationMode.FIXED_CASH.value)
-        self.allocation_label_var = tk.StringVar(value="Allocation Cash (USD)")
+        self.allocation_label_var = tk.StringVar(value="Capital To Use (USD)")
         self.allocation_var = tk.StringVar(value="250")
         self.side_var = tk.StringVar(value="buy")
         self.db_path_var = tk.StringVar(value=str(Path.cwd() / "bot_ea_runtime.db"))
@@ -64,6 +78,9 @@ class LiveControlPanel:
         self.live_button: ttk.Button | None = None
         self.approve_button: ttk.Button | None = None
         self.reject_button: ttk.Button | None = None
+        self.symbol_combo: ttk.Combobox | None = None
+        self.timeframe_combo: ttk.Combobox | None = None
+        self.model_combo: ttk.Combobox | None = None
         self._build()
         self.root.after(250, self._pump_runtime_events)
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
@@ -77,20 +94,20 @@ class LiveControlPanel:
         frame.rowconfigure(7, weight=1)
 
         market_fields = [
-            ("Symbol", self.symbol_var),
+            ("Symbol (from MT5)", self.symbol_var),
             ("Timeframe", self.timeframe_var),
-            ("Style", self.style_var),
-            ("Stop Points", self.stop_var),
-            ("Allocation Mode", self.allocation_mode_var),
+            ("Strategy Style", self.style_var),
+            ("Stop Distance (points)", self.stop_var),
+            ("Capital Mode", self.allocation_mode_var),
             (self.allocation_label_var, self.allocation_var),
-            ("Side", self.side_var),
-            ("Runtime DB", self.db_path_var),
+            ("Manual Side Only", self.side_var),
+            ("Log File (Runtime DB)", self.db_path_var),
         ]
         codex_fields = [
-            ("Codex CLI", self.codex_executable_var),
-            ("Codex Model", self.codex_model_var),
-            ("Codex CWD", self.codex_cwd_var),
-            ("Poll Interval (s)", self.poll_interval_var),
+            ("Codex Command", self.codex_executable_var),
+            ("AI Model (preset/manual)", self.codex_model_var),
+            ("Codex Work Folder", self.codex_cwd_var),
+            ("Check Market Every (s)", self.poll_interval_var),
         ]
 
         market_frame = ttk.LabelFrame(frame, text="Market / Runtime")
@@ -140,7 +157,15 @@ class LiveControlPanel:
         ttk.Button(manual_bar, text="Load Telemetry", command=self.load_telemetry).grid(row=0, column=3, padx=(0, 6))
         ttk.Checkbutton(manual_bar, text="Allow Live Orders", variable=self.allow_live_var).grid(row=0, column=4, sticky="w")
 
-        ttk.Label(frame, textvariable=self.health_var).grid(row=4, column=0, columnspan=2, sticky="ew", pady=(0, 8))
+        ttk.Label(
+            frame,
+            text="Manual Side Only dipakai untuk tombol Execute manual. Saat memakai Play Runtime, arah trade diputuskan runtime AI.",
+        ).grid(row=4, column=0, columnspan=2, sticky="w", pady=(0, 4))
+        ttk.Label(
+            frame,
+            text="Stop Distance = jarak stop untuk hitung risk. Runtime DB = file log bot. Codex Work Folder = folder kerja Codex.",
+        ).grid(row=5, column=0, columnspan=2, sticky="w", pady=(0, 8))
+        ttk.Label(frame, textvariable=self.health_var).grid(row=6, column=0, columnspan=2, sticky="ew", pady=(0, 8))
         self.output = tk.Text(frame, width=120, height=30, wrap="word")
         self.output.grid(row=7, column=0, columnspan=2, sticky="nsew")
         ttk.Label(frame, textvariable=self.status_var).grid(row=8, column=0, columnspan=2, sticky="ew", pady=(8, 0))
@@ -154,17 +179,35 @@ class LiveControlPanel:
             else:
                 ttk.Label(parent, text=label).grid(row=row, column=0, sticky="w", padx=(0, 8), pady=4)
                 label_key = label
-            if label_key in {"Style", "Allocation Mode", "Side"}:
-                if label_key == "Style":
-                    values = [style.value for style in TradingStyle]
-                elif label_key == "Allocation Mode":
-                    values = [mode.value for mode in CapitalAllocationMode]
+            if label_key in {"Symbol (from MT5)", "Timeframe", "Strategy Style", "Capital Mode", "Manual Side Only", "AI Model (preset/manual)"}:
+                if label_key == "Symbol (from MT5)":
+                    values = [self.symbol_var.get()]
+                    state = "normal"
+                elif label_key == "Timeframe":
+                    values = list(self.TIMEFRAME_OPTIONS)
+                    state = "readonly"
+                elif label_key == "Strategy Style":
+                    values = list(self.STYLE_OPTIONS)
+                    state = "readonly"
+                elif label_key == "Capital Mode":
+                    values = list(self.ALLOCATION_MODE_OPTIONS)
+                    state = "readonly"
+                elif label_key == "Manual Side Only":
+                    values = list(self.MANUAL_SIDE_OPTIONS)
+                    state = "readonly"
                 else:
-                    values = ["buy", "sell"]
-                combo = ttk.Combobox(parent, textvariable=variable, values=values, state="readonly", width=18)
+                    values = list(self.CODEX_MODEL_PRESETS)
+                    state = "normal"
+                combo = ttk.Combobox(parent, textvariable=variable, values=values, state=state, width=18)
                 combo.grid(row=row, column=1, sticky="ew", pady=4)
-                if label_key == "Allocation Mode":
+                if label_key == "Capital Mode":
                     combo.bind("<<ComboboxSelected>>", lambda _event: self._sync_allocation_label())
+                if label_key == "Symbol (from MT5)":
+                    self.symbol_combo = combo
+                elif label_key == "Timeframe":
+                    self.timeframe_combo = combo
+                elif label_key == "AI Model (preset/manual)":
+                    self.model_combo = combo
             else:
                 ttk.Entry(parent, textvariable=variable, width=18).grid(row=row, column=1, sticky="ew", pady=4)
 
@@ -183,6 +226,7 @@ class LiveControlPanel:
             return
         terminal = result["terminal"]
         snapshot = result["snapshot"]
+        self._set_symbol_choices(result.get("symbols") or [])
         self.mt5_status_var.set(
             " ".join(
                 [
@@ -213,6 +257,7 @@ class LiveControlPanel:
                 f"- spread_points={snapshot.get('spread_points')}",
                 f"- equity={snapshot.get('equity')}",
                 f"- free_margin={snapshot.get('free_margin')}",
+                f"- available_symbols={len(result.get('symbols') or [])}",
             ]
         )
 
@@ -232,10 +277,11 @@ class LiveControlPanel:
         self._write(
             [
                 "codex_probe:",
-                f"- executable={self.codex_executable_var.get().strip()}",
+                f"- command={self.codex_executable_var.get().strip()}",
                 f"- version={version}",
                 f"- model={self._optional_str(self.codex_model_var.get()) or 'default'}",
-                f"- cwd={self._optional_str(self.codex_cwd_var.get()) or Path.cwd()}",
+                f"- work_folder={self._optional_str(self.codex_cwd_var.get()) or Path.cwd()}",
+                "- model_list_note=codex-cli local help does not expose a reliable list-models command, so this field uses presets plus manual input",
             ]
         )
 
@@ -665,12 +711,21 @@ class LiveControlPanel:
     def _sync_allocation_label(self) -> None:
         mode = CapitalAllocationMode(self.allocation_mode_var.get())
         if mode is CapitalAllocationMode.PERCENT_EQUITY:
-            self.allocation_label_var.set("Allocation (% Equity)")
+            self.allocation_label_var.set("Capital To Use (% Equity)")
             return
         if mode is CapitalAllocationMode.FULL_EQUITY:
-            self.allocation_label_var.set("Allocation (Full Equity)")
+            self.allocation_label_var.set("Capital To Use (Full Equity)")
             return
-        self.allocation_label_var.set("Allocation Cash (USD)")
+        self.allocation_label_var.set("Capital To Use (USD)")
+
+    def _set_symbol_choices(self, symbols: list[str]) -> None:
+        if self.symbol_combo is None:
+            return
+        values = tuple(symbols) if symbols else (self.symbol_var.get(),)
+        self.symbol_combo.configure(values=values)
+        current = self.symbol_var.get().strip()
+        if current not in values and values:
+            self.symbol_var.set(values[0])
 
     def _pump_runtime_events(self) -> None:
         try:

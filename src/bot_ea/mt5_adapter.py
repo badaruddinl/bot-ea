@@ -93,6 +93,9 @@ class MT5Adapter(Protocol):
     def load_terminal_status(self) -> TerminalStatusSnapshot:
         raise NotImplementedError
 
+    def load_available_symbols(self) -> list[str]:
+        raise NotImplementedError
+
     def estimate_margin(self, symbol: str, volume: float, order_type: str, price: float) -> MarginEstimate:
         raise NotImplementedError
 
@@ -180,6 +183,9 @@ class MockMT5Adapter:
             account_trade_allowed=bool(account.trade_allowed),
             account_trade_expert=bool(account.trade_expert),
         )
+
+    def load_available_symbols(self) -> list[str]:
+        return sorted(self._symbols.keys())
 
     def estimate_margin(self, symbol: str, volume: float, order_type: str, price: float) -> MarginEstimate:
         snapshot = self.load_symbol_snapshot(symbol)
@@ -359,6 +365,19 @@ class LiveMT5Adapter:
             company=str(getattr(account_info, "company", "") or ""),
             account_trade_allowed=bool(getattr(account_info, "trade_allowed", False)),
             account_trade_expert=bool(getattr(account_info, "trade_expert", False)),
+        )
+
+    def load_available_symbols(self) -> list[str]:
+        mt5 = self._ensure_initialized()
+        symbols = mt5.symbols_get()
+        if symbols is None:
+            raise RuntimeError(f"MT5 symbols_get() failed: {mt5.last_error()}")
+        return sorted(
+            {
+                str(getattr(symbol, "name", "") or "").strip()
+                for symbol in symbols
+                if str(getattr(symbol, "name", "") or "").strip()
+            }
         )
 
     def estimate_margin(self, symbol: str, volume: float, order_type: str, price: float) -> MarginEstimate:

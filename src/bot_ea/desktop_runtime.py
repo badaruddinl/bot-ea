@@ -269,6 +269,7 @@ class DesktopRuntimeCoordinator:
                     "account_trade_expert": snapshot.account.trade_expert,
                     "symbol_trade_allowed": snapshot.symbol_snapshot.trade_allowed,
                 },
+                "symbols": adapter.load_available_symbols(),
             }
             self._emit("mt5_ready", "mt5 ready", result)
             return result

@@ -41,6 +41,7 @@ class FakeRuntimeCoordinator:
                 "free_margin": 900.0,
                 "symbol_trade_allowed": True,
             },
+            "symbols": ["AUDUSD", "EURUSD", "GBPUSD"],
         }
 
     def probe_codex(self, **_: object) -> str:
@@ -140,6 +141,18 @@ class GuiAppTests(unittest.TestCase):
             panel.toggle_live()
             self.assertFalse(coordinator.live_enabled)
             self.assertEqual(panel.status_var.get(), "MT5 terminal blocks live trading")
+        finally:
+            root.destroy()
+
+    def test_check_mt5_updates_symbol_dropdown_choices(self) -> None:
+        root = self._make_root()
+        coordinator = FakeRuntimeCoordinator()
+        try:
+            panel = LiveControlPanel(root, runtime_coordinator=coordinator)
+            panel.check_mt5()
+            assert panel.symbol_combo is not None
+            self.assertIn("AUDUSD", panel.symbol_combo.cget("values"))
+            self.assertIn("EURUSD", panel.symbol_combo.cget("values"))
         finally:
             root.destroy()
 

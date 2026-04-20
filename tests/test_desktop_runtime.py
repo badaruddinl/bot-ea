@@ -72,6 +72,9 @@ class FakeAdapter:
             account_trade_expert=True,
         )
 
+    def load_available_symbols(self) -> list[str]:
+        return ["AUDUSD", "EURUSD", "GBPUSD"]
+
     def validate_order(self, request: dict) -> dict:
         _ = request
         from bot_ea.mt5_adapter import OrderValidationResult
