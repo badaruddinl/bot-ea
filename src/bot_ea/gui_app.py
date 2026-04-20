@@ -3,9 +3,10 @@ from __future__ import annotations
 import tkinter as tk
 from pathlib import Path
 from tkinter import ttk
+from types import SimpleNamespace
 
 from .desktop_runtime import DesktopRuntimeConfig, DesktopRuntimeCoordinator
-from .models import CapitalAllocation, CapitalAllocationMode, PositionSizeRequest, RiskPolicy, TradingStyle
+from .models import CapitalAllocation, CapitalAllocationMode, OperatingMode, PositionSizeRequest, RiskPolicy, TradingStyle
 from .mt5_adapter import LiveMT5Adapter
 from .mt5_execution_runtime import MT5ExecutionRuntime
 from .polling_runtime import AIIntent, DecisionAction, MT5SnapshotProvider
@@ -73,6 +74,7 @@ class LiveControlPanel:
         self.current_run_id_var = tk.StringVar(value="")
         self.snapshot = None
         self.size_result = None
+        self.manual_order_snapshot: dict[str, float | str | bool] | None = None
         self.play_button: ttk.Button | None = None
         self.stop_button: ttk.Button | None = None
         self.live_button: ttk.Button | None = None
@@ -405,7 +407,8 @@ class LiveControlPanel:
             self.size_result = None
             self._handle_panel_error(exc, fallback_status="Sizing preview failed")
             return
-        self._write(self._snapshot_lines() + [""] + self._sizing_snapshot_lines())
+        self.manual_order_snapshot = self._manual_order_snapshot()
+        self._write(self._snapshot_lines() + [""] + self._manual_order_snapshot_lines() + [""] + self._sizing_snapshot_lines())
         self.status_var.set("Snapshot refreshed")
         self._sync_runtime_controls()
 
@@ -443,7 +446,8 @@ class LiveControlPanel:
             lines.append(f"rejection_reason={self.size_result.rejection_reason}")
         for warning in self.size_result.warnings:
             lines.append(f"warning={warning}")
-        lines.extend(["", *self._sizing_snapshot_lines()])
+        self.manual_order_snapshot = self._manual_order_snapshot()
+        lines.extend(["", *self._manual_order_snapshot_lines(), "", *self._sizing_snapshot_lines()])
         self._write(lines)
         self.status_var.set("Preflight complete")
         self._sync_runtime_controls()
@@ -454,13 +458,37 @@ class LiveControlPanel:
         if self.snapshot is None or self.size_result is None:
             return
         try:
+            self.manual_order_snapshot = self._manual_order_snapshot()
+            if not self.manual_order_snapshot or not bool(self.manual_order_snapshot.get("accepted")):
+                detail = str((self.manual_order_snapshot or {}).get("why_blocked") or "manual lot snapshot blocked")
+                self._write(self._snapshot_lines() + [""] + self._manual_order_snapshot_lines() + ["", f"status=REJECTED", f"detail={detail}"])
+                self.status_var.set("Execution blocked")
+                self._sync_runtime_controls()
+                return
             runtime = MT5ExecutionRuntime(adapter=self.adapter, allow_live_orders=self.allow_live_var.get())
-            result = runtime.execute(self.snapshot, self._intent("manual execute"), self.size_result)
+            manual_size_result = SimpleNamespace(
+                accepted=True,
+                mode=OperatingMode.RECOMMEND,
+                capital_base_cash=float(self.manual_order_snapshot.get("allocation_cap_usd") or 0.0),
+                recommended_minimum_allocation_cash=0.0,
+                effective_risk_pct=0.0,
+                risk_cash_budget=0.0,
+                normalized_volume=float(self.manual_order_snapshot.get("final_lot") or 0.0),
+                estimated_loss_cash=0.0,
+                stop_distance_points=float(self.stop_var.get()),
+                rejection_reason=None,
+                warnings=[],
+            )
+            result = runtime.execute(self.snapshot, self._intent("manual execute"), manual_size_result)
         except Exception as exc:
             self._handle_panel_error(exc, fallback_status="Execution failed")
             return
         self._write(
-            [
+            self._snapshot_lines()
+            + [""]
+            + self._manual_order_snapshot_lines()
+            + [""]
+            + [
                 f"status={result.get('status')}",
                 f"detail={result.get('detail')}",
                 f"retcode={result.get('retcode')}",
@@ -470,6 +498,7 @@ class LiveControlPanel:
             ]
         )
         self.status_var.set("Execution attempted")
+        self._sync_runtime_controls()
 
     def load_telemetry(self) -> None:
         store = RuntimeStore(self.db_path_var.get().strip())
@@ -687,6 +716,93 @@ class LiveControlPanel:
             f"filling_mode={self.snapshot.symbol_snapshot.filling_mode}",
         ]
 
+    def _manual_order_snapshot(self) -> dict[str, float | str | bool] | None:
+        if self.snapshot is None:
+            return None
+        symbol = self.snapshot.symbol_snapshot
+        side = self.side_var.get()
+        order_price = float(self.snapshot.ask if side == "buy" else self.snapshot.bid)
+        allocation_cap = self._allocation_capital_basis()
+        if allocation_cap <= 0:
+            return {
+                "accepted": False,
+                "final_lot": 0.0,
+                "why_blocked": "capital allocation must be positive",
+            }
+        min_lot = float(symbol.volume_min or 0.0)
+        max_lot = float(symbol.volume_max or 0.0)
+        step = float(symbol.volume_step or 0.0)
+        if min_lot <= 0 or step <= 0 or max_lot <= 0 or order_price <= 0:
+            return {
+                "accepted": False,
+                "final_lot": 0.0,
+                "why_blocked": "symbol volume or price configuration is invalid",
+            }
+        margin_min = self.adapter.estimate_margin(self.snapshot.symbol, min_lot, side, order_price)
+        if not margin_min.success:
+            return {
+                "accepted": False,
+                "final_lot": 0.0,
+                "why_blocked": margin_min.detail,
+            }
+        available_budget = min(allocation_cap, float(self.snapshot.account.free_margin))
+        if margin_min.required_margin > available_budget:
+            return {
+                "accepted": False,
+                "final_lot": 0.0,
+                "allocation_cap_usd": allocation_cap,
+                "available_margin_cap_usd": available_budget,
+                "broker_min_lot": min_lot,
+                "margin_for_min_lot_usd": margin_min.required_margin,
+                "why_blocked": "allocation cannot cover broker minimum lot margin",
+            }
+        final_lot = min_lot
+        margin_for_final = margin_min.required_margin
+        current = min_lot
+        max_steps = int(round((max_lot - min_lot) / step)) + 1
+        for _ in range(max_steps):
+            next_lot = round(current + step, 8)
+            if next_lot > max_lot + 1e-9:
+                break
+            margin = self.adapter.estimate_margin(self.snapshot.symbol, next_lot, side, order_price)
+            if not margin.success or margin.required_margin > available_budget:
+                break
+            final_lot = next_lot
+            margin_for_final = margin.required_margin
+            current = next_lot
+        return {
+            "accepted": final_lot > 0,
+            "allocation_cap_usd": allocation_cap,
+            "available_margin_cap_usd": available_budget,
+            "broker_min_lot": min_lot,
+            "broker_max_lot": max_lot,
+            "broker_lot_step": step,
+            "order_price": order_price,
+            "final_lot": final_lot,
+            "margin_for_min_lot_usd": margin_min.required_margin,
+            "margin_for_final_lot_usd": margin_for_final,
+            "why_blocked": "n/a" if final_lot > 0 else "allocation cannot cover broker minimum lot margin",
+        }
+
+    def _manual_order_snapshot_lines(self) -> list[str]:
+        if self.manual_order_snapshot is None:
+            return ["manual_order_snapshot=unavailable"]
+        snap = self.manual_order_snapshot
+        return [
+            "manual_order_snapshot:",
+            f"- final_lot={float(snap.get('final_lot') or 0.0):.4f}",
+            f"- capital_basis_usd={float(snap.get('allocation_cap_usd') or 0.0):.2f}",
+            f"- free_margin_cap_usd={float(snap.get('available_margin_cap_usd') or 0.0):.2f}",
+            f"- broker_min_lot={float(snap.get('broker_min_lot') or 0.0):.4f}",
+            f"- broker_max_lot={float(snap.get('broker_max_lot') or 0.0):.4f}",
+            f"- broker_lot_step={float(snap.get('broker_lot_step') or 0.0):.4f}",
+            f"- margin_for_min_lot_usd={float(snap.get('margin_for_min_lot_usd') or 0.0):.2f}",
+            f"- margin_for_final_lot_usd={float(snap.get('margin_for_final_lot_usd') or 0.0):.2f}",
+            f"- order_price={float(snap.get('order_price') or 0.0):.5f}",
+            f"- manual_order_result={'ok' if bool(snap.get('accepted')) else 'blocked'}",
+            f"- why_blocked={snap.get('why_blocked') or 'n/a'}",
+        ]
+
     def _sizing_snapshot_lines(self) -> list[str]:
         if self.snapshot is None or self.size_result is None:
             return ["sizing_snapshot=unavailable"]
@@ -728,6 +844,16 @@ class LiveControlPanel:
                 capital_allocation=self._capital_allocation(),
             )
         )
+
+    def _allocation_capital_basis(self) -> float:
+        account_equity = max(self.snapshot.account.equity, 0.0) if self.snapshot is not None else 0.0
+        allocation = self._capital_allocation()
+        if allocation.mode is CapitalAllocationMode.FULL_EQUITY:
+            return account_equity
+        if allocation.mode is CapitalAllocationMode.PERCENT_EQUITY:
+            pct = min(max(allocation.value, 0.0), 100.0)
+            return account_equity * (pct / 100.0)
+        return min(max(allocation.value, 0.0), account_equity)
 
     def _intent(self, reason: str) -> AIIntent:
         side = self.side_var.get()
