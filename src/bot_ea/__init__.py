@@ -14,7 +14,8 @@ from .models import (
     TradingStyle,
 )
 from .codex_cli_engine import CodexCLIEngine
-from .mt5_adapter import LiveMT5Adapter, MockMT5Adapter, MT5Adapter, OrderSendResult, OrderValidationResult, PriceTickSnapshot, SymbolCapabilitySnapshot
+from .desktop_runtime import DesktopRuntimeConfig, DesktopRuntimeCoordinator, DesktopRuntimeEvent
+from .mt5_adapter import LiveMT5Adapter, MockMT5Adapter, MT5Adapter, OrderSendResult, OrderValidationResult, PriceTickSnapshot, SymbolCapabilitySnapshot, TerminalStatusSnapshot
 from .mt5_execution_runtime import MT5ExecutionRuntime
 from .mt5_snapshots import build_account_snapshot, build_symbol_snapshot
 from .polling_runtime import AIIntent, DecisionAction, MT5SnapshotProvider, PollingConfig, PollingRuntime, PollingCycleResult, RuntimeSnapshot
@@ -51,6 +52,9 @@ __all__ = [
     "CapitalAllocation",
     "CapitalAllocationMode",
     "CodexCLIEngine",
+    "DesktopRuntimeConfig",
+    "DesktopRuntimeCoordinator",
+    "DesktopRuntimeEvent",
     "DecisionAction",
     "ExecutionGateResult",
     "ExecutionQualitySummary",
@@ -82,6 +86,7 @@ __all__ = [
     "SessionPerformance",
     "SymbolSnapshot",
     "SymbolCapabilitySnapshot",
+    "TerminalStatusSnapshot",
     "StopDecision",
     "StopPolicy",
     "StopReason",

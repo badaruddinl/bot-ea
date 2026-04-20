@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import tkinter as tk
-from tkinter import ttk
 from pathlib import Path
+from tkinter import ttk
 
+from .desktop_runtime import DesktopRuntimeConfig, DesktopRuntimeCoordinator
 from .models import CapitalAllocation, CapitalAllocationMode, PositionSizeRequest, RiskPolicy, TradingStyle
 from .mt5_adapter import LiveMT5Adapter
 from .mt5_execution_runtime import MT5ExecutionRuntime
@@ -13,13 +14,27 @@ from .runtime_store import RuntimeStore
 
 
 class LiveControlPanel:
-    def __init__(self, root: tk.Tk) -> None:
+    def __init__(
+        self,
+        root: tk.Tk,
+        *,
+        adapter: LiveMT5Adapter | None = None,
+        runtime_coordinator: DesktopRuntimeCoordinator | None = None,
+        risk_engine: RiskEngine | None = None,
+        risk_policy: RiskPolicy | None = None,
+    ) -> None:
         self.root = root
-        self.root.title("bot-ea Live Control")
-        self.adapter = LiveMT5Adapter()
-        self.risk_engine = RiskEngine()
-        self.risk_policy = RiskPolicy(base_risk_pct=1.0, max_total_open_risk_pct=2.0, daily_loss_limit_pct=3.0)
-        self.symbol_var = tk.StringVar(value="XAUUSD")
+        self.root.title("bot-ea Desktop Runtime")
+        self.adapter = adapter or LiveMT5Adapter()
+        self.risk_engine = risk_engine or RiskEngine()
+        self.risk_policy = risk_policy or RiskPolicy(
+            base_risk_pct=1.0,
+            max_total_open_risk_pct=2.0,
+            daily_loss_limit_pct=3.0,
+        )
+        self.runtime_coordinator = runtime_coordinator or DesktopRuntimeCoordinator(risk_policy=self.risk_policy)
+
+        self.symbol_var = tk.StringVar(value="EURUSD")
         self.timeframe_var = tk.StringVar(value="M15")
         self.style_var = tk.StringVar(value=TradingStyle.INTRADAY.value)
         self.stop_var = tk.StringVar(value="200")
@@ -28,19 +43,35 @@ class LiveControlPanel:
         self.allocation_var = tk.StringVar(value="250")
         self.side_var = tk.StringVar(value="buy")
         self.db_path_var = tk.StringVar(value=str(Path.cwd() / "bot_ea_runtime.db"))
+        self.codex_executable_var = tk.StringVar(value="codex")
+        self.codex_model_var = tk.StringVar(value="")
+        self.codex_cwd_var = tk.StringVar(value=str(Path.cwd()))
+        self.poll_interval_var = tk.StringVar(value="30")
         self.allow_live_var = tk.BooleanVar(value=False)
         self.status_var = tk.StringVar(value="Ready")
         self.health_var = tk.StringVar(value="No runtime DB loaded")
+        self.mt5_status_var = tk.StringVar(value="MT5 unchecked")
+        self.codex_status_var = tk.StringVar(value="codex-cli unchecked")
+        self.runtime_status_var = tk.StringVar(value="Runtime stopped")
+        self.live_button_text_var = tk.StringVar(value="Enable Live")
         self.snapshot = None
         self.size_result = None
+        self.play_button: ttk.Button | None = None
+        self.stop_button: ttk.Button | None = None
+        self.live_button: ttk.Button | None = None
         self._build()
+        self.root.after(250, self._pump_runtime_events)
+        self.root.protocol("WM_DELETE_WINDOW", self._on_close)
 
     def _build(self) -> None:
         frame = ttk.Frame(self.root, padding=12)
         frame.grid(row=0, column=0, sticky="nsew")
         self.root.columnconfigure(0, weight=1)
         self.root.rowconfigure(0, weight=1)
-        fields = [
+        frame.columnconfigure(1, weight=1)
+        frame.rowconfigure(7, weight=1)
+
+        market_fields = [
             ("Symbol", self.symbol_var),
             ("Timeframe", self.timeframe_var),
             ("Style", self.style_var),
@@ -50,46 +81,219 @@ class LiveControlPanel:
             ("Side", self.side_var),
             ("Runtime DB", self.db_path_var),
         ]
+        codex_fields = [
+            ("Codex CLI", self.codex_executable_var),
+            ("Codex Model", self.codex_model_var),
+            ("Codex CWD", self.codex_cwd_var),
+            ("Poll Interval (s)", self.poll_interval_var),
+        ]
+
+        market_frame = ttk.LabelFrame(frame, text="Market / Runtime")
+        market_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 8), pady=(0, 8))
+        market_frame.columnconfigure(1, weight=1)
+        self._build_fields(market_frame, market_fields)
+
+        codex_frame = ttk.LabelFrame(frame, text="Codex CLI")
+        codex_frame.grid(row=0, column=1, sticky="nsew", pady=(0, 8))
+        codex_frame.columnconfigure(1, weight=1)
+        self._build_fields(codex_frame, codex_fields)
+
+        status_frame = ttk.LabelFrame(frame, text="Readiness")
+        status_frame.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(0, 8))
+        status_frame.columnconfigure(1, weight=1)
+        ttk.Label(status_frame, text="MT5").grid(row=0, column=0, sticky="w", padx=(0, 8), pady=2)
+        ttk.Label(status_frame, textvariable=self.mt5_status_var).grid(row=0, column=1, sticky="w", pady=2)
+        ttk.Label(status_frame, text="Codex CLI").grid(row=1, column=0, sticky="w", padx=(0, 8), pady=2)
+        ttk.Label(status_frame, textvariable=self.codex_status_var).grid(row=1, column=1, sticky="w", pady=2)
+        ttk.Label(status_frame, text="Background Runtime").grid(row=2, column=0, sticky="w", padx=(0, 8), pady=2)
+        ttk.Label(status_frame, textvariable=self.runtime_status_var).grid(row=2, column=1, sticky="w", pady=2)
+
+        control_bar = ttk.Frame(frame)
+        control_bar.grid(row=2, column=0, columnspan=2, sticky="w", pady=(0, 8))
+        ttk.Button(control_bar, text="Check MT5", command=self.check_mt5).grid(row=0, column=0, padx=(0, 6))
+        ttk.Button(control_bar, text="Load Codex", command=self.load_codex).grid(row=0, column=1, padx=(0, 6))
+        self.play_button = ttk.Button(control_bar, text="Play Runtime", command=self.play_runtime)
+        self.play_button.grid(row=0, column=2, padx=(0, 6))
+        self.stop_button = ttk.Button(control_bar, text="Stop Runtime", command=self.stop_runtime)
+        self.stop_button.grid(row=0, column=3, padx=(0, 6))
+        self.live_button = ttk.Button(control_bar, textvariable=self.live_button_text_var, command=self.toggle_live)
+        self.live_button.grid(row=0, column=4, padx=(0, 6))
+
+        manual_bar = ttk.Frame(frame)
+        manual_bar.grid(row=3, column=0, columnspan=2, sticky="w", pady=(0, 8))
+        ttk.Button(manual_bar, text="Refresh", command=self.refresh).grid(row=0, column=0, padx=(0, 6))
+        ttk.Button(manual_bar, text="Preflight", command=self.preflight).grid(row=0, column=1, padx=(0, 6))
+        ttk.Button(manual_bar, text="Execute", command=self.execute).grid(row=0, column=2, padx=(0, 6))
+        ttk.Button(manual_bar, text="Load Telemetry", command=self.load_telemetry).grid(row=0, column=3, padx=(0, 6))
+        ttk.Checkbutton(manual_bar, text="Allow Live Orders", variable=self.allow_live_var).grid(row=0, column=4, sticky="w")
+
+        ttk.Label(frame, textvariable=self.health_var).grid(row=4, column=0, columnspan=2, sticky="ew", pady=(0, 8))
+        self.output = tk.Text(frame, width=120, height=30, wrap="word")
+        self.output.grid(row=7, column=0, columnspan=2, sticky="nsew")
+        ttk.Label(frame, textvariable=self.status_var).grid(row=8, column=0, columnspan=2, sticky="ew", pady=(8, 0))
+        self._sync_runtime_controls()
+
+    def _build_fields(self, parent: ttk.LabelFrame | ttk.Frame, fields: list[tuple[str | tk.StringVar, tk.StringVar]]) -> None:
         for row, (label, variable) in enumerate(fields):
-            ttk.Label(frame, textvariable=label).grid(row=row, column=0, sticky="w", padx=(0, 8), pady=4) if isinstance(label, tk.StringVar) else ttk.Label(frame, text=label).grid(row=row, column=0, sticky="w", padx=(0, 8), pady=4)
-            if (label if isinstance(label, str) else label.get()) in {"Style", "Allocation Mode", "Side"}:
-                label_key = label if isinstance(label, str) else label.get()
+            if isinstance(label, tk.StringVar):
+                ttk.Label(parent, textvariable=label).grid(row=row, column=0, sticky="w", padx=(0, 8), pady=4)
+                label_key = label.get()
+            else:
+                ttk.Label(parent, text=label).grid(row=row, column=0, sticky="w", padx=(0, 8), pady=4)
+                label_key = label
+            if label_key in {"Style", "Allocation Mode", "Side"}:
                 if label_key == "Style":
                     values = [style.value for style in TradingStyle]
                 elif label_key == "Allocation Mode":
                     values = [mode.value for mode in CapitalAllocationMode]
                 else:
                     values = ["buy", "sell"]
-                combo = ttk.Combobox(frame, textvariable=variable, values=values, state="readonly", width=18)
-                combo.grid(
-                    row=row, column=1, sticky="ew", pady=4
-                )
+                combo = ttk.Combobox(parent, textvariable=variable, values=values, state="readonly", width=18)
+                combo.grid(row=row, column=1, sticky="ew", pady=4)
                 if label_key == "Allocation Mode":
                     combo.bind("<<ComboboxSelected>>", lambda _event: self._sync_allocation_label())
             else:
-                ttk.Entry(frame, textvariable=variable, width=18).grid(row=row, column=1, sticky="ew", pady=4)
-        ttk.Checkbutton(frame, text="Allow Live Orders", variable=self.allow_live_var).grid(
-            row=len(fields), column=0, columnspan=2, sticky="w", pady=(8, 4)
+                ttk.Entry(parent, textvariable=variable, width=18).grid(row=row, column=1, sticky="ew", pady=4)
+
+    def check_mt5(self) -> None:
+        try:
+            result = self.runtime_coordinator.probe_mt5(
+                symbol=self.symbol_var.get().strip(),
+                timeframe=self.timeframe_var.get().strip(),
+                trading_style=TradingStyle(self.style_var.get()),
+                stop_distance_points=float(self.stop_var.get()),
+                capital_allocation=self._capital_allocation(),
+            )
+        except Exception as exc:
+            self.mt5_status_var.set("MT5 probe failed")
+            self._handle_panel_error(exc, fallback_status="MT5 probe failed")
+            return
+        terminal = result["terminal"]
+        snapshot = result["snapshot"]
+        self.mt5_status_var.set(
+            " ".join(
+                [
+                    "connected" if terminal.get("connected") else "disconnected",
+                    f"terminal_trade_allowed={terminal.get('trade_allowed')}",
+                    f"account_trade_allowed={terminal.get('account_trade_allowed')}",
+                    f"symbol_trade_allowed={snapshot.get('symbol_trade_allowed')}",
+                ]
+            )
         )
-        button_bar = ttk.Frame(frame)
-        button_bar.grid(row=len(fields) + 1, column=0, columnspan=2, sticky="w", pady=(8, 8))
-        ttk.Button(button_bar, text="Refresh", command=self.refresh).grid(row=0, column=0, padx=(0, 6))
-        ttk.Button(button_bar, text="Preflight", command=self.preflight).grid(row=0, column=1, padx=(0, 6))
-        ttk.Button(button_bar, text="Execute", command=self.execute).grid(row=0, column=2)
-        ttk.Button(button_bar, text="Load Telemetry", command=self.load_telemetry).grid(row=0, column=3, padx=(6, 0))
-        ttk.Label(frame, textvariable=self.health_var).grid(row=len(fields) + 2, column=0, columnspan=2, sticky="ew", pady=(0, 8))
-        self.output = tk.Text(frame, width=100, height=28, wrap="word")
-        self.output.grid(row=len(fields) + 3, column=0, columnspan=2, sticky="nsew")
-        ttk.Label(frame, textvariable=self.status_var).grid(row=len(fields) + 4, column=0, columnspan=2, sticky="ew", pady=(8, 0))
-        frame.columnconfigure(1, weight=1)
-        frame.rowconfigure(len(fields) + 3, weight=1)
+        self.status_var.set("MT5 readiness checked")
+        self._write(
+            [
+                "mt5_probe:",
+                f"- connected={terminal.get('connected')}",
+                f"- terminal_trade_allowed={terminal.get('trade_allowed')}",
+                f"- tradeapi_disabled={terminal.get('tradeapi_disabled')}",
+                f"- account_trade_allowed={terminal.get('account_trade_allowed')}",
+                f"- account_trade_expert={terminal.get('account_trade_expert')}",
+                f"- server={terminal.get('server')}",
+                f"- company={terminal.get('company')}",
+                f"- path={terminal.get('path')}",
+                "",
+                "snapshot:",
+                f"- symbol={snapshot.get('symbol')}",
+                f"- bid={snapshot.get('bid')}",
+                f"- ask={snapshot.get('ask')}",
+                f"- spread_points={snapshot.get('spread_points')}",
+                f"- equity={snapshot.get('equity')}",
+                f"- free_margin={snapshot.get('free_margin')}",
+            ]
+        )
+
+    def load_codex(self) -> None:
+        try:
+            version = self.runtime_coordinator.probe_codex(
+                executable=self.codex_executable_var.get().strip(),
+                model=self._optional_str(self.codex_model_var.get()),
+                cwd=self._optional_str(self.codex_cwd_var.get()),
+            )
+        except Exception as exc:
+            self.codex_status_var.set("codex-cli probe failed")
+            self._handle_panel_error(exc, fallback_status="codex-cli probe failed")
+            return
+        self.codex_status_var.set(version)
+        self.status_var.set("codex-cli ready")
+        self._write(
+            [
+                "codex_probe:",
+                f"- executable={self.codex_executable_var.get().strip()}",
+                f"- version={version}",
+                f"- model={self._optional_str(self.codex_model_var.get()) or 'default'}",
+                f"- cwd={self._optional_str(self.codex_cwd_var.get()) or Path.cwd()}",
+            ]
+        )
+
+    def play_runtime(self) -> None:
+        if self.runtime_coordinator.is_running:
+            self.status_var.set("Runtime already running")
+            return
+        try:
+            self.load_codex()
+            self.check_mt5()
+            config = self._desktop_runtime_config()
+            run_id = self.runtime_coordinator.start(config)
+        except Exception as exc:
+            self._handle_panel_error(exc, fallback_status="Runtime failed to start")
+            return
+        self.db_path_var.set(config.db_path)
+        self.runtime_status_var.set(f"Starting run {run_id}")
+        self.status_var.set("Background runtime starting")
+        self._append_output([f"runtime_starting run_id={run_id}", f"db_path={config.db_path}"])
+        self._sync_runtime_controls()
+
+    def stop_runtime(self) -> None:
+        if not self.runtime_coordinator.is_running:
+            self.status_var.set("Runtime already stopped")
+            self._sync_runtime_controls()
+            return
+        self.runtime_coordinator.stop()
+        self.runtime_status_var.set("Stopping runtime")
+        self.status_var.set("Stopping background runtime")
+        self._sync_runtime_controls()
+
+    def toggle_live(self) -> None:
+        if not self.runtime_coordinator.is_running:
+            self.status_var.set("Start runtime first")
+            self._append_output(["runtime_live_toggle_failed=runtime not running"])
+            return
+        try:
+            probe = self.runtime_coordinator.probe_mt5(
+                symbol=self.symbol_var.get().strip(),
+                timeframe=self.timeframe_var.get().strip(),
+                trading_style=TradingStyle(self.style_var.get()),
+                stop_distance_points=float(self.stop_var.get()),
+                capital_allocation=self._capital_allocation(),
+            )
+        except Exception as exc:
+            self._handle_panel_error(exc, fallback_status="Live toggle failed")
+            return
+        terminal = probe["terminal"]
+        enable_live = not self.runtime_coordinator.live_enabled
+        if enable_live and not terminal.get("trade_allowed"):
+            self.status_var.set("MT5 terminal blocks live trading")
+            self._append_output(
+                [
+                    "live_toggle_rejected:",
+                    f"terminal_trade_allowed={terminal.get('trade_allowed')}",
+                    f"account_trade_allowed={terminal.get('account_trade_allowed')}",
+                    f"tradeapi_disabled={terminal.get('tradeapi_disabled')}",
+                ]
+            )
+            return
+        self.runtime_coordinator.set_live_enabled(enable_live)
+        self.allow_live_var.set(enable_live)
+        self.runtime_status_var.set("Live orders enabled" if enable_live else "Live orders disabled")
+        self.status_var.set("Live mode updated")
+        self._sync_runtime_controls()
 
     def refresh(self) -> None:
         try:
             self.snapshot = self._provider().get_snapshot()
-        except ValueError as exc:
-            self.status_var.set("Invalid allocation input")
-            self._write([f"error={exc}"])
+        except Exception as exc:
+            self._handle_panel_error(exc, fallback_status="Snapshot refresh failed")
             return
         self.size_result = None
         self._write(
@@ -118,13 +322,16 @@ class LiveControlPanel:
             return
         try:
             self.size_result = self._size_result()
-        except ValueError as exc:
-            self.status_var.set("Invalid allocation input")
-            self._write([f"error={exc}"])
+        except Exception as exc:
+            self._handle_panel_error(exc, fallback_status="Preflight failed")
             return
-        intent = self._intent("manual preflight")
-        runtime = MT5ExecutionRuntime(adapter=self.adapter, allow_live_orders=False)
-        result = runtime.preflight(self.snapshot, intent, self.size_result)
+        try:
+            intent = self._intent("manual preflight")
+            runtime = MT5ExecutionRuntime(adapter=self.adapter, allow_live_orders=False)
+            result = runtime.preflight(self.snapshot, intent, self.size_result)
+        except Exception as exc:
+            self._handle_panel_error(exc, fallback_status="Preflight failed")
+            return
         lines = [
             f"accepted={self.size_result.accepted}",
             f"mode={self.size_result.mode.value}",
@@ -148,10 +355,14 @@ class LiveControlPanel:
     def execute(self) -> None:
         if self.snapshot is None or self.size_result is None:
             self.preflight()
-        assert self.snapshot is not None
-        assert self.size_result is not None
-        runtime = MT5ExecutionRuntime(adapter=self.adapter, allow_live_orders=self.allow_live_var.get())
-        result = runtime.execute(self.snapshot, self._intent("manual execute"), self.size_result)
+        if self.snapshot is None or self.size_result is None:
+            return
+        try:
+            runtime = MT5ExecutionRuntime(adapter=self.adapter, allow_live_orders=self.allow_live_var.get())
+            result = runtime.execute(self.snapshot, self._intent("manual execute"), self.size_result)
+        except Exception as exc:
+            self._handle_panel_error(exc, fallback_status="Execution failed")
+            return
         self._write(
             [
                 f"status={result.get('status')}",
@@ -190,6 +401,7 @@ class LiveControlPanel:
                     f"free_margin={overview.get('free_margin')}",
                     f"fills={health.get('filled_events')}",
                     f"reject_rate={health.get('reject_rate', 0.0):.1%}",
+                    f"mode={'live' if self.runtime_coordinator.live_enabled else 'dry-run'}",
                 ]
             )
         )
@@ -202,6 +414,7 @@ class LiveControlPanel:
             f"equity={overview.get('equity')}",
             f"free_margin={overview.get('free_margin')}",
             f"stop_reason={overview.get('stop_reason')}",
+            f"runtime_mode={'live' if self.runtime_coordinator.live_enabled else 'dry-run'}",
             "",
             "execution_health:",
             f"- total_events={health.get('total_events')}",
@@ -230,12 +443,7 @@ class LiveControlPanel:
                     f"- warnings={payload.get('warnings')}",
                 ]
             )
-        lines.extend(
-            [
-                "",
-            "recent_positions:",
-            ]
-        )
+        lines.extend(["", "recent_positions:"])
         for position in positions:
             lines.append(
                 " ".join(
@@ -250,18 +458,14 @@ class LiveControlPanel:
                     ]
                 )
             )
-        lines.extend(
-            [
-                "",
-            "recent_execution_events:",
-            ]
-        )
+        lines.extend(["", "recent_execution_events:"])
         for event in events:
             lines.append(
                 " ".join(
                     [
                         f"- [{event.get('status')}]",
                         f"time={event.get('polled_at')}",
+                        f"attempt={event.get('attempt_id')}",
                         f"{event.get('symbol')}",
                         f"{event.get('side')}",
                         f"retcode={event.get('retcode')}",
@@ -287,6 +491,24 @@ class LiveControlPanel:
             )
         self._write(lines)
         self.status_var.set("Telemetry loaded")
+
+    def _desktop_runtime_config(self) -> DesktopRuntimeConfig:
+        poll_interval = int(float(self.poll_interval_var.get()))
+        if poll_interval <= 0:
+            raise ValueError("poll interval must be positive")
+        db_path = str(Path(self.db_path_var.get().strip()).expanduser())
+        return DesktopRuntimeConfig(
+            symbol=self.symbol_var.get().strip(),
+            timeframe=self.timeframe_var.get().strip(),
+            trading_style=TradingStyle(self.style_var.get()),
+            stop_distance_points=float(self.stop_var.get()),
+            capital_allocation=self._capital_allocation(),
+            db_path=db_path,
+            codex_executable=self.codex_executable_var.get().strip() or "codex",
+            codex_model=self._optional_str(self.codex_model_var.get()),
+            codex_cwd=self._optional_str(self.codex_cwd_var.get()),
+            poll_interval_seconds=poll_interval,
+        )
 
     def _provider(self) -> MT5SnapshotProvider:
         return MT5SnapshotProvider(
@@ -344,9 +566,86 @@ class LiveControlPanel:
             return
         self.allocation_label_var.set("Allocation Cash (USD)")
 
+    def _pump_runtime_events(self) -> None:
+        try:
+            for event in self.runtime_coordinator.drain_events():
+                self._handle_runtime_event(event.kind, event.message, event.payload)
+        finally:
+            self.root.after(250, self._pump_runtime_events)
+
+    def _handle_runtime_event(self, kind: str, message: str, payload: dict[str, object]) -> None:
+        if kind == "runtime_started":
+            self.runtime_status_var.set(message)
+            db_path = payload.get("db_path")
+            if isinstance(db_path, str):
+                self.db_path_var.set(db_path)
+        elif kind == "runtime_cycle":
+            self.runtime_status_var.set(message)
+            overview = payload.get("overview") if isinstance(payload.get("overview"), dict) else {}
+            health = payload.get("health") if isinstance(payload.get("health"), dict) else {}
+            self.health_var.set(
+                " ".join(
+                    [
+                        f"run={overview.get('run_id')}",
+                        f"status={overview.get('status')}",
+                        f"last_action={payload.get('action')}",
+                        f"fills={health.get('filled_events')}",
+                        f"reject_rate={health.get('reject_rate', 0.0):.1%}" if isinstance(health.get("reject_rate"), (int, float)) else "reject_rate=n/a",
+                        f"mode={'live' if payload.get('live_enabled') else 'dry-run'}",
+                    ]
+                ).strip()
+            )
+            if self.db_path_var.get().strip():
+                self.load_telemetry()
+        elif kind in {"runtime_stopped", "runtime_error", "runtime_halted"}:
+            self.runtime_status_var.set(message)
+        elif kind == "mt5_ready":
+            self.mt5_status_var.set(message)
+        elif kind == "codex_ready":
+            version = payload.get("version")
+            self.codex_status_var.set(str(version or message))
+        elif kind == "live_toggle":
+            enabled = bool(payload.get("enabled"))
+            self.allow_live_var.set(enabled)
+            self.runtime_status_var.set(message)
+        self.status_var.set(message)
+        self._sync_runtime_controls()
+
+    def _sync_runtime_controls(self) -> None:
+        running = self.runtime_coordinator.is_running
+        live_enabled = self.runtime_coordinator.live_enabled
+        if self.play_button is not None:
+            self.play_button.state(["disabled"] if running else ["!disabled"])
+        if self.stop_button is not None:
+            self.stop_button.state(["!disabled"] if running else ["disabled"])
+        if self.live_button is not None:
+            self.live_button.state(["!disabled"] if running else ["disabled"])
+        self.live_button_text_var.set("Disable Live" if live_enabled else "Enable Live")
+
+    def _handle_panel_error(self, exc: Exception, *, fallback_status: str) -> None:
+        self.status_var.set(fallback_status)
+        self._write([f"error={exc}"])
+
     def _write(self, lines: list[str]) -> None:
         self.output.delete("1.0", tk.END)
         self.output.insert(tk.END, "\n".join(lines))
+
+    def _append_output(self, lines: list[str]) -> None:
+        existing = self.output.get("1.0", tk.END).strip()
+        merged = "\n".join(filter(None, [existing, *lines]))
+        self._write(merged.splitlines())
+
+    def _on_close(self) -> None:
+        self.runtime_coordinator.stop(join_timeout=1.0)
+        shutdown = getattr(self.adapter, "shutdown", None)
+        if callable(shutdown):
+            shutdown()
+        self.root.destroy()
+
+    @staticmethod
+    def _optional_str(value: str) -> str | None:
+        normalized = value.strip()
+        return normalized or None
 
 
 def main() -> None:

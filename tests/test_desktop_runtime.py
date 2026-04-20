@@ -1,0 +1,155 @@
+from __future__ import annotations
+
+import sys
+import tempfile
+import time
+import unittest
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+
+from bot_ea.desktop_runtime import DesktopRuntimeConfig, DesktopRuntimeCoordinator  # noqa: E402
+from bot_ea.models import (  # noqa: E402
+    AccountSnapshot,
+    CapitalAllocation,
+    CapitalAllocationMode,
+    RiskPolicy,
+    SymbolSnapshot,
+    TradingStyle,
+)
+from bot_ea.mt5_adapter import PriceTickSnapshot, TerminalStatusSnapshot  # noqa: E402
+from bot_ea.polling_runtime import AIIntent, DecisionAction  # noqa: E402
+
+
+class FakeAdapter:
+    def load_account_snapshot(self) -> AccountSnapshot:
+        return AccountSnapshot(
+            equity=1000.0,
+            balance=1000.0,
+            free_margin=900.0,
+            margin_level=400.0,
+            trade_allowed=True,
+            trade_expert=True,
+        )
+
+    def load_symbol_snapshot(self, symbol: str) -> SymbolSnapshot:
+        return SymbolSnapshot(
+            name=symbol,
+            instrument_class="forex_major",
+            risk_weight=1.0,
+            point=0.0001,
+            tick_size=0.0001,
+            tick_value=10.0,
+            volume_min=0.01,
+            volume_max=10.0,
+            volume_step=0.01,
+            spread_points=2.0,
+            stops_level_points=10.0,
+            freeze_level_points=0.0,
+            trade_allowed=True,
+            trade_mode="full",
+            order_mode="market",
+            execution_mode="market",
+            filling_mode="fok",
+            bid=1.1000,
+            ask=1.1002,
+            price=1.1002,
+        )
+
+    def load_price_tick(self, symbol: str) -> PriceTickSnapshot:
+        return PriceTickSnapshot(symbol=symbol, bid=1.1000, ask=1.1002, time="2026-04-20T00:00:00+00:00")
+
+    def load_terminal_status(self) -> TerminalStatusSnapshot:
+        return TerminalStatusSnapshot(
+            connected=True,
+            trade_allowed=True,
+            tradeapi_disabled=False,
+            path="C:\\Program Files\\MetaTrader 5",
+            server="Demo-Server",
+            company="Demo Broker",
+            account_trade_allowed=True,
+            account_trade_expert=True,
+        )
+
+    def shutdown(self) -> None:
+        return None
+
+
+class FakeCodexEngine:
+    def __init__(self, **_: object) -> None:
+        pass
+
+    def probe(self) -> str:
+        return "codex-cli fake"
+
+    def decide(self, snapshot) -> AIIntent:
+        return AIIntent(
+            action=DecisionAction.NO_TRADE,
+            side=None,
+            confidence=0.5,
+            reason=f"hold for {snapshot.symbol}",
+            stop_distance_points=snapshot.stop_distance_points,
+        )
+
+
+class DesktopRuntimeCoordinatorTests(unittest.TestCase):
+    def test_probe_methods_return_runtime_readiness(self) -> None:
+        coordinator = DesktopRuntimeCoordinator(
+            adapter_factory=FakeAdapter,
+            codex_engine_factory=FakeCodexEngine,
+            risk_policy=RiskPolicy(base_risk_pct=1.0, max_total_open_risk_pct=2.0, daily_loss_limit_pct=3.0),
+        )
+
+        codex_version = coordinator.probe_codex(executable="codex")
+        mt5_probe = coordinator.probe_mt5(
+            symbol="EURUSD",
+            timeframe="M5",
+            trading_style=TradingStyle.INTRADAY,
+            stop_distance_points=50.0,
+            capital_allocation=CapitalAllocation(mode=CapitalAllocationMode.FIXED_CASH, value=250.0),
+        )
+
+        self.assertEqual(codex_version, "codex-cli fake")
+        self.assertTrue(mt5_probe["terminal"]["connected"])
+        self.assertEqual(mt5_probe["snapshot"]["symbol"], "EURUSD")
+
+    def test_background_runtime_starts_cycles_and_stops(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            coordinator = DesktopRuntimeCoordinator(
+                adapter_factory=FakeAdapter,
+                codex_engine_factory=FakeCodexEngine,
+                risk_policy=RiskPolicy(base_risk_pct=1.0, max_total_open_risk_pct=2.0, daily_loss_limit_pct=3.0),
+            )
+            config = DesktopRuntimeConfig(
+                symbol="EURUSD",
+                timeframe="M5",
+                trading_style=TradingStyle.INTRADAY,
+                stop_distance_points=50.0,
+                capital_allocation=CapitalAllocation(mode=CapitalAllocationMode.FIXED_CASH, value=250.0),
+                db_path=str(Path(tmpdir) / "runtime.db"),
+                poll_interval_seconds=1,
+            )
+
+            run_id = coordinator.start(config)
+            deadline = time.time() + 3.0
+            seen_kinds: set[str] = set()
+            while time.time() < deadline and "runtime_cycle" not in seen_kinds:
+                for event in coordinator.drain_events():
+                    seen_kinds.add(event.kind)
+                time.sleep(0.05)
+            coordinator.set_live_enabled(True)
+            coordinator.stop()
+            time.sleep(0.1)
+            for event in coordinator.drain_events():
+                seen_kinds.add(event.kind)
+
+            self.assertTrue(run_id)
+            self.assertIn("runtime_started", seen_kinds)
+            self.assertIn("runtime_cycle", seen_kinds)
+            self.assertIn("runtime_stopped", seen_kinds)
+            self.assertFalse(coordinator.is_running)
+            self.assertFalse(coordinator.live_enabled)
+
+
+if __name__ == "__main__":
+    unittest.main()

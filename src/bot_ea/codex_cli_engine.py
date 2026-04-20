@@ -27,20 +27,7 @@ class CodexCLIEngine:
         prompt = self._build_prompt(snapshot)
         with tempfile.TemporaryDirectory() as tmpdir:
             output_file = Path(tmpdir) / "codex_last_message.txt"
-            command = [
-                self.executable,
-                "exec",
-                "--skip-git-repo-check",
-                "--sandbox",
-                "read-only",
-                "--output-last-message",
-                str(output_file),
-            ]
-            if self.cwd:
-                command.extend(["-C", self.cwd])
-            if self.model:
-                command.extend(["-m", self.model])
-            command.append(prompt)
+            command = self._build_exec_command(prompt=prompt, output_file=output_file)
             subprocess.run(
                 command,
                 check=True,
@@ -50,6 +37,17 @@ class CodexCLIEngine:
             )
             response = output_file.read_text(encoding="utf-8").strip()
         return self.parse_response(response)
+
+    def probe(self) -> str:
+        result = subprocess.run(
+            [self.executable, "--version"],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=self.timeout_seconds,
+            cwd=self.cwd,
+        )
+        return result.stdout.strip() or result.stderr.strip() or "codex-cli available"
 
     @staticmethod
     def parse_response(response: str) -> AIIntent:
@@ -76,6 +74,23 @@ class CodexCLIEngine:
             stop_distance_points=float(stop_raw) if stop_raw not in {None, "", "none"} else None,
             payload={"raw_response": response},
         )
+
+    def _build_exec_command(self, *, prompt: str, output_file: Path) -> list[str]:
+        command = [
+            self.executable,
+            "exec",
+            "--skip-git-repo-check",
+            "--sandbox",
+            "read-only",
+            "--output-last-message",
+            str(output_file),
+        ]
+        if self.cwd:
+            command.extend(["-C", self.cwd])
+        if self.model:
+            command.extend(["-m", self.model])
+        command.append(prompt)
+        return command
 
     @staticmethod
     def _build_prompt(snapshot: RuntimeSnapshot) -> str:

@@ -12,6 +12,56 @@ from bot_ea.gui_app import LiveControlPanel  # noqa: E402
 from bot_ea.models import CapitalAllocationMode  # noqa: E402
 
 
+class FakeRuntimeCoordinator:
+    def __init__(self) -> None:
+        self.is_running = False
+        self.live_enabled = False
+        self.started_with = None
+        self.mt5_trade_allowed = True
+
+    def probe_mt5(self, **_: object) -> dict:
+        return {
+            "terminal": {
+                "connected": True,
+                "trade_allowed": self.mt5_trade_allowed,
+                "tradeapi_disabled": False,
+                "account_trade_allowed": True,
+                "account_trade_expert": True,
+                "server": "Demo",
+                "company": "Demo Broker",
+                "path": "C:\\Program Files\\MetaTrader 5",
+            },
+            "snapshot": {
+                "symbol": "EURUSD",
+                "bid": 1.1,
+                "ask": 1.1002,
+                "spread_points": 2.0,
+                "equity": 1000.0,
+                "free_margin": 900.0,
+                "symbol_trade_allowed": True,
+            },
+        }
+
+    def probe_codex(self, **_: object) -> str:
+        return "codex-cli fake"
+
+    def start(self, config) -> str:
+        self.started_with = config
+        self.is_running = True
+        return "run-123"
+
+    def stop(self, join_timeout: float = 5.0) -> None:
+        _ = join_timeout
+        self.is_running = False
+        self.live_enabled = False
+
+    def set_live_enabled(self, enabled: bool) -> None:
+        self.live_enabled = enabled
+
+    def drain_events(self) -> list:
+        return []
+
+
 class GuiAppTests(unittest.TestCase):
     def _make_root(self) -> tk.Tk:
         try:
@@ -53,6 +103,32 @@ class GuiAppTests(unittest.TestCase):
             panel.allocation_var.set("250")
             with self.assertRaises(ValueError):
                 panel._capital_allocation()
+        finally:
+            root.destroy()
+
+    def test_play_runtime_uses_coordinator_and_updates_runtime_status(self) -> None:
+        root = self._make_root()
+        coordinator = FakeRuntimeCoordinator()
+        try:
+            panel = LiveControlPanel(root, runtime_coordinator=coordinator)
+            panel.play_runtime()
+            self.assertTrue(coordinator.is_running)
+            self.assertIsNotNone(coordinator.started_with)
+            self.assertIn("run-123", panel.runtime_status_var.get())
+            self.assertEqual(panel.db_path_var.get(), coordinator.started_with.db_path)
+        finally:
+            root.destroy()
+
+    def test_toggle_live_rejects_when_mt5_terminal_blocks_trading(self) -> None:
+        root = self._make_root()
+        coordinator = FakeRuntimeCoordinator()
+        coordinator.is_running = True
+        coordinator.mt5_trade_allowed = False
+        try:
+            panel = LiveControlPanel(root, runtime_coordinator=coordinator)
+            panel.toggle_live()
+            self.assertFalse(coordinator.live_enabled)
+            self.assertEqual(panel.status_var.get(), "MT5 terminal blocks live trading")
         finally:
             root.destroy()
 

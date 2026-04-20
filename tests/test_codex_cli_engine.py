@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import subprocess
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
@@ -26,3 +28,22 @@ class CodexCLIEngineTests(unittest.TestCase):
         self.assertEqual(intent.side, "buy")
         self.assertAlmostEqual(intent.confidence, 0.82)
         self.assertAlmostEqual(intent.stop_distance_points, 55.0)
+
+    @patch("bot_ea.codex_cli_engine.subprocess.run")
+    def test_probe_returns_version_output(self, run_mock) -> None:
+        run_mock.return_value = subprocess.CompletedProcess(
+            args=["codex", "--version"],
+            returncode=0,
+            stdout="codex-cli 0.121.0\n",
+            stderr="",
+        )
+        engine = CodexCLIEngine(executable="codex")
+
+        version = engine.probe()
+
+        self.assertEqual(version, "codex-cli 0.121.0")
+        run_mock.assert_called_once()
+
+
+if __name__ == "__main__":
+    unittest.main()

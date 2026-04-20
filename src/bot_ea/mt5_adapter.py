@@ -62,6 +62,19 @@ class SymbolCapabilitySnapshot:
     session_windows: list[str] = field(default_factory=list)
 
 
+@dataclass(slots=True)
+class TerminalStatusSnapshot:
+    connected: bool
+    trade_allowed: bool
+    tradeapi_disabled: bool
+    path: str = ""
+    data_path: str = ""
+    server: str = ""
+    company: str = ""
+    account_trade_allowed: bool = False
+    account_trade_expert: bool = False
+
+
 class MT5Adapter(Protocol):
     """Future integration seam for MetaTrader 5 terminal access."""
 
@@ -75,6 +88,9 @@ class MT5Adapter(Protocol):
         raise NotImplementedError
 
     def load_symbol_capabilities(self, symbol: str) -> SymbolCapabilitySnapshot:
+        raise NotImplementedError
+
+    def load_terminal_status(self) -> TerminalStatusSnapshot:
         raise NotImplementedError
 
     def estimate_margin(self, symbol: str, volume: float, order_type: str, price: float) -> MarginEstimate:
@@ -153,6 +169,16 @@ class MockMT5Adapter:
             trade_session_active=bool(capability.get("trade_session_active", True)),
             server_time=capability.get("server_time"),
             session_windows=list(capability.get("session_windows", [])),
+        )
+
+    def load_terminal_status(self) -> TerminalStatusSnapshot:
+        account = self.load_account_snapshot()
+        return TerminalStatusSnapshot(
+            connected=True,
+            trade_allowed=bool(account.trade_allowed),
+            tradeapi_disabled=False,
+            account_trade_allowed=bool(account.trade_allowed),
+            account_trade_expert=bool(account.trade_expert),
         )
 
     def estimate_margin(self, symbol: str, volume: float, order_type: str, price: float) -> MarginEstimate:
@@ -313,6 +339,26 @@ class LiveMT5Adapter:
             quote_session_active=self._is_trade_mode_active(getattr(symbol_info, "trade_mode", None)),
             trade_session_active=self._is_trade_mode_active(getattr(symbol_info, "trade_mode", None)),
             server_time=self._format_epoch(getattr(symbol_info, "time", None)),
+        )
+
+    def load_terminal_status(self) -> TerminalStatusSnapshot:
+        mt5 = self._ensure_initialized()
+        terminal_info = mt5.terminal_info()
+        if terminal_info is None:
+            raise RuntimeError(f"MT5 terminal_info() failed: {mt5.last_error()}")
+        account_info = mt5.account_info()
+        if account_info is None:
+            raise RuntimeError(f"MT5 account_info() failed: {mt5.last_error()}")
+        return TerminalStatusSnapshot(
+            connected=bool(getattr(terminal_info, "connected", False)),
+            trade_allowed=bool(getattr(terminal_info, "trade_allowed", False)),
+            tradeapi_disabled=bool(getattr(terminal_info, "tradeapi_disabled", False)),
+            path=str(getattr(terminal_info, "path", "") or ""),
+            data_path=str(getattr(terminal_info, "data_path", "") or ""),
+            server=str(getattr(account_info, "server", "") or ""),
+            company=str(getattr(account_info, "company", "") or ""),
+            account_trade_allowed=bool(getattr(account_info, "trade_allowed", False)),
+            account_trade_expert=bool(getattr(account_info, "trade_expert", False)),
         )
 
     def estimate_margin(self, symbol: str, volume: float, order_type: str, price: float) -> MarginEstimate:
