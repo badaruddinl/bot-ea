@@ -536,6 +536,36 @@ class BotEaQtWindow(QMainWindow):
             )
         )
 
+    def _desktop_runtime_config(self) -> DesktopRuntimeConfig:
+        poll_interval = int(float(self.poll_interval_input.text()))
+        if poll_interval <= 0:
+            raise ValueError("poll interval must be positive")
+        return DesktopRuntimeConfig(
+            symbol=self.symbol_combo.currentText().strip(),
+            timeframe=self.timeframe_combo.currentText().strip(),
+            trading_style=TradingStyle(self.style_combo.currentText()),
+            stop_distance_points=self._current_stop_distance_value(),
+            capital_allocation=self._capital_allocation(),
+            db_path=str(Path(self.db_input.text().strip()).expanduser()),
+            codex_executable=self.codex_command_input.text().strip() or "codex",
+            codex_model=self._optional_str(self.model_combo.currentText()),
+            codex_cwd=self._optional_str(self.codex_cwd_input.text()),
+            poll_interval_seconds=poll_interval,
+        )
+
+    def _provider(self) -> MT5SnapshotProvider:
+        return MT5SnapshotProvider(
+            adapter=self.adapter,
+            symbol=self.symbol_combo.currentText().strip(),
+            timeframe=self.timeframe_combo.currentText().strip(),
+            risk_policy=self.risk_policy,
+            trading_style=TradingStyle(self.style_combo.currentText()),
+            stop_distance_points=self._current_stop_distance_value(),
+            capital_allocation=self._capital_allocation(),
+            session_state="manual",
+            news_state="unknown",
+        )
+
     def _pump_runtime_events(self) -> None:
         events = self.runtime_coordinator.drain_events()
         for event in events:
