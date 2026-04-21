@@ -814,7 +814,7 @@ class BotEaQtWindow(QMainWindow):
         sidebar_intro_layout = QVBoxLayout(self.sidebar_intro_card)
         sidebar_intro_layout.setContentsMargins(16, 14, 16, 14)
         sidebar_intro_layout.setSpacing(4)
-        sidebar_intro_eyebrow = QLabel("Navigation", self.sidebar_intro_card)
+        sidebar_intro_eyebrow = QLabel("Navigasi", self.sidebar_intro_card)
         sidebar_intro_eyebrow.setObjectName("heroEyebrow")
         sidebar_intro_title = QLabel("Menu Utama", self.sidebar_intro_card)
         sidebar_intro_title.setObjectName("heroTitle")
@@ -829,7 +829,7 @@ class BotEaQtWindow(QMainWindow):
         sidebar_intro_layout.addWidget(sidebar_intro_subtitle)
         left_layout.addWidget(self.sidebar_intro_card)
 
-        self.nav_group = QGroupBox("Navigation", self)
+        self.nav_group = QGroupBox("Navigasi", self)
         self.nav_group.setObjectName("sidebarPanel")
         nav_layout = QVBoxLayout(self.nav_group)
         nav_layout.setContentsMargins(12, 20, 12, 12)
@@ -927,7 +927,7 @@ class BotEaQtWindow(QMainWindow):
         right_layout.addWidget(self.account_review_card)
         right_layout.addWidget(self.hero_card)
 
-        self.service_group = QGroupBox("Backend Service", self)
+        self.service_group = QGroupBox("Service Backend", self)
         self.service_group.setObjectName("sidebarPanel")
         service_form = QFormLayout(self.service_group)
         self._configure_form_layout(service_form)
@@ -1040,11 +1040,11 @@ class BotEaQtWindow(QMainWindow):
         sidebar_summary_layout = QVBoxLayout(self.sidebar_summary_card)
         sidebar_summary_layout.setContentsMargins(14, 14, 14, 14)
         sidebar_summary_layout.setSpacing(4)
-        self.sidebar_mode_label = QLabel("Current page", self.sidebar_summary_card)
+        self.sidebar_mode_label = QLabel("Halaman aktif", self.sidebar_summary_card)
         self.sidebar_mode_label.setObjectName("metricTitle")
         self.sidebar_mode_value = QLabel("Dasbor", self.sidebar_summary_card)
         self.sidebar_mode_value.setObjectName("metricValue")
-        self.sidebar_endpoint_note = QLabel("Runtime endpoint not connected", self.sidebar_summary_card)
+        self.sidebar_endpoint_note = QLabel("Endpoint runtime belum terhubung", self.sidebar_summary_card)
         self.sidebar_endpoint_note.setObjectName("cardCaption")
         self.sidebar_endpoint_note.setWordWrap(True)
         sidebar_summary_layout.addWidget(self.sidebar_mode_label)
@@ -1072,12 +1072,12 @@ class BotEaQtWindow(QMainWindow):
         status_grid.setContentsMargins(10, 18, 10, 10)
         status_grid.setHorizontalSpacing(12)
         status_grid.setVerticalSpacing(12)
-        self.service_status = QLabel("Service disconnected", self)
+        self.service_status = QLabel("Service belum terhubung", self)
         self.mt5_status = QLabel("MT5 belum dicek", self)
         self.codex_status = QLabel("AI runtime belum dicek", self)
         self.runtime_status = QLabel("Bot berhenti", self)
         self.run_id_status = QLabel("-", self)
-        self.approval_status = QLabel("No pending live approval", self)
+        self.approval_status = QLabel("Tidak ada approval live yang menunggu", self)
         self.readiness_chips = {
             "service": {"frame": self._make_status_chip("Service", self.service_status), "value": self.service_status},
             "mt5": {"frame": self._make_status_chip("MT5", self.mt5_status), "value": self.mt5_status},
@@ -1093,7 +1093,7 @@ class BotEaQtWindow(QMainWindow):
         self.app_bar_actions.addStretch(1)
 
         self.status_group_summary = QLabel(
-            "Top app bar carries live readiness chips. This panel keeps the active run cursor and dashboard guidance.",
+            "Baris status atas menampilkan chip kesiapan utama dan ringkasan run aktif untuk operator.",
             self.status_group,
         )
         self.status_group_summary.setObjectName("cardCaption")
@@ -1171,7 +1171,7 @@ class BotEaQtWindow(QMainWindow):
         self.validation_text.setReadOnly(True)
         self.events_text = QPlainTextEdit(self)
         self.events_text.setReadOnly(True)
-        self.tabs.addTab(self.runtime_text, "Feed Runtime")
+        self.tabs.addTab(self.runtime_text, "Feed Bot")
         self.tabs.addTab(self.events_text, "Konsol Log")
         logs_layout.addWidget(self.tabs)
 
@@ -1234,7 +1234,7 @@ class BotEaQtWindow(QMainWindow):
         dashboard_story_layout = QVBoxLayout(self.dashboard_story_card)
         dashboard_story_layout.setContentsMargins(14, 14, 14, 14)
         dashboard_story_layout.setSpacing(6)
-        self.dashboard_story_title = QLabel("Mission Control", self.dashboard_story_card)
+        self.dashboard_story_title = QLabel("Pusat Kendali", self.dashboard_story_card)
         self.dashboard_story_title.setObjectName("cardTitle")
         self.dashboard_story_caption = QLabel(
             "Use this surface as the operator landing page: confirm transport, inspect market state, then branch into Strategy or History.",
@@ -1258,7 +1258,7 @@ class BotEaQtWindow(QMainWindow):
         strategy_page_layout = QVBoxLayout(self.strategy_page)
         strategy_page_layout.setContentsMargins(0, 0, 0, 0)
         strategy_page_layout.setSpacing(12)
-        strategy_title = QLabel("Strategy Workspace", self.strategy_page)
+        strategy_title = QLabel("Ruang Strategi", self.strategy_page)
         strategy_title.setObjectName("cardTitle")
         strategy_caption = QLabel(
             "Configure trade setup, capital management, and execution controls from one focused page.",
@@ -1312,7 +1312,7 @@ class BotEaQtWindow(QMainWindow):
         history_page_layout = QVBoxLayout(self.history_page)
         history_page_layout.setContentsMargins(0, 0, 0, 0)
         history_page_layout.setSpacing(12)
-        history_title = QLabel("History + Validation", self.history_page)
+        history_title = QLabel("Riwayat + Validasi", self.history_page)
         history_title.setObjectName("cardTitle")
         history_caption = QLabel(
             "Use telemetry loads to inspect validation output and historical runtime notes.",
@@ -1462,7 +1462,7 @@ class BotEaQtWindow(QMainWindow):
         settings_page_layout = QVBoxLayout(self.settings_page)
         settings_page_layout.setContentsMargins(0, 0, 0, 0)
         settings_page_layout.setSpacing(12)
-        settings_title = QLabel("Settings + Transport", self.settings_page)
+        settings_title = QLabel("Pengaturan + Transport", self.settings_page)
         settings_title.setObjectName("cardTitle")
         settings_caption = QLabel(
             "Manage websocket transport, Codex defaults, and service ownership from this page.",
@@ -1582,16 +1582,27 @@ class BotEaQtWindow(QMainWindow):
 
     def _apply_accessibility_defaults(self) -> None:
         self.gate_primary_button.setAccessibleName("Mulai pemeriksaan dependency")
+        self.gate_primary_button.setAccessibleDescription("Mulai pemeriksaan seluruh dependency operator sebelum workspace dibuka.")
         self.gate_retry_button.setAccessibleName("Coba lagi pemeriksaan dependency")
+        self.gate_retry_button.setAccessibleDescription("Jalankan ulang pemeriksaan dependency setelah masalah diperbaiki.")
         self.gate_dev_button.setAccessibleName("Masuk mode dev")
+        self.gate_dev_button.setAccessibleDescription("Buka workspace dalam mode dev tanpa mewajibkan MT5 dan AI runtime.")
         self.codex_command_input.setAccessibleName("Command AI runtime")
+        self.codex_command_input.setAccessibleDescription("Command atau executable untuk menjalankan AI runtime.")
         self.codex_cwd_input.setAccessibleName("Workspace AI")
+        self.codex_cwd_input.setAccessibleDescription("Folder workspace utama yang dipakai AI runtime.")
         self.ai_documents_input.setAccessibleName("Dokumen AI")
+        self.ai_documents_input.setAccessibleDescription("Folder dokumen referensi yang dibaca AI runtime.")
         self.ai_context_input.setAccessibleName("Folder context AI")
+        self.ai_context_input.setAccessibleDescription("Folder context per akun untuk resume state dan history AI.")
         self.timeout_input.setAccessibleName("Timeout AI runtime")
+        self.timeout_input.setAccessibleDescription("Batas waktu pemanggilan AI runtime dalam detik.")
         self.check_mt5_button.setAccessibleName("Cek MT5")
+        self.check_mt5_button.setAccessibleDescription("Periksa terminal, sesi, akun, dan simbol dasar MT5.")
         self.load_codex_button.setAccessibleName("Cek AI runtime")
+        self.load_codex_button.setAccessibleDescription("Periksa AI runtime, workspace, dokumen, dan context aktif.")
         self.refresh_button.setAccessibleName("Refresh data")
+        self.refresh_button.setAccessibleDescription("Muat ulang snapshot market, ringkasan order, dan batas risiko.")
         QWidget.setTabOrder(self.gate_primary_button, self.gate_retry_button)
         QWidget.setTabOrder(self.gate_retry_button, self.gate_dev_button)
         QWidget.setTabOrder(self.check_mt5_button, self.load_codex_button)
@@ -1661,7 +1672,7 @@ class BotEaQtWindow(QMainWindow):
     def _refresh_page_summaries(self) -> None:
         current_page = self.nav_buttons[self.page_stack.currentIndex()].text() if self.nav_buttons else "Dashboard"
         self.sidebar_mode_value.setText(current_page)
-        self.sidebar_endpoint_note.setText(self._service_url() if self._service_connected else "Runtime endpoint not connected")
+        self.sidebar_endpoint_note.setText(self._service_url() if self._service_connected else "Endpoint runtime belum terhubung")
 
         snapshot = self.snapshot or {}
         size_result = self.size_result or {}
@@ -2455,7 +2466,7 @@ class BotEaQtWindow(QMainWindow):
             self._append_log([f"Reject error: {self._format_exception_detail(exc)}"])
             return
         self._pending_approval = None
-        self._set_approval_status("No pending live approval", tone="idle")
+        self._set_approval_status("Tidak ada approval live yang menunggu", tone="idle")
         self._append_log([f"approval_rejected: {pending.get('symbol')} {pending.get('side')} {pending.get('volume')}"])
         self._sync_button_states()
 
