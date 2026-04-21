@@ -860,6 +860,100 @@ class QtAppTests(unittest.TestCase):
         finally:
             window.close()
 
+    def test_qt_accessibility_defaults_expose_names_and_tab_flow(self) -> None:
+        try:
+            from PySide6.QtCore import Qt
+            from PySide6.QtTest import QTest
+            from PySide6.QtWidgets import QApplication
+        except Exception as exc:  # pragma: no cover
+            self.skipTest(f"PySide6 unavailable: {exc}")
+
+        from bot_ea.qt_app import BotEaQtWindow
+
+        app = QApplication.instance() or QApplication([])
+        backend = FakeBackend()
+        window = BotEaQtWindow(backend=backend)
+        window.show()
+        app.processEvents()
+        try:
+            QTest.qWait(150)
+            app.processEvents()
+            self.assertEqual(window.gate_primary_button.accessibleName(), "Mulai pemeriksaan dependency")
+            self.assertEqual(window.gate_retry_button.accessibleName(), "Coba lagi pemeriksaan dependency")
+            self.assertEqual(window.gate_dev_button.accessibleName(), "Masuk mode dev")
+            self.assertEqual(window.codex_command_input.accessibleName(), "Command AI runtime")
+            self.assertEqual(window.codex_cwd_input.accessibleName(), "Workspace AI")
+            self.assertEqual(window.ai_documents_input.accessibleName(), "Dokumen AI")
+            self.assertEqual(window.ai_context_input.accessibleName(), "Folder context AI")
+            self.assertEqual(window.timeout_input.accessibleName(), "Timeout AI runtime")
+            self.assertEqual(window.check_mt5_button.accessibleName(), "Cek MT5")
+            self.assertEqual(window.load_codex_button.accessibleName(), "Cek AI runtime")
+            self.assertEqual(window.refresh_button.accessibleName(), "Refresh data")
+
+            window.check_mt5_button.setFocus()
+            app.processEvents()
+            self.assertIs(app.focusWidget(), window.check_mt5_button)
+            QTest.keyClick(window, Qt.Key_Tab)
+            app.processEvents()
+            self.assertIs(app.focusWidget(), window.load_codex_button)
+            QTest.keyClick(window, Qt.Key_Tab)
+            app.processEvents()
+            self.assertIs(app.focusWidget(), window.refresh_button)
+        finally:
+            window.close()
+
+    def test_qt_workspace_layout_handles_wider_resize_without_collapsing_panels(self) -> None:
+        try:
+            from PySide6.QtCore import Qt
+            from PySide6.QtTest import QTest
+            from PySide6.QtWidgets import QApplication, QSplitter
+        except Exception as exc:  # pragma: no cover
+            self.skipTest(f"PySide6 unavailable: {exc}")
+
+        from bot_ea.qt_app import BotEaQtWindow
+
+        app = QApplication.instance() or QApplication([])
+        backend = FakeBackend()
+        window = BotEaQtWindow(backend=backend)
+        window.show()
+        app.processEvents()
+        try:
+            QTest.qWait(150)
+            app.processEvents()
+            self.assertIs(window.shell_stack.currentWidget(), window.workspace_page)
+            splitter = next(
+                widget
+                for widget in window.workspace_page.findChildren(QSplitter)
+                if widget.orientation() == Qt.Horizontal and widget.count() == 2
+            )
+            left_width_before, right_width_before = splitter.sizes()
+            self.assertGreaterEqual(left_width_before, 280)
+            self.assertLessEqual(left_width_before, 320)
+            self.assertGreater(right_width_before, left_width_before)
+            self.assertEqual(window.page_stack.count(), 5)
+            self.assertFalse(window.reconnect_overlay.isVisible())
+            self.assertFalse(window.account_review_card.isVisible())
+
+            window.resize(2200, 1700)
+            app.processEvents()
+            left_width_after, right_width_after = splitter.sizes()
+            self.assertGreater(window.width(), 2000)
+            self.assertGreater(window.height(), 1600)
+            self.assertGreaterEqual(left_width_after, 280)
+            self.assertLessEqual(left_width_after, 320)
+            self.assertGreater(right_width_after, right_width_before)
+            self.assertGreater(window.page_stack.width(), right_width_before)
+
+            window.nav_buttons[2].click()
+            app.processEvents()
+            self.assertIs(window.page_stack.currentWidget(), window.history_page)
+            history_sizes = window.history_splitter.sizes()
+            self.assertEqual(len(history_sizes), 2)
+            self.assertGreater(history_sizes[0], 0)
+            self.assertGreater(history_sizes[1], 0)
+        finally:
+            window.close()
+
 
 if __name__ == "__main__":
     unittest.main()
