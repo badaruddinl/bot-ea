@@ -1,40 +1,11 @@
 $ErrorActionPreference = "Stop"
 
-$repoRoot = Split-Path -Parent $PSScriptRoot
-$srcPath = Join-Path $repoRoot "src"
-Set-Location -LiteralPath $repoRoot
+. (Join-Path $PSScriptRoot "run-qt-gui.ps1") -BootstrapOnly
 
-if (-not (Test-Path -LiteralPath $srcPath)) {
-    throw "src path not found: $srcPath"
+Invoke-BotEaPythonModule -Module "bot_ea.qt_app" -WriteBanner {
+    param($launcher)
+    Write-Host "Legacy launcher detected."
+    Write-Host "Redirecting to Qt operator app from $($launcher.RepoRoot)"
+    Write-Host "PYTHONPATH=$($launcher.PythonPath)"
+    Write-Host "This legacy alias preserves Qt-first startup behavior."
 }
-
-$existingPythonPath = $env:PYTHONPATH
-if ([string]::IsNullOrWhiteSpace($existingPythonPath)) {
-    $env:PYTHONPATH = $srcPath
-}
-else {
-    $env:PYTHONPATH = "$srcPath;$existingPythonPath"
-}
-
-Write-Host "Legacy launcher detected."
-Write-Host "Redirecting to Qt operator app from $repoRoot"
-Write-Host "PYTHONPATH=$env:PYTHONPATH"
-Write-Host "This legacy alias preserves Qt-first startup behavior."
-
-$pythonCommand = $null
-foreach ($candidate in @("python3.14", "python")) {
-    try {
-        $pythonCommand = (Get-Command $candidate -ErrorAction Stop).Source
-        break
-    }
-    catch {
-        continue
-    }
-}
-
-if (-not $pythonCommand) {
-    throw "No Python interpreter found. Install Python 3.14 or ensure python is on PATH."
-}
-
-Write-Host "Python=$pythonCommand"
-& $pythonCommand -m bot_ea.qt_app
