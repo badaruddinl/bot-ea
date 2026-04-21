@@ -506,12 +506,16 @@ class DesktopRuntimeCoordinatorTests(unittest.TestCase):
                 coordinator.start(first_config)
                 first_deadline = time.time() + 4.0
                 first_seen_kinds: list[str] = []
-                while time.time() < first_deadline and "runtime_halted" not in first_seen_kinds:
+                while time.time() < first_deadline and "runtime_safe_halt" not in first_seen_kinds:
                     for event in coordinator.drain_events():
                         first_seen_kinds.append(event.kind)
                     time.sleep(0.05)
+                time.sleep(0.1)
+                for event in coordinator.drain_events():
+                    first_seen_kinds.append(event.kind)
 
                 self.assertIn("approval_pending", first_seen_kinds)
+                self.assertIn("runtime_safe_halt", first_seen_kinds)
                 self.assertIn("runtime_halted", first_seen_kinds)
                 self.assertIsNone(coordinator.pending_approval)
                 self.assertFalse(coordinator.live_enabled)
