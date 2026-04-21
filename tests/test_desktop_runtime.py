@@ -137,6 +137,38 @@ class BrokenIPCAdapter(FakeAdapter):
         self.shutdown_calls += 1
 
 
+class RejectingAdapter(FakeAdapter):
+    def validate_order(self, request: dict) -> dict:
+        _ = request
+        from bot_ea.mt5_adapter import OrderValidationResult
+
+        return OrderValidationResult(
+            accepted=False,
+            detail="mock broker reject",
+            projected_margin_free=0.0,
+            projected_margin_level=0.0,
+            retcode=10030,
+        )
+
+
+class HighSlippageAdapter(FakeAdapter):
+    def send_order(self, request: dict):
+        _ = request
+        from bot_ea.mt5_adapter import OrderSendResult
+
+        return OrderSendResult(
+            accepted=True,
+            detail="mock fill with high slippage",
+            retcode=0,
+            order=900001,
+            deal=800001,
+            volume=0.01,
+            price=1.1020,
+            bid=1.1000,
+            ask=1.1002,
+        )
+
+
 class FlippingFingerprintAdapter(FakeAdapter):
     def __init__(self) -> None:
         super().__init__()
@@ -445,6 +477,9 @@ class DesktopRuntimeCoordinatorTests(unittest.TestCase):
                     for event in coordinator.drain_events():
                         seen_kinds.append(event.kind)
                     time.sleep(0.05)
+                time.sleep(0.1)
+                for event in coordinator.drain_events():
+                    seen_kinds.append(event.kind)
                 self.assertIn("runtime_safe_halt", seen_kinds)
                 self.assertIn("account_changed", seen_kinds)
                 self.assertIn("runtime_halted", seen_kinds)
@@ -892,6 +927,111 @@ class DesktopRuntimeCoordinatorTests(unittest.TestCase):
                 self.assertEqual(last_session["last_runtime_state"], "error")
                 self.assertEqual(last_session["last_shutdown_reason"], "runtime_failure")
                 self.assertEqual(last_session["last_symbol"], "EURUSD")
+            finally:
+                coordinator.stop()
+
+    def test_runtime_safe_halts_on_elevated_reject_rate(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_root = Path(tmpdir)
+            context_path = self._create_context(project_root)
+            coordinator = DesktopRuntimeCoordinator(
+                adapter_factory=RejectingAdapter,
+                codex_engine_factory=OpenCodexEngine,
+                risk_policy=RiskPolicy(base_risk_pct=1.0, max_total_open_risk_pct=2.0, daily_loss_limit_pct=3.0),
+            )
+            config = DesktopRuntimeConfig(
+                symbol="EURUSD",
+                timeframe="M5",
+                trading_style=TradingStyle.INTRADAY,
+                stop_distance_points=20.0,
+                capital_allocation=CapitalAllocation(mode=CapitalAllocationMode.FIXED_CASH, value=1000.0),
+                db_path=str(project_root / "runtime.db"),
+                poll_interval_seconds=0,
+                ai_context_path=str(context_path),
+                resume_prompt_path=str(context_path / "resume" / "resume_prompt.md"),
+                behavior_profile_path=str(context_path / "profile.yaml"),
+                account_fingerprint={
+                    "login": "123456",
+                    "server": "Demo-Server",
+                    "broker": "Demo Broker",
+                    "is_live": False,
+                },
+            )
+
+            try:
+                coordinator.start(config)
+                deadline = time.time() + 4.0
+                seen_events = []
+                while time.time() < deadline and "runtime_safe_halt" not in [event.kind for event in seen_events]:
+                    drained = coordinator.drain_events()
+                    seen_events.extend(drained)
+                    time.sleep(0.05)
+                time.sleep(0.1)
+                seen_events.extend(coordinator.drain_events())
+                kinds = [event.kind for event in seen_events]
+                halt_event = next(event for event in seen_events if event.kind == "runtime_safe_halt")
+                self.assertIn("runtime_safe_halt", kinds)
+                self.assertIn("runtime_halted", kinds)
+                self.assertEqual(halt_event.payload["stop_reason"], "execution_drift_safe_halt")
+                self.assertEqual(halt_event.payload["guard_metric"], "reject_rate")
+                runtime_state, last_session = self._load_persisted_state(project_root, context_path)
+                self.assertEqual(runtime_state["last_runtime_state"], "halted")
+                self.assertEqual(runtime_state["last_shutdown_reason"], "execution_drift_safe_halt")
+                self.assertEqual(last_session["last_shutdown_reason"], "execution_drift_safe_halt")
+            finally:
+                coordinator.stop()
+
+    def test_runtime_safe_halts_on_high_average_slippage(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_root = Path(tmpdir)
+            context_path = self._create_context(project_root)
+            coordinator = DesktopRuntimeCoordinator(
+                adapter_factory=HighSlippageAdapter,
+                codex_engine_factory=OpenCodexEngine,
+                risk_policy=RiskPolicy(base_risk_pct=1.0, max_total_open_risk_pct=2.0, daily_loss_limit_pct=3.0),
+            )
+            config = DesktopRuntimeConfig(
+                symbol="EURUSD",
+                timeframe="M5",
+                trading_style=TradingStyle.INTRADAY,
+                stop_distance_points=20.0,
+                capital_allocation=CapitalAllocation(mode=CapitalAllocationMode.FIXED_CASH, value=1000.0),
+                db_path=str(project_root / "runtime.db"),
+                poll_interval_seconds=0,
+                ai_context_path=str(context_path),
+                resume_prompt_path=str(context_path / "resume" / "resume_prompt.md"),
+                behavior_profile_path=str(context_path / "profile.yaml"),
+                account_fingerprint={
+                    "login": "123456",
+                    "server": "Demo-Server",
+                    "broker": "Demo Broker",
+                    "is_live": False,
+                },
+            )
+            coordinator.set_live_enabled(True)
+
+            try:
+                coordinator.start(config)
+                deadline = time.time() + 4.0
+                seen_events = []
+                approved_once = False
+                while time.time() < deadline and "runtime_safe_halt" not in [event.kind for event in seen_events]:
+                    drained = coordinator.drain_events()
+                    seen_events.extend(drained)
+                    if (not approved_once) and any(event.kind == "approval_pending" for event in drained):
+                        coordinator.approve_pending_live_order()
+                        approved_once = True
+                    time.sleep(0.05)
+                time.sleep(0.1)
+                seen_events.extend(coordinator.drain_events())
+                kinds = [event.kind for event in seen_events]
+                halt_event = next(event for event in seen_events if event.kind == "runtime_safe_halt")
+                self.assertIn("approval_pending", kinds)
+                self.assertIn("runtime_safe_halt", kinds)
+                self.assertIn("runtime_halted", kinds)
+                self.assertEqual(halt_event.payload["stop_reason"], "execution_drift_safe_halt")
+                self.assertEqual(halt_event.payload["guard_metric"], "average_slippage_points")
+                self.assertFalse(coordinator.live_enabled)
             finally:
                 coordinator.stop()
 

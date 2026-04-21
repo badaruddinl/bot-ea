@@ -17,6 +17,7 @@ from .polling_runtime import AIIntent, DecisionAction, MT5SnapshotProvider, Poll
 from .risk_engine import RiskEngine
 from .runtime_store import RuntimeStore
 from .stop_policy import SessionPerformance, StopPolicy
+from .validation import build_runtime_validation_report
 
 
 @dataclass(slots=True)
@@ -235,6 +236,12 @@ class TimeoutTolerantDecisionEngine:
 class DesktopRuntimeCoordinator:
     _SAFE_HALT_MT5_DISCONNECT = "mt5_disconnect_safe_halt"
     _SAFE_HALT_ACCOUNT_CHANGED = "account_changed"
+    _SAFE_HALT_EXECUTION_DRIFT = "execution_drift_safe_halt"
+    _EXECUTION_DRIFT_MIN_ATTEMPTS = 3
+    _EXECUTION_DRIFT_MIN_FILLED = 1
+    _EXECUTION_DRIFT_MAX_REJECT_RATE = 0.5
+    _EXECUTION_DRIFT_MAX_AVERAGE_SLIPPAGE_POINTS = 8.0
+    _EXECUTION_DRIFT_MAX_SPREAD_DRIFT_POINTS = 4.0
 
     def __init__(
         self,
@@ -528,6 +535,17 @@ class DesktopRuntimeCoordinator:
 
             while self._stop_event is not None and not self._stop_event.is_set():
                 assert runtime is not None
+                drift_guard = self._evaluate_execution_drift_guard(store=store, config=config)
+                if drift_guard is not None:
+                    self._safe_halt_runtime(
+                        store=store,
+                        config=config,
+                        reason=self._SAFE_HALT_EXECUTION_DRIFT,
+                        message=str(drift_guard["message"]),
+                        payload=dict(drift_guard["payload"]),
+                    )
+                    halted = True
+                    break
                 try:
                     result = runtime.run_cycle(run_id=config.run_id or "", performance=SessionPerformance())
                 except Exception as exc:
@@ -862,6 +880,81 @@ class DesktopRuntimeCoordinator:
                     "error": str(exc),
                 },
             )
+
+    def _evaluate_execution_drift_guard(
+        self,
+        *,
+        store: RuntimeStore,
+        config: DesktopRuntimeConfig,
+    ) -> dict[str, Any] | None:
+        if config.run_id is None:
+            return None
+
+        health = store.fetch_execution_health_summary(run_id=config.run_id, limit=20)
+        total_events = int(health.get("total_events") or 0)
+        reject_rate = float(health.get("reject_rate") or 0.0)
+        if total_events >= self._EXECUTION_DRIFT_MIN_ATTEMPTS and reject_rate >= self._EXECUTION_DRIFT_MAX_REJECT_RATE:
+            return {
+                "message": (
+                    "Reject rate eksekusi terlalu tinggi; runtime dihentikan demi keamanan "
+                    f"({reject_rate:.0%} dari {total_events} attempt terakhir)."
+                ),
+                "payload": {
+                    "run_id": config.run_id,
+                    "db_path": config.db_path,
+                    "health_summary": health,
+                    "guard_metric": "reject_rate",
+                    "threshold": self._EXECUTION_DRIFT_MAX_REJECT_RATE,
+                },
+            }
+
+        filled_events = int(health.get("filled_events") or 0)
+        if filled_events < self._EXECUTION_DRIFT_MIN_FILLED:
+            return None
+
+        average_slippage_points = float(health.get("average_slippage_points") or 0.0)
+        if average_slippage_points >= self._EXECUTION_DRIFT_MAX_AVERAGE_SLIPPAGE_POINTS:
+            return {
+                "message": (
+                    "Slippage rata-rata terlalu tinggi; runtime dihentikan demi keamanan "
+                    f"({average_slippage_points:.2f} pts)."
+                ),
+                "payload": {
+                    "run_id": config.run_id,
+                    "db_path": config.db_path,
+                    "health_summary": health,
+                    "guard_metric": "average_slippage_points",
+                    "threshold": self._EXECUTION_DRIFT_MAX_AVERAGE_SLIPPAGE_POINTS,
+                },
+            }
+
+        inputs = store.fetch_runtime_validation_inputs(run_id=config.run_id)
+        report = build_runtime_validation_report(
+            inputs["position_events"],
+            inputs["execution_events"],
+            starting_equity=float(inputs.get("starting_equity") or 0.0),
+        )
+        spread_drift_points = float(report.execution_quality.spread_drift_points or 0.0)
+
+        if spread_drift_points >= self._EXECUTION_DRIFT_MAX_SPREAD_DRIFT_POINTS:
+            return {
+                "message": (
+                    "Spread drift terlalu tinggi; runtime dihentikan demi keamanan "
+                    f"({spread_drift_points:.2f} pts)."
+                ),
+                "payload": {
+                    "run_id": config.run_id,
+                    "db_path": config.db_path,
+                    "health_summary": health,
+                    "execution_quality": {
+                        "average_slippage_points": average_slippage_points,
+                        "spread_drift_points": spread_drift_points,
+                    },
+                    "guard_metric": "spread_drift_points",
+                    "threshold": self._EXECUTION_DRIFT_MAX_SPREAD_DRIFT_POINTS,
+                },
+            }
+        return None
 
     @classmethod
     def _operator_state_store(cls, config: DesktopRuntimeConfig) -> OperatorStateStore:
