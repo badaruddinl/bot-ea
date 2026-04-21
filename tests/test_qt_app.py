@@ -26,6 +26,7 @@ class FakeBackend:
         self.fail_ai_workspace = False
         self.fail_ai_documents = False
         self.fail_ai_context = False
+        self.fail_list_account_contexts = False
         self.account_fingerprint = {
             "login": "123456",
             "server": "Broker-Demo",
@@ -186,6 +187,8 @@ class FakeBackend:
                 },
             }
         if name == "list_account_contexts":
+            if self.fail_list_account_contexts:
+                raise RuntimeError("Daftar context akun tidak tersedia")
             return {
                 "fingerprint": dict(params.get("fingerprint") or self.account_fingerprint),
                 "contexts": list(self.contexts),
@@ -857,6 +860,86 @@ class QtAppTests(unittest.TestCase):
             self.assertIn("build_resume_state", commands)
             self.assertGreaterEqual(commands.count("probe_mt5_process"), 2)
             self.assertGreaterEqual(commands.count("probe_ai_runtime"), 2)
+        finally:
+            window.close()
+
+    def test_account_change_falls_back_to_resume_state_when_context_listing_fails(self) -> None:
+        try:
+            from PySide6.QtWidgets import QApplication
+        except Exception as exc:  # pragma: no cover
+            self.skipTest(f"PySide6 unavailable: {exc}")
+
+        from bot_ea.qt_app import BotEaQtWindow
+
+        app = QApplication.instance() or QApplication([])
+        backend = FakeBackend()
+        backend.fail_list_account_contexts = True
+        window = BotEaQtWindow(backend=backend)
+        app.processEvents()
+        try:
+            old_fp = dict(backend.account_fingerprint)
+            new_fp = {**old_fp, "login": "789012"}
+            window._active_account_fingerprint = old_fp
+            window._handle_account_changed(old_fp, new_fp, runtime_was_running=False)
+            app.processEvents()
+
+            self.assertTrue(window._account_review_active)
+            self.assertIn("Gagal memuat daftar context akun", window.account_review_context.text())
+
+            backend.account_fingerprint = dict(new_fp)
+            window._use_pending_account_context()
+            app.processEvents()
+
+            self.assertTrue(window.account_review_card.isHidden())
+            self.assertFalse(window._account_review_active)
+            self.assertEqual(window._active_account_fingerprint["login"], "789012")
+            commands = [name for name, _ in backend.requests]
+            self.assertIn("list_account_contexts", commands)
+            self.assertIn("build_resume_state", commands)
+            self.assertNotIn("select_account_context", commands)
+            build_params = [params for name, params in backend.requests if name == "build_resume_state"][-1]
+            self.assertFalse(build_params["create_new"])
+            self.assertEqual(build_params["fingerprint"]["login"], "789012")
+        finally:
+            window.close()
+
+    def test_account_change_falls_back_to_resume_state_when_no_contexts_exist(self) -> None:
+        try:
+            from PySide6.QtWidgets import QApplication
+        except Exception as exc:  # pragma: no cover
+            self.skipTest(f"PySide6 unavailable: {exc}")
+
+        from bot_ea.qt_app import BotEaQtWindow
+
+        app = QApplication.instance() or QApplication([])
+        backend = FakeBackend()
+        backend.contexts = []
+        window = BotEaQtWindow(backend=backend)
+        app.processEvents()
+        try:
+            old_fp = dict(backend.account_fingerprint)
+            new_fp = {**old_fp, "login": "789012"}
+            window._active_account_fingerprint = old_fp
+            window._handle_account_changed(old_fp, new_fp, runtime_was_running=False)
+            app.processEvents()
+
+            self.assertTrue(window._account_review_active)
+            self.assertIn("Belum ada context existing", window.account_review_context.text())
+
+            backend.account_fingerprint = dict(new_fp)
+            window._use_pending_account_context()
+            app.processEvents()
+
+            self.assertTrue(window.account_review_card.isHidden())
+            self.assertFalse(window._account_review_active)
+            self.assertEqual(window._active_account_fingerprint["login"], "789012")
+            commands = [name for name, _ in backend.requests]
+            self.assertIn("list_account_contexts", commands)
+            self.assertIn("build_resume_state", commands)
+            self.assertNotIn("select_account_context", commands)
+            build_params = [params for name, params in backend.requests if name == "build_resume_state"][-1]
+            self.assertFalse(build_params["create_new"])
+            self.assertEqual(build_params["fingerprint"]["login"], "789012")
         finally:
             window.close()
 
