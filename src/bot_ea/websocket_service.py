@@ -647,7 +647,7 @@ class BotEaWebSocketService:
         return {
             "executable": str(params.get("codex_command") or params.get("ai_runtime_command") or "codex"),
             "model": params.get("model") or params.get("default_model"),
-            "cwd": params.get("codex_cwd") or params.get("ai_workspace_path"),
+            "cwd": self._existing_dir(params.get("codex_cwd") or params.get("ai_workspace_path")),
             "timeout_seconds": int(params.get("timeout_seconds") or params.get("codex_timeout_seconds") or 60),
         }
 
@@ -677,6 +677,17 @@ class BotEaWebSocketService:
     def _optional_str(value: str) -> str | None:
         normalized = value.strip()
         return normalized or None
+
+    @staticmethod
+    def _existing_dir(value: Any) -> str | None:
+        raw = str(value or "").strip()
+        if not raw:
+            return None
+        candidate = Path(raw).expanduser()
+        try:
+            return str(candidate) if candidate.exists() and candidate.is_dir() else None
+        except OSError:
+            return None
 
     def _binding_from_runtime_state(
         self,

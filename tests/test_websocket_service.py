@@ -4,6 +4,7 @@ import asyncio
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
@@ -348,6 +349,52 @@ class WebSocketServiceTests(unittest.TestCase):
                 self.assertEqual(coordinator.started_config.poll_interval_seconds, 45)
                 self.assertEqual(coordinator.started_config.session_state, "resume_ready")
                 self.assertEqual(coordinator.started_config.news_state, "calm")
+
+        asyncio.run(run_test())
+
+    def test_existing_dir_returns_none_when_path_probe_raises_oserror(self) -> None:
+        path_type = type(Path("D:/"))
+        with mock.patch.object(path_type, "exists", side_effect=OSError("[WinError 267] The directory name is invalid")):
+            self.assertIsNone(BotEaWebSocketService._existing_dir("D:/invalid"))
+
+    def test_probe_ai_runtime_ignores_invalid_workspace_lookup_for_cwd(self) -> None:
+        class FakeCoordinator:
+            def __init__(self) -> None:
+                self.codex_kwargs = None
+                self.is_running = False
+
+            def probe_codex(self, **kwargs):
+                self.codex_kwargs = kwargs
+                return "codex 1.0.0"
+
+            def drain_events(self):
+                return []
+
+        async def run_test() -> None:
+            coordinator = FakeCoordinator()
+            service = BotEaWebSocketService(adapter_factory=FakeAdapter, runtime_coordinator=coordinator)
+            service.state_store.validate_runtime_command = lambda **_kwargs: {
+                "ok": True,
+                "detail": "AI runtime command tersedia: C:/mock/codex.exe",
+                "command": "codex",
+                "resolved_path": "C:/mock/codex.exe",
+            }
+            path_type = type(Path("D:/"))
+            with mock.patch.object(path_type, "exists", side_effect=OSError("[WinError 267] The directory name is invalid")):
+                response = await service._handle_command(
+                    {
+                        "id": "cwd-bug",
+                        "name": "probe_ai_runtime",
+                        "params": {
+                            "codex_command": "codex",
+                            "ai_workspace_path": "D:/invalid",
+                        },
+                    }
+                )
+            self.assertTrue(response["ok"])
+            self.assertEqual(response["result"]["version"], "codex 1.0.0")
+            self.assertIsNotNone(coordinator.codex_kwargs)
+            self.assertIsNone(coordinator.codex_kwargs["cwd"])
 
         asyncio.run(run_test())
 
