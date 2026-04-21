@@ -137,6 +137,24 @@ class BrokenIPCAdapter(FakeAdapter):
         self.shutdown_calls += 1
 
 
+class FlippingFingerprintAdapter(FakeAdapter):
+    def __init__(self) -> None:
+        super().__init__()
+        self._fingerprint_calls = 0
+        self._changed_fingerprint = AccountFingerprintSnapshot(
+            login="789012",
+            server="Other-Server",
+            broker="Other Broker",
+            is_live=False,
+        )
+
+    def load_account_fingerprint(self) -> AccountFingerprintSnapshot:
+        self._fingerprint_calls += 1
+        if self._fingerprint_calls == 1:
+            return self.fingerprint
+        return self._changed_fingerprint
+
+
 class FakeCodexEngine:
     def __init__(self, **_: object) -> None:
         pass
@@ -393,6 +411,130 @@ class DesktopRuntimeCoordinatorTests(unittest.TestCase):
                 self.assertIn("runtime_safe_halt", seen_kinds)
                 self.assertIn("account_changed", seen_kinds)
                 self.assertIn("runtime_halted", seen_kinds)
+                self.assertFalse(coordinator.live_enabled)
+            finally:
+                coordinator.stop()
+
+    def test_safe_halt_clears_pending_approval_and_live_state(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            coordinator = DesktopRuntimeCoordinator(
+                adapter_factory=FlippingFingerprintAdapter,
+                codex_engine_factory=OpenCodexEngine,
+                risk_policy=RiskPolicy(base_risk_pct=1.0, max_total_open_risk_pct=2.0, daily_loss_limit_pct=3.0),
+            )
+            coordinator.set_live_enabled(True)
+            config = DesktopRuntimeConfig(
+                symbol="EURUSD",
+                timeframe="M5",
+                trading_style=TradingStyle.INTRADAY,
+                stop_distance_points=20.0,
+                capital_allocation=CapitalAllocation(mode=CapitalAllocationMode.FIXED_CASH, value=1000.0),
+                db_path=str(Path(tmpdir) / "runtime.db"),
+                poll_interval_seconds=1,
+                account_fingerprint={
+                    "login": "123456",
+                    "server": "Demo-Server",
+                    "broker": "Demo Broker",
+                    "is_live": False,
+                },
+            )
+
+            try:
+                coordinator.start(config)
+                deadline = time.time() + 4.0
+                seen_kinds: list[str] = []
+                while time.time() < deadline and "runtime_halted" not in seen_kinds:
+                    for event in coordinator.drain_events():
+                        seen_kinds.append(event.kind)
+                    time.sleep(0.05)
+
+                self.assertIn("approval_pending", seen_kinds)
+                self.assertIn("runtime_safe_halt", seen_kinds)
+                self.assertIn("account_changed", seen_kinds)
+                self.assertIn("runtime_halted", seen_kinds)
+                self.assertIsNone(coordinator.pending_approval)
+                self.assertFalse(coordinator.live_enabled)
+            finally:
+                coordinator.stop()
+
+    def test_restart_after_safe_halt_does_not_restore_live_or_pending_state(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            adapter_factories = [FlippingFingerprintAdapter, FakeAdapter]
+
+            def adapter_factory():
+                factory = adapter_factories.pop(0)
+                return factory()
+
+            coordinator = DesktopRuntimeCoordinator(
+                adapter_factory=adapter_factory,
+                codex_engine_factory=OpenCodexEngine,
+                risk_policy=RiskPolicy(base_risk_pct=1.0, max_total_open_risk_pct=2.0, daily_loss_limit_pct=3.0),
+            )
+            coordinator.set_live_enabled(True)
+            first_config = DesktopRuntimeConfig(
+                symbol="EURUSD",
+                timeframe="M5",
+                trading_style=TradingStyle.INTRADAY,
+                stop_distance_points=20.0,
+                capital_allocation=CapitalAllocation(mode=CapitalAllocationMode.FIXED_CASH, value=1000.0),
+                db_path=str(Path(tmpdir) / "runtime-first.db"),
+                poll_interval_seconds=1,
+                account_fingerprint={
+                    "login": "123456",
+                    "server": "Demo-Server",
+                    "broker": "Demo Broker",
+                    "is_live": False,
+                },
+            )
+            second_config = DesktopRuntimeConfig(
+                symbol="EURUSD",
+                timeframe="M5",
+                trading_style=TradingStyle.INTRADAY,
+                stop_distance_points=20.0,
+                capital_allocation=CapitalAllocation(mode=CapitalAllocationMode.FIXED_CASH, value=1000.0),
+                db_path=str(Path(tmpdir) / "runtime-second.db"),
+                poll_interval_seconds=1,
+                account_fingerprint={
+                    "login": "123456",
+                    "server": "Demo-Server",
+                    "broker": "Demo Broker",
+                    "is_live": False,
+                },
+            )
+
+            try:
+                coordinator.start(first_config)
+                first_deadline = time.time() + 4.0
+                first_seen_kinds: list[str] = []
+                while time.time() < first_deadline and "runtime_halted" not in first_seen_kinds:
+                    for event in coordinator.drain_events():
+                        first_seen_kinds.append(event.kind)
+                    time.sleep(0.05)
+
+                self.assertIn("approval_pending", first_seen_kinds)
+                self.assertIn("runtime_halted", first_seen_kinds)
+                self.assertIsNone(coordinator.pending_approval)
+                self.assertFalse(coordinator.live_enabled)
+
+                coordinator.start(second_config)
+                second_deadline = time.time() + 3.0
+                second_events = []
+                while time.time() < second_deadline:
+                    drained = coordinator.drain_events()
+                    second_events.extend(drained)
+                    if any(event.kind == "runtime_cycle" for event in drained):
+                        break
+                    time.sleep(0.05)
+
+                second_seen_kinds = [event.kind for event in second_events]
+                runtime_started = next(event for event in second_events if event.kind == "runtime_started")
+                runtime_cycle = next(event for event in second_events if event.kind == "runtime_cycle")
+
+                self.assertNotIn("approval_pending", second_seen_kinds)
+                self.assertFalse(runtime_started.payload["live_enabled"])
+                self.assertFalse(runtime_cycle.payload["live_enabled"])
+                self.assertEqual(runtime_cycle.payload["action"], "OPEN")
+                self.assertIsNone(coordinator.pending_approval)
                 self.assertFalse(coordinator.live_enabled)
             finally:
                 coordinator.stop()
