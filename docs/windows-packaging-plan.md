@@ -40,8 +40,8 @@ Stay here now.
 
 Use:
 
-- `.\scripts\run-desktop-gui.ps1`
-- `python -m bot_ea.gui_app`
+- `.\scripts\run-qt-gui.ps1`
+- `python -m bot_ea.qt_app`
 
 Goals:
 
@@ -60,7 +60,7 @@ Most likely Windows packaging candidate:
 Why:
 
 - simple path from Python desktop app to executable
-- good fit for Tk apps
+- good fit for the Qt operator app
 - useful for smoke bundling before a full installer
 
 Deliverable:

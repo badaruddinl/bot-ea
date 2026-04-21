@@ -2,6 +2,7 @@ $ErrorActionPreference = "Stop"
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $srcPath = Join-Path $repoRoot "src"
+Set-Location -LiteralPath $repoRoot
 
 if (-not (Test-Path -LiteralPath $srcPath)) {
     throw "src path not found: $srcPath"
@@ -17,8 +18,9 @@ else {
 
 Write-Host "Launching bot-ea Qt desktop GUI from $repoRoot"
 Write-Host "PYTHONPATH=$env:PYTHONPATH"
-Write-Host "Expected startup order: start scripts/run-websocket-service.ps1 first, then launch this Qt GUI."
-Write-Host "If the websocket service is not running yet, stop here and start it in a separate PowerShell window first."
+Write-Host "The Qt app is the primary operator entrypoint."
+Write-Host "It can manage the local websocket backend itself during normal use."
+Write-Host "Use scripts/run-websocket-service.ps1 only for backend debugging."
 
 $pythonCommand = $null
 foreach ($candidate in @("python3.14", "python")) {

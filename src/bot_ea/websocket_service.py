@@ -23,6 +23,8 @@ from .validation import build_runtime_validation_report
 
 
 class BotEaWebSocketService:
+    PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
     def __init__(
         self,
         *,
@@ -47,7 +49,8 @@ class BotEaWebSocketService:
             adapter_factory=adapter_factory,
             risk_policy=self.risk_policy,
         )
-        self.state_store = OperatorStateStore(project_root or Path.cwd())
+        self.project_root = Path(project_root).resolve() if project_root is not None else self.PROJECT_ROOT
+        self.state_store = OperatorStateStore(self.project_root)
         self._clients: set[Any] = set()
         self._server = None
         self._drain_task: asyncio.Task | None = None

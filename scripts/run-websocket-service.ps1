@@ -2,6 +2,7 @@ $ErrorActionPreference = "Stop"
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $srcPath = Join-Path $repoRoot "src"
+Set-Location -LiteralPath $repoRoot
 
 if (-not (Test-Path -LiteralPath $srcPath)) {
     throw "src path not found: $srcPath"
@@ -17,8 +18,8 @@ else {
 
 Write-Host "Launching bot-ea websocket service from $repoRoot"
 Write-Host "PYTHONPATH=$env:PYTHONPATH"
-Write-Host "Startup order: run this websocket service first and keep this window open."
-Write-Host "After the service is ready, open another PowerShell window and run scripts/run-qt-gui.ps1."
+Write-Host "Debug-only backend entrypoint."
+Write-Host "Normal operator flow should start from scripts/run-qt-gui.ps1."
 
 $pythonCommand = $null
 foreach ($candidate in @("python3.14", "python")) {

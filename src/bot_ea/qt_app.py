@@ -381,6 +381,7 @@ class BotEaQtWindow(QMainWindow):
         "gpt-5.2-codex",
         "gpt-5.1-codex-mini",
     )
+    PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
     def __init__(
         self,
@@ -409,7 +410,8 @@ class BotEaQtWindow(QMainWindow):
             risk_engine=self.risk_engine,
             risk_policy=self.risk_policy,
         )
-        self.state_store = OperatorStateStore(Path.cwd())
+        self.project_root = self.PROJECT_ROOT
+        self.state_store = OperatorStateStore(self.project_root)
         self.runtime_settings = self.state_store.load_runtime_settings()
 
         self.snapshot: dict[str, Any] | None = None
@@ -706,7 +708,7 @@ class BotEaQtWindow(QMainWindow):
 
         self.runbook_button = QPushButton("Runbook", self)
         self.runbook_button.clicked.connect(
-            lambda: self._append_log([f"Runbook: {Path.cwd() / 'docs' / 'desktop-runtime-runbook.md'}"])
+            lambda: self._append_log([f"Runbook: {self.project_root / 'docs' / 'desktop-runtime-runbook.md'}"])
         )
 
         self.shell_stack = QStackedWidget(self)
@@ -950,7 +952,7 @@ class BotEaQtWindow(QMainWindow):
         self.manual_lot_input = QLineEdit("0.01", self)
         self.side_combo = QComboBox(self)
         self.side_combo.addItems(self.MANUAL_SIDE_OPTIONS)
-        self.db_input = QLineEdit(str(Path.cwd() / "bot_ea_runtime.db"), self)
+        self.db_input = QLineEdit(str(self.project_root / "bot_ea_runtime.db"), self)
 
         trade_form.addRow("Simbol", self.symbol_combo)
         trade_form.addRow("Timeframe", self.timeframe_combo)
@@ -971,9 +973,9 @@ class BotEaQtWindow(QMainWindow):
         self.model_combo.setEditable(True)
         self.model_combo.addItems(self.CODEX_MODEL_PRESETS)
         self.model_combo.setCurrentText("gpt-5.4-mini")
-        self.codex_cwd_input = QLineEdit(str(Path.cwd() / "ai_workspace"), self)
-        self.ai_documents_input = QLineEdit(str(Path.cwd() / "ai_documents"), self)
-        self.ai_context_input = QLineEdit(str(Path.cwd() / "ai_context"), self)
+        self.codex_cwd_input = QLineEdit(str(self.project_root / "ai_workspace"), self)
+        self.ai_documents_input = QLineEdit(str(self.project_root / "ai_documents"), self)
+        self.ai_context_input = QLineEdit(str(self.project_root / "ai_context"), self)
         self.timeout_input = QLineEdit("60", self)
         self.poll_interval_input = QLineEdit("30", self)
         codex_form.addRow("Command AI Runtime", self.codex_command_input)
@@ -1547,9 +1549,9 @@ class BotEaQtWindow(QMainWindow):
             mode="dev" if self._dev_mode_enabled else "operator",
             ai_runtime_command=self.codex_command_input.text().strip() or "codex",
             ai_runtime_executable_path="",
-            ai_workspace_path=self.codex_cwd_input.text().strip() or str(Path.cwd()),
-            ai_documents_path=self.ai_documents_input.text().strip() or str(Path.cwd() / "ai_documents"),
-            ai_context_root=self.ai_context_input.text().strip() or str(Path.cwd() / "ai_context"),
+            ai_workspace_path=self.codex_cwd_input.text().strip() or str(self.project_root / "ai_workspace"),
+            ai_documents_path=self.ai_documents_input.text().strip() or str(self.project_root / "ai_documents"),
+            ai_context_root=self.ai_context_input.text().strip() or str(self.project_root / "ai_context"),
             default_model=self._optional_str(self.model_combo.currentText()) or "gpt-5.4-mini",
             timeout_seconds=max(int(self._float_or_default(self.timeout_input.text(), default=60.0)), 1),
             strict_startup_gate=not self._dev_mode_enabled,
@@ -1739,9 +1741,9 @@ class BotEaQtWindow(QMainWindow):
                     f"service_mode={'managed' if self._managed_service_owned else 'external'}",
                     f"ai_runtime_command={self.codex_command_input.text().strip() or 'codex'}",
                     f"default_model={self._optional_str(self.model_combo.currentText()) or 'default'}",
-                    f"ai_workspace={self._optional_str(self.codex_cwd_input.text()) or Path.cwd()}",
-                    f"ai_documents={self._optional_str(self.ai_documents_input.text()) or (Path.cwd() / 'ai_documents')}",
-                    f"ai_context_root={self._optional_str(self.ai_context_input.text()) or (Path.cwd() / 'ai_context')}",
+                    f"ai_workspace={self._optional_str(self.codex_cwd_input.text()) or (self.project_root / 'ai_workspace')}",
+                    f"ai_documents={self._optional_str(self.ai_documents_input.text()) or (self.project_root / 'ai_documents')}",
+                    f"ai_context_root={self._optional_str(self.ai_context_input.text()) or (self.project_root / 'ai_context')}",
                     f"context_path={(self._active_context_binding or {}).get('context_path') or '-'}",
                     f"active_account={self._format_account_fingerprint(self._active_account_fingerprint)}",
                     f"poll_interval_seconds={self.poll_interval_input.text().strip() or '30'}",
@@ -2247,9 +2249,9 @@ class BotEaQtWindow(QMainWindow):
                 f"- command={self.codex_command_input.text().strip()}",
                 f"- version={version}",
                 f"- model={self._optional_str(self.model_combo.currentText()) or 'default'}",
-                f"- workspace={self._optional_str(self.codex_cwd_input.text()) or Path.cwd()}",
-                f"- documents={self._optional_str(self.ai_documents_input.text()) or (Path.cwd() / 'ai_documents')}",
-                f"- context_root={self._optional_str(self.ai_context_input.text()) or (Path.cwd() / 'ai_context')}",
+                f"- workspace={self._optional_str(self.codex_cwd_input.text()) or (self.project_root / 'ai_workspace')}",
+                f"- documents={self._optional_str(self.ai_documents_input.text()) or (self.project_root / 'ai_documents')}",
+                f"- context_root={self._optional_str(self.ai_context_input.text()) or (self.project_root / 'ai_context')}",
             ]
         )
 
