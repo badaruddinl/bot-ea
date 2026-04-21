@@ -19,5 +19,22 @@ else {
 Write-Host "Legacy launcher detected."
 Write-Host "Redirecting to Qt operator app from $repoRoot"
 Write-Host "PYTHONPATH=$env:PYTHONPATH"
+Write-Host "This legacy alias preserves Qt-first startup behavior."
 
-python -m bot_ea.qt_app
+$pythonCommand = $null
+foreach ($candidate in @("python3.14", "python")) {
+    try {
+        $pythonCommand = (Get-Command $candidate -ErrorAction Stop).Source
+        break
+    }
+    catch {
+        continue
+    }
+}
+
+if (-not $pythonCommand) {
+    throw "No Python interpreter found. Install Python 3.14 or ensure python is on PATH."
+}
+
+Write-Host "Python=$pythonCommand"
+& $pythonCommand -m bot_ea.qt_app
