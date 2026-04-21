@@ -410,6 +410,25 @@ class WebSocketServiceTests(unittest.TestCase):
 
         asyncio.run(run_test())
 
+    def test_load_runtime_state_command_uses_persisted_context_without_params(self) -> None:
+        async def run_test() -> None:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                service = BotEaWebSocketService(adapter_factory=FakeAdapter, project_root=tmpdir)
+                params = self._context_params(tmpdir)
+                built = await service._handle_command({"id": "6d", "name": "build_resume_state", "params": params})
+                binding = built["result"]["binding"]
+
+                response = await service._handle_command({"id": "6e", "name": "load_runtime_state", "params": {}})
+                self.assertTrue(response["ok"])
+                result = response["result"]
+                self.assertTrue(result["exists"])
+                self.assertEqual(result["binding"]["mapping_source"], "runtime_state")
+                self.assertEqual(result["binding"]["context_key"], binding["context_key"])
+                self.assertEqual(result["binding"]["context_path"], binding["context_path"])
+                self.assertEqual(result["binding"]["resume_prompt_path"], binding["resume_prompt_path"])
+
+        asyncio.run(run_test())
+
     def test_list_account_contexts_command_lists_existing_variants(self) -> None:
         async def run_test() -> None:
             with tempfile.TemporaryDirectory() as tmpdir:
