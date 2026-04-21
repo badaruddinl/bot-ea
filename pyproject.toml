@@ -1,8 +1,20 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "bot-ea"
 version = "0.1.0"
 description = "Research-first MT5 trading bot scaffold with risk-first design."
+readme = "README.md"
 requires-python = ">=3.11"
+dependencies = [
+  "websockets>=12",
+]
+
+[project.scripts]
+bot-ea-qt = "bot_ea.qt_app:main"
+bot-ea-websocket = "bot_ea.websocket_service:main"
 
 [project.optional-dependencies]
 live = [
@@ -16,3 +28,10 @@ desktop = [
 pythonpath = [
   "src",
 ]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["bot_ea*"]

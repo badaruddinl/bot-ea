@@ -7,8 +7,30 @@ Do not build an installer yet.
 Current recommendation:
 
 - keep the project in `dev-run` mode
+- keep the package installable for editable internal use
 - stabilize the desktop runtime workflow first
 - package later, only after runtime and operator flow are less volatile
+
+## Packaging Baseline Now
+
+Keep the Python package metadata good enough for internal install and launch, even before any installer work.
+
+Current baseline:
+
+- `pyproject.toml` defines a real build backend for the `src/` layout
+- the websocket dependency is declared at package level
+- console entry points exist for the current app path:
+  - `bot-ea-qt`
+  - `bot-ea-websocket`
+
+Recommended local installs:
+
+- `python -m pip install -e .`
+  - installs the base package and websocket service dependency
+- `python -m pip install -e ".[desktop]"`
+  - installs the Qt operator shell
+- `python -m pip install -e ".[desktop,live]"`
+  - installs the operator shell plus the MT5 Python bridge on machines that already have MT5 available
 
 ## Why Installer Work Is Premature
 
@@ -41,7 +63,14 @@ Stay here now.
 Use:
 
 - `.\scripts\run-qt-gui.ps1`
+- `bot-ea-qt`
 - `python -m bot_ea.qt_app`
+
+For backend-only debugging:
+
+- `.\scripts\run-websocket-service.ps1`
+- `bot-ea-websocket`
+- `python -m bot_ea.websocket_service`
 
 Goals:
 
@@ -87,6 +116,7 @@ Goals:
 Before any bundling work, the repo should already document:
 
 - how to launch in dev mode
+- how to install the editable package and which extras are needed
 - what MT5 state must already exist
 - what `codex-cli` requirement exists
 - what dry-run vs live means
