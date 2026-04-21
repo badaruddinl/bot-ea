@@ -412,7 +412,8 @@ class PollingRuntime:
             detail=str(execution_result.get("detail", "")),
             payload=execution_result,
         )
-        if execution_result.get("status") == "APPROVAL_REQUIRED":
+        execution_status = str(execution_result.get("status", "UNKNOWN"))
+        if execution_status == "APPROVAL_REQUIRED":
             return PollingCycleResult(
                 cycle_id=cycle_id,
                 halted=False,
@@ -420,9 +421,25 @@ class PollingRuntime:
                 action="APPROVAL_REQUIRED",
                 snapshot=snapshot_payload,
             )
+        if execution_status == "REJECTED":
+            return PollingCycleResult(
+                cycle_id=cycle_id,
+                halted=False,
+                detail=str(execution_result.get("detail", "broker execution rejected")),
+                action="EXECUTION_REJECTED",
+                snapshot=snapshot_payload,
+            )
+        if execution_status == "ERROR":
+            return PollingCycleResult(
+                cycle_id=cycle_id,
+                halted=False,
+                detail=str(execution_result.get("detail", "execution runtime failure")),
+                action="EXECUTION_ERROR",
+                snapshot=snapshot_payload,
+            )
         if (
             intent.action is not DecisionAction.CANCEL_PENDING
-            and execution_result.get("status") == "FILLED"
+            and execution_status == "FILLED"
             and execution_result.get("order") is not None
         ):
             position_status = "OPENED"
@@ -448,6 +465,8 @@ class PollingRuntime:
                 cycle_id=cycle_id,
                 broker_position_id=str(
                     execution_result.get("position_ticket")
+                    or execution_result.get("request", {}).get("position_ticket")
+                    or intent.payload.get("position_ticket")
                     or execution_result.get("order")
                 ),
                 symbol=snapshot.symbol,

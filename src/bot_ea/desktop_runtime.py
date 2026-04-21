@@ -589,6 +589,15 @@ class DesktopRuntimeCoordinator:
                         },
                     )
                 else:
+                    if result.halted:
+                        stop_reason = self._current_stop_reason(store, config) or "runtime_halted"
+                        self._disarm_live_runtime()
+                        self._persist_runtime_account_state(
+                            config=config,
+                            last_runtime_state="halted",
+                            shutdown_reason=stop_reason,
+                            live_enabled=False,
+                        )
                     self._emit(
                         "runtime_cycle",
                         f"{result.action}: {result.detail}",
@@ -600,7 +609,11 @@ class DesktopRuntimeCoordinator:
                             "snapshot": result.snapshot,
                             "overview": overview or {},
                             "health": health,
-                            "live_enabled": supervised_runtime.live_enabled if supervised_runtime is not None else False,
+                            "live_enabled": (
+                                False
+                                if result.halted
+                                else (supervised_runtime.live_enabled if supervised_runtime is not None else False)
+                            ),
                         },
                     )
                 if result.halted:
@@ -764,15 +777,13 @@ class DesktopRuntimeCoordinator:
                 payload=payload,
             )
             store.update_run_status(config.run_id, status="HALTED", stop_reason=reason)
+        self._disarm_live_runtime()
         self._persist_runtime_account_state(
             config=config,
             last_runtime_state="halted",
             shutdown_reason=reason,
-            live_enabled=bool(self._supervised_runtime and self._supervised_runtime.live_enabled),
+            live_enabled=False,
         )
-        self._desired_live_enabled = False
-        if self._supervised_runtime is not None:
-            self._supervised_runtime.set_live_enabled(False)
         self._emit(
             "runtime_safe_halt",
             message,
@@ -784,6 +795,11 @@ class DesktopRuntimeCoordinator:
                 **(payload or {}),
             },
         )
+
+    def _disarm_live_runtime(self) -> None:
+        self._desired_live_enabled = False
+        if self._supervised_runtime is not None:
+            self._supervised_runtime.set_live_enabled(False)
 
     @staticmethod
     def _account_fingerprint_changed(

@@ -349,6 +349,8 @@ class BotEaWebSocketService:
                 continue
             seen.add(context_key)
             context_path = context_root / context_key
+            if context_path.exists() and not self._context_belongs_to_fingerprint(context_path, fingerprint):
+                continue
             contexts.append(
                 {
                     **self._context_binding_payload(
@@ -392,6 +394,8 @@ class BotEaWebSocketService:
             raise RuntimeError(f"Context akun tidak ditemukan: {context_key}")
         if not candidate.is_dir():
             raise RuntimeError("Context akun harus berupa folder.")
+        if not self._context_belongs_to_fingerprint(candidate, fingerprint):
+            raise RuntimeError("Context akun tidak cocok dengan fingerprint aktif.")
 
         self.state_store._ensure_context_structure(candidate, fingerprint)
 
@@ -751,6 +755,11 @@ class BotEaWebSocketService:
             if maybe_number.isdigit():
                 suffix = int(maybe_number)
         return (suffix, context_key)
+
+    def _context_belongs_to_fingerprint(self, context_path: Path, fingerprint: AccountFingerprint) -> bool:
+        last_session = self.state_store.load_last_session(context_path=context_path)
+        session_fingerprint = AccountFingerprint.from_payload(dict(last_session.get("account_fingerprint") or {}))
+        return bool(session_fingerprint.key) and session_fingerprint.key == fingerprint.key
 
     @staticmethod
     def _load_json_dict(path: Path) -> dict[str, Any]:

@@ -229,3 +229,18 @@ class MT5ExecutionRuntimeTests(unittest.TestCase):
         self.assertEqual(result["request"]["action"], "add")
         self.assertEqual(result["request"]["order_type"], "buy")
         self.assertEqual(result["request"]["volume"], 0.03)
+
+    def test_close_position_live_result_preserves_position_ticket(self) -> None:
+        runtime = MT5ExecutionRuntime(adapter=self.adapter, allow_live_orders=True)
+        intent = AIIntent(
+            action=DecisionAction.CLOSE,
+            side="buy",
+            reason="close live test",
+            payload={"position_ticket": 900001, "volume": 0.01},
+        )
+
+        result = runtime.execute(self.snapshot, intent, self.size_result)
+
+        self.assertEqual(result["status"], "FILLED")
+        self.assertEqual(result["position_ticket"], 900001)
+        self.assertEqual(result["request"]["position_ticket"], 900001)

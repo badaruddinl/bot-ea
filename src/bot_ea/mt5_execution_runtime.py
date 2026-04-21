@@ -51,6 +51,9 @@ class MT5ExecutionRuntime:
             preflight["fill_latency_ms"] = 0.0
             preflight["commission_cash"] = None
             preflight["swap_cash"] = None
+            preflight["action"] = preflight["request"].get("action")
+            preflight["position_ticket"] = preflight["request"].get("position_ticket")
+            preflight["order_ticket"] = preflight["request"].get("order_ticket")
             return preflight
 
         live_request = self._refresh_live_request(snapshot, preflight["request"])
@@ -90,6 +93,9 @@ class MT5ExecutionRuntime:
             "retcode_external": send_result.retcode_external,
             "live_order_submitted": True,
             "request": live_request,
+            "action": live_request.get("action"),
+            "position_ticket": live_request.get("position_ticket"),
+            "order_ticket": live_request.get("order_ticket"),
             "guard_checks": preflight["guard_checks"],
             "quoted_price": quoted_price,
             "realized_price": realized_price,

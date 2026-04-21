@@ -1023,6 +1023,31 @@ class BotEaQtWindow(QMainWindow):
         codex_form.addRow("Context Root", self.ai_context_input)
         codex_form.addRow("Timeout (s)", self.timeout_input)
         codex_form.addRow("Cek Market Tiap (s)", self.poll_interval_input)
+        self.gate_recovery_group = QGroupBox("Perbaiki Konfigurasi", self.gate_card)
+        gate_recovery_form = QFormLayout(self.gate_recovery_group)
+        self._configure_form_layout(gate_recovery_form)
+        self.gate_service_host_input = QLineEdit(self.service_host_input.text(), self.gate_recovery_group)
+        self.gate_service_port_input = QLineEdit(self.service_port_input.text(), self.gate_recovery_group)
+        self.gate_codex_command_input = QLineEdit(self.codex_command_input.text(), self.gate_recovery_group)
+        self.gate_ai_workspace_input = QLineEdit(self.codex_cwd_input.text(), self.gate_recovery_group)
+        self.gate_ai_documents_input = QLineEdit(self.ai_documents_input.text(), self.gate_recovery_group)
+        self.gate_ai_context_input = QLineEdit(self.ai_context_input.text(), self.gate_recovery_group)
+        self.gate_db_input = QLineEdit(self.db_input.text(), self.gate_recovery_group)
+        gate_recovery_form.addRow("Host Service", self.gate_service_host_input)
+        gate_recovery_form.addRow("Port Service", self.gate_service_port_input)
+        gate_recovery_form.addRow("Command AI Runtime", self.gate_codex_command_input)
+        gate_recovery_form.addRow("Workspace AI", self.gate_ai_workspace_input)
+        gate_recovery_form.addRow("Dokumen AI", self.gate_ai_documents_input)
+        gate_recovery_form.addRow("Context Root", self.gate_ai_context_input)
+        gate_recovery_form.addRow("File Runtime DB", self.gate_db_input)
+        self._bind_mirrored_line_edit(self.gate_service_host_input, self.service_host_input)
+        self._bind_mirrored_line_edit(self.gate_service_port_input, self.service_port_input)
+        self._bind_mirrored_line_edit(self.gate_codex_command_input, self.codex_command_input)
+        self._bind_mirrored_line_edit(self.gate_ai_workspace_input, self.codex_cwd_input)
+        self._bind_mirrored_line_edit(self.gate_ai_documents_input, self.ai_documents_input)
+        self._bind_mirrored_line_edit(self.gate_ai_context_input, self.ai_context_input)
+        self._bind_mirrored_line_edit(self.gate_db_input, self.db_input)
+        self.gate_card.layout().insertWidget(max(self.gate_card.layout().count() - 1, 0), self.gate_recovery_group)
 
         self.action_group = QGroupBox("Tombol Eksekusi", self)
         action_layout = QGridLayout(self.action_group)
@@ -1835,6 +1860,7 @@ class BotEaQtWindow(QMainWindow):
         for key, label in self.gate_step_labels.items():
             self._set_startup_requirement(key, False, self._startup_requirement_details.get(key, "Belum diperiksa"))
         self._update_startup_gate_ui()
+        self._sync_button_states()
         QTimer.singleShot(0, self._run_startup_probe_sequence)
 
     def _startup_probe_steps(self) -> list[tuple[str, str, Any]]:
@@ -1872,6 +1898,7 @@ class BotEaQtWindow(QMainWindow):
         finally:
             self._startup_probe_inflight = False
             self._update_startup_gate_ui()
+            self._sync_button_states()
 
     def _set_startup_requirement(self, name: str, ok: bool, detail: str) -> None:
         self._startup_requirements[name] = ok
@@ -2163,7 +2190,15 @@ class BotEaQtWindow(QMainWindow):
         }
         if selected_context_key:
             payload["context_key"] = selected_context_key
-        result = self._send_backend_command(command_name, payload)
+        try:
+            result = self._send_backend_command(command_name, payload)
+        except Exception as exc:
+            detail = self._format_exception_detail(exc)
+            self.account_review_message.setText(f"Gagal menyiapkan context akun: {detail}")
+            self.account_review_context.setText(f"Context terpilih: error - {detail}")
+            self.runtime_status.setText(f"Gagal review akun: {detail}")
+            self._sync_button_states()
+            return
         self._active_account_fingerprint = dict(self._pending_account_fingerprint)
         self._active_context_binding = dict(result.get("binding") or {})
         self._pending_account_fingerprint = None
@@ -2178,14 +2213,22 @@ class BotEaQtWindow(QMainWindow):
     def _create_pending_account_context(self) -> None:
         if self._pending_account_fingerprint is None:
             return
-        result = self._send_backend_command(
-            "build_resume_state",
-            {
-                **self._ai_runtime_probe_params(),
-                "fingerprint": self._pending_account_fingerprint,
-                "create_new": True,
-            },
-        )
+        try:
+            result = self._send_backend_command(
+                "build_resume_state",
+                {
+                    **self._ai_runtime_probe_params(),
+                    "fingerprint": self._pending_account_fingerprint,
+                    "create_new": True,
+                },
+            )
+        except Exception as exc:
+            detail = self._format_exception_detail(exc)
+            self.account_review_message.setText(f"Gagal membuat context akun baru: {detail}")
+            self.account_review_context.setText(f"Context terpilih: error - {detail}")
+            self.runtime_status.setText(f"Gagal review akun: {detail}")
+            self._sync_button_states()
+            return
         self._active_account_fingerprint = dict(self._pending_account_fingerprint)
         self._active_context_binding = dict(result.get("binding") or {})
         self._pending_account_fingerprint = None
@@ -2933,18 +2976,18 @@ class BotEaQtWindow(QMainWindow):
                 self.lot_mode_combo,
                 self.manual_lot_input,
                 self.side_combo,
-                self.db_input,
-                self.service_host_input,
-                self.service_port_input,
-                self.codex_command_input,
-                self.model_combo,
-                self.codex_cwd_input,
-                self.ai_documents_input,
-                self.ai_context_input,
-                self.timeout_input,
-                self.poll_interval_input,
             ):
                 widget.setEnabled(False)
+            for widget in (
+                self.gate_service_host_input,
+                self.gate_service_port_input,
+                self.gate_codex_command_input,
+                self.gate_ai_workspace_input,
+                self.gate_ai_documents_input,
+                self.gate_ai_context_input,
+                self.gate_db_input,
+            ):
+                widget.setEnabled(not self._startup_probe_inflight)
             for button in self.nav_buttons:
                 button.setEnabled(False)
             self.gate_primary_button.setEnabled(not self._startup_probe_inflight)
@@ -3034,6 +3077,19 @@ class BotEaQtWindow(QMainWindow):
         current = self.events_text.toPlainText().strip()
         merged = "\n".join(filter(None, [current, *lines]))
         self.events_text.setPlainText(merged)
+
+    @staticmethod
+    def _bind_mirrored_line_edit(left: QLineEdit, right: QLineEdit) -> None:
+        def sync_left(text: str) -> None:
+            if right.text() != text:
+                right.setText(text)
+
+        def sync_right(text: str) -> None:
+            if left.text() != text:
+                left.setText(text)
+
+        left.textChanged.connect(sync_left)
+        right.textChanged.connect(sync_right)
 
     @staticmethod
     def _float_or_default(value: Any, *, default: float) -> float:

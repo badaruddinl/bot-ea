@@ -97,6 +97,47 @@ class LifecycleExecutionRuntime:
         return payload
 
 
+class RejectingLifecycleExecutionRuntime:
+    def preflight(self, snapshot: RuntimeSnapshot, intent: AIIntent, size_result) -> dict:
+        return {
+            "status": "PRECHECK_OK",
+            "detail": "mock lifecycle precheck",
+            "retcode": "0",
+            "request": {"price": snapshot.bid, **intent.payload, "action": intent.action.value.lower()},
+        }
+
+    def execute(self, snapshot: RuntimeSnapshot, intent: AIIntent, size_result, preflight_result: dict | None = None) -> dict:
+        return {
+            "status": "REJECTED",
+            "retcode": "10030",
+            "detail": "mock lifecycle reject",
+            "request": dict(preflight_result or {}),
+        }
+
+
+class RequestOnlyPositionLifecycleExecutionRuntime:
+    def preflight(self, snapshot: RuntimeSnapshot, intent: AIIntent, size_result) -> dict:
+        return {
+            "status": "PRECHECK_OK",
+            "detail": "mock lifecycle precheck",
+            "retcode": "0",
+            "request": {"price": snapshot.bid, **intent.payload, "action": intent.action.value.lower()},
+        }
+
+    def execute(self, snapshot: RuntimeSnapshot, intent: AIIntent, size_result, preflight_result: dict | None = None) -> dict:
+        request = dict((preflight_result or {}).get("request", {}))
+        return {
+            "status": "FILLED",
+            "retcode": "0",
+            "detail": "mock lifecycle fill",
+            "order": 900001,
+            "deal": 800001,
+            "volume": size_result.normalized_volume,
+            "price": snapshot.bid,
+            "request": request,
+        }
+
+
 class ReduceDecisionEngine:
     def decide(self, snapshot: RuntimeSnapshot) -> AIIntent:
         return AIIntent(
@@ -280,7 +321,7 @@ class PollingRuntimeTests(unittest.TestCase):
             counts = store.fetch_counts()
 
             self.assertFalse(result.halted)
-            self.assertEqual(result.action, DecisionAction.OPEN.value)
+            self.assertEqual(result.action, "EXECUTION_ERROR")
             self.assertEqual(counts["execution_events"], 3)
             events = store.fetch_recent_execution_events(limit=5)
             self.assertEqual([event["phase"] for event in reversed(events)], ["INTENT", "PRECHECK", "FILL"])
@@ -388,6 +429,59 @@ class PollingRuntimeTests(unittest.TestCase):
             self.assertEqual(len(positions), 0)
             self.assertEqual(events[0]["status"], "FILLED")
 
+    def test_cancel_pending_reject_returns_rejection_action(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "runtime.db"
+            store = RuntimeStore(db_path)
+            store.initialize()
+            store.start_run(run_id="run-cancel-reject", started_at="2026-04-20T00:00:00Z", status="RUNNING", symbol="EURUSD")
+
+            snapshot = RuntimeSnapshot(
+                symbol="EURUSD",
+                timeframe="M5",
+                bid=1.1000,
+                ask=1.1002,
+                spread_points=2.0,
+                account=AccountSnapshot(equity=1000.0, balance=1000.0, free_margin=900.0, margin_level=500.0),
+                symbol_snapshot=SymbolSnapshot(
+                    name="EURUSD",
+                    instrument_class="forex_major",
+                    risk_weight=1.0,
+                    point=0.0001,
+                    tick_size=0.0001,
+                    tick_value=1.0,
+                    volume_min=0.01,
+                    volume_max=10.0,
+                    volume_step=0.01,
+                    spread_points=2.0,
+                    stops_level_points=10.0,
+                    freeze_level_points=0.0,
+                    volatility_points=100.0,
+                ),
+                risk_policy=RiskPolicy(base_risk_pct=1.0, max_total_open_risk_pct=2.0, daily_loss_limit_pct=3.0),
+                trading_style=TradingStyle.INTRADAY,
+                stop_distance_points=50.0,
+                capital_allocation=CapitalAllocation(mode=CapitalAllocationMode.PERCENT_EQUITY, value=25.0),
+            )
+
+            runtime = PollingRuntime(
+                store=store,
+                snapshot_provider=FakeSnapshotProvider(snapshot),
+                decision_engine=CancelPendingDecisionEngine(),
+                execution_runtime=RejectingLifecycleExecutionRuntime(),
+                risk_engine=RiskEngine(),
+                stop_policy=StopPolicy(),
+            )
+            result = runtime.run_cycle(run_id="run-cancel-reject", performance=SessionPerformance())
+            positions = store.fetch_recent_position_events(run_id="run-cancel-reject", limit=5)
+            events = store.fetch_recent_execution_events(run_id="run-cancel-reject", limit=5)
+
+            self.assertFalse(result.halted)
+            self.assertEqual(result.action, "EXECUTION_REJECTED")
+            self.assertIn("reject", result.detail)
+            self.assertEqual(len(positions), 0)
+            self.assertEqual(events[0]["status"], "REJECTED")
+
     def test_reduce_cycle_records_reduced_position_event(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = Path(tmpdir) / "runtime.db"
@@ -437,6 +531,57 @@ class PollingRuntimeTests(unittest.TestCase):
             self.assertFalse(result.halted)
             self.assertEqual(result.action, DecisionAction.REDUCE.value)
             self.assertEqual(positions[0]["status"], "REDUCED")
+
+    def test_close_cycle_uses_request_position_ticket_when_execution_result_omits_it(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "runtime.db"
+            store = RuntimeStore(db_path)
+            store.initialize()
+            store.start_run(run_id="run-close-request", started_at="2026-04-20T00:00:00Z", status="RUNNING", symbol="EURUSD")
+
+            snapshot = RuntimeSnapshot(
+                symbol="EURUSD",
+                timeframe="M5",
+                bid=1.1000,
+                ask=1.1002,
+                spread_points=2.0,
+                account=AccountSnapshot(equity=1000.0, balance=1000.0, free_margin=900.0, margin_level=500.0),
+                symbol_snapshot=SymbolSnapshot(
+                    name="EURUSD",
+                    instrument_class="forex_major",
+                    risk_weight=1.0,
+                    point=0.0001,
+                    tick_size=0.0001,
+                    tick_value=1.0,
+                    volume_min=0.01,
+                    volume_max=10.0,
+                    volume_step=0.01,
+                    spread_points=2.0,
+                    stops_level_points=10.0,
+                    freeze_level_points=0.0,
+                    volatility_points=100.0,
+                ),
+                risk_policy=RiskPolicy(base_risk_pct=1.0, max_total_open_risk_pct=2.0, daily_loss_limit_pct=3.0),
+                trading_style=TradingStyle.INTRADAY,
+                stop_distance_points=50.0,
+                capital_allocation=CapitalAllocation(mode=CapitalAllocationMode.PERCENT_EQUITY, value=25.0),
+            )
+
+            runtime = PollingRuntime(
+                store=store,
+                snapshot_provider=FakeSnapshotProvider(snapshot),
+                decision_engine=CloseDecisionEngine(),
+                execution_runtime=RequestOnlyPositionLifecycleExecutionRuntime(),
+                risk_engine=RiskEngine(),
+                stop_policy=StopPolicy(),
+            )
+            result = runtime.run_cycle(run_id="run-close-request", performance=SessionPerformance())
+            positions = store.fetch_recent_position_events(run_id="run-close-request", limit=5)
+
+            self.assertFalse(result.halted)
+            self.assertEqual(result.action, DecisionAction.CLOSE.value)
+            self.assertEqual(positions[0]["status"], "CLOSED")
+            self.assertEqual(positions[0]["broker_position_id"], "900001")
 
     def test_add_cycle_records_added_position_event(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

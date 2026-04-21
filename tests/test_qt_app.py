@@ -27,6 +27,8 @@ class FakeBackend:
         self.fail_ai_documents = False
         self.fail_ai_context = False
         self.fail_list_account_contexts = False
+        self.fail_build_resume_state = False
+        self.fail_select_account_context = False
         self.account_fingerprint = {
             "login": "123456",
             "server": "Broker-Demo",
@@ -177,6 +179,8 @@ class FakeBackend:
         if name == "validate_storage":
             return {"detail": f"Storage siap: {params.get('db_path')}"}
         if name == "build_resume_state":
+            if self.fail_build_resume_state:
+                raise RuntimeError("Gagal membangun resume state")
             return {
                 "detail": f"Context akun siap: {params.get('ai_context_root')}\\broker_demo_123456",
                 "binding": {
@@ -194,6 +198,8 @@ class FakeBackend:
                 "contexts": list(self.contexts),
             }
         if name == "select_account_context":
+            if self.fail_select_account_context:
+                raise RuntimeError("Gagal memilih context akun")
             context_key = str(params.get("context_key") or "")
             selected = next((ctx for ctx in self.contexts if ctx["context_key"] == context_key), None)
             if selected is None:
@@ -589,6 +595,12 @@ class QtAppTests(unittest.TestCase):
             self.assertIs(window.shell_stack.currentWidget(), window.startup_gate_page)
             self.assertIn("service", window.gate_message.text().lower())
             self.assertFalse(window.nav_buttons[0].isEnabled())
+            self.assertTrue(window.gate_service_host_input.isEnabled())
+            self.assertTrue(window.gate_service_port_input.isEnabled())
+            self.assertTrue(window.gate_ai_workspace_input.isEnabled())
+            self.assertTrue(window.gate_ai_documents_input.isEnabled())
+            self.assertTrue(window.gate_ai_context_input.isEnabled())
+            self.assertTrue(window.gate_db_input.isEnabled())
         finally:
             window.close()
 
@@ -1017,6 +1029,71 @@ class QtAppTests(unittest.TestCase):
             build_params = [params for name, params in backend.requests if name == "build_resume_state"][-1]
             self.assertFalse(build_params["create_new"])
             self.assertEqual(build_params["fingerprint"]["login"], "789012")
+        finally:
+            window.close()
+
+    def test_account_change_keeps_review_open_when_select_context_fails(self) -> None:
+        try:
+            from PySide6.QtWidgets import QApplication
+        except Exception as exc:  # pragma: no cover
+            self.skipTest(f"PySide6 unavailable: {exc}")
+
+        from bot_ea.qt_app import BotEaQtWindow
+
+        app = QApplication.instance() or QApplication([])
+        backend = FakeBackend()
+        backend.fail_select_account_context = True
+        window = BotEaQtWindow(backend=backend)
+        app.processEvents()
+        try:
+            old_fp = dict(backend.account_fingerprint)
+            new_fp = {**old_fp, "login": "789012"}
+            window._active_account_fingerprint = old_fp
+            window._handle_account_changed(old_fp, new_fp, runtime_was_running=False)
+            app.processEvents()
+
+            backend.account_fingerprint = dict(new_fp)
+            window._pending_account_fingerprint = new_fp
+            window._use_pending_account_context()
+            app.processEvents()
+
+            self.assertTrue(window._account_review_active)
+            self.assertFalse(window.account_review_card.isHidden())
+            self.assertIn("Gagal menyiapkan context akun", window.account_review_message.text())
+            self.assertIn("Gagal review akun", window.runtime_status.text())
+        finally:
+            window.close()
+
+    def test_account_change_keeps_review_open_when_create_context_fails(self) -> None:
+        try:
+            from PySide6.QtWidgets import QApplication
+        except Exception as exc:  # pragma: no cover
+            self.skipTest(f"PySide6 unavailable: {exc}")
+
+        from bot_ea.qt_app import BotEaQtWindow
+
+        app = QApplication.instance() or QApplication([])
+        backend = FakeBackend()
+        backend.fail_build_resume_state = True
+        window = BotEaQtWindow(backend=backend)
+        app.processEvents()
+        try:
+            old_fp = dict(backend.account_fingerprint)
+            new_fp = {**old_fp, "login": "789012"}
+            window._active_account_fingerprint = old_fp
+            window._handle_account_changed(old_fp, new_fp, runtime_was_running=True)
+            app.processEvents()
+
+            backend.account_fingerprint = dict(new_fp)
+            window._pending_account_fingerprint = new_fp
+            window._create_pending_account_context()
+            app.processEvents()
+
+            self.assertTrue(window._account_review_active)
+            self.assertFalse(window.account_review_card.isHidden())
+            self.assertIn("Gagal membuat context akun baru", window.account_review_message.text())
+            self.assertIn("Gagal review akun", window.runtime_status.text())
+            self.assertFalse(window._live_enabled)
         finally:
             window.close()
 

@@ -769,6 +769,53 @@ class WebSocketServiceTests(unittest.TestCase):
 
         asyncio.run(run_test())
 
+    def test_list_account_contexts_ignores_same_prefix_context_with_foreign_fingerprint(self) -> None:
+        async def run_test() -> None:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                service = BotEaWebSocketService(adapter_factory=FakeAdapter, project_root=tmpdir)
+                params = self._context_params(tmpdir)
+                fingerprint = AccountFingerprint.from_payload(dict(params["fingerprint"]))
+                await service._handle_command({"id": "21", "name": "build_resume_state", "params": params})
+
+                rogue_context = Path(tmpdir) / "ai_context" / f"{fingerprint.key}_shadow"
+                service.state_store._ensure_context_structure(
+                    rogue_context,
+                    AccountFingerprint(login="999999", server="Other-Server", broker="Other Broker", is_live=False),
+                )
+
+                response = await service._handle_command({"id": "22", "name": "list_account_contexts", "params": params})
+                self.assertTrue(response["ok"])
+                contexts = {item["context_key"] for item in response["result"]["contexts"]}
+                self.assertNotIn(f"{fingerprint.key}_shadow", contexts)
+
+        asyncio.run(run_test())
+
+    def test_select_account_context_command_rejects_same_prefix_context_with_foreign_fingerprint(self) -> None:
+        async def run_test() -> None:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                service = BotEaWebSocketService(adapter_factory=FakeAdapter, project_root=tmpdir)
+                params = self._context_params(tmpdir)
+                fingerprint = AccountFingerprint.from_payload(dict(params["fingerprint"]))
+                await service._handle_command({"id": "23", "name": "build_resume_state", "params": params})
+
+                rogue_context = Path(tmpdir) / "ai_context" / f"{fingerprint.key}_shadow"
+                service.state_store._ensure_context_structure(
+                    rogue_context,
+                    AccountFingerprint(login="999999", server="Other-Server", broker="Other Broker", is_live=False),
+                )
+
+                with self.assertRaises(RuntimeError) as ctx:
+                    await service._handle_command(
+                        {
+                            "id": "24",
+                            "name": "select_account_context",
+                            "params": {**params, "context_key": f"{fingerprint.key}_shadow"},
+                        }
+                    )
+                self.assertIn("tidak cocok dengan fingerprint", str(ctx.exception))
+
+        asyncio.run(run_test())
+
 
 if __name__ == "__main__":
     unittest.main()
