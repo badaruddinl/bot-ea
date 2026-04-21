@@ -441,6 +441,8 @@ class BotEaQtWindow(QMainWindow):
         self._active_account_fingerprint: dict[str, Any] | None = None
         self._active_context_binding: dict[str, Any] | None = None
         self._pending_account_fingerprint: dict[str, Any] | None = None
+        self._pending_account_contexts: list[dict[str, Any]] = []
+        self._selected_pending_context_index = 0
 
         self._build_ui()
         self._apply_runtime_settings_to_form()
@@ -897,10 +899,13 @@ class BotEaQtWindow(QMainWindow):
         self.account_review_message.setWordWrap(True)
         self.account_review_old = QLabel("-", self.account_review_card)
         self.account_review_new = QLabel("-", self.account_review_card)
+        self.account_review_context = QLabel("Context akun belum dimuat.", self.account_review_card)
+        self.account_review_context.setWordWrap(True)
         account_review_layout.addWidget(self.account_review_title)
         account_review_layout.addWidget(self.account_review_message)
         account_review_layout.addWidget(self.account_review_old)
         account_review_layout.addWidget(self.account_review_new)
+        account_review_layout.addWidget(self.account_review_context)
         review_button_row = QHBoxLayout()
         self.account_review_use_button = QPushButton("Gunakan akun ini", self.account_review_card)
         self.account_review_cancel_button = QPushButton("Batalkan", self.account_review_card)
@@ -1891,7 +1896,7 @@ class BotEaQtWindow(QMainWindow):
         self.gate_retry_button.clicked.connect(self._run_startup_probe_sequence)
         self.gate_dev_button.clicked.connect(self._enter_dev_mode)
         self.account_review_use_button.clicked.connect(self._use_pending_account_context)
-        self.account_review_select_button.clicked.connect(self._use_pending_account_context)
+        self.account_review_select_button.clicked.connect(self._select_next_pending_account_context)
         self.account_review_new_context_button.clicked.connect(self._create_pending_account_context)
         self.account_review_cancel_button.clicked.connect(self._cancel_account_review)
 
@@ -2011,6 +2016,7 @@ class BotEaQtWindow(QMainWindow):
         *,
         runtime_was_running: bool,
     ) -> None:
+        self._pending_account_fingerprint = dict(new_fingerprint)
         self._account_review_active = True
         self._mt5_overlay_active = False
         self.reconnect_overlay.hide()
@@ -2027,6 +2033,7 @@ class BotEaQtWindow(QMainWindow):
         self._pending_approval = None
         self.runtime_status.setText("Hard safe halt: akun MT5 berubah")
         self.approval_status.setText("Review akun baru dibutuhkan")
+        self._load_pending_account_contexts()
         self._sync_button_states()
 
     def _handle_mt5_disconnect(self, detail: str, *, runtime_was_running: bool) -> None:
@@ -2054,25 +2061,79 @@ class BotEaQtWindow(QMainWindow):
         self.reconnect_overlay.hide()
         self._sync_button_states()
 
+    def _load_pending_account_contexts(self) -> None:
+        self._pending_account_contexts = []
+        self._selected_pending_context_index = 0
+        if self._pending_account_fingerprint is None:
+            self.account_review_context.setText("Context akun belum tersedia.")
+            return
+        try:
+            result = self._send_backend_command(
+                "list_account_contexts",
+                {
+                    **self._ai_runtime_probe_params(),
+                    "fingerprint": self._pending_account_fingerprint,
+                },
+            )
+        except Exception as exc:
+            self.account_review_context.setText(
+                f"Gagal memuat daftar context akun: {self._format_exception_detail(exc)}"
+            )
+            return
+        self._pending_account_contexts = list(result.get("contexts") or [])
+        self._selected_pending_context_index = 0
+        self._refresh_pending_account_context_label()
+
+    def _refresh_pending_account_context_label(self) -> None:
+        if not self._pending_account_contexts:
+            self.account_review_context.setText(
+                "Belum ada context existing untuk akun ini. Pilih `Buat context baru` atau gunakan default binding."
+            )
+            return
+        current = self._pending_account_contexts[self._selected_pending_context_index]
+        mapping = "mapped" if current.get("is_mapped") else "existing"
+        self.account_review_context.setText(
+            "Context terpilih: "
+            f"{current.get('context_key')} "
+            f"({mapping}, state={current.get('last_runtime_state') or 'unknown'}, "
+            f"shutdown={current.get('last_shutdown_reason') or 'n/a'})"
+        )
+
+    def _select_next_pending_account_context(self) -> None:
+        if not self._pending_account_contexts:
+            self._load_pending_account_contexts()
+            if not self._pending_account_contexts:
+                return
+        self._selected_pending_context_index = (
+            self._selected_pending_context_index + 1
+        ) % len(self._pending_account_contexts)
+        self._refresh_pending_account_context_label()
+
     def _use_pending_account_context(self) -> None:
         if self._pending_account_fingerprint is None:
             return
-        result = self._send_backend_command(
-            "build_resume_state",
-            {
-                **self._ai_runtime_probe_params(),
-                "fingerprint": self._pending_account_fingerprint,
-                "create_new": False,
-            },
-        )
+        selected_context_key = None
+        if self._pending_account_contexts:
+            selected_context_key = self._pending_account_contexts[self._selected_pending_context_index].get("context_key")
+        command_name = "select_account_context" if selected_context_key else "build_resume_state"
+        payload = {
+            **self._ai_runtime_probe_params(),
+            "fingerprint": self._pending_account_fingerprint,
+            "create_new": False,
+        }
+        if selected_context_key:
+            payload["context_key"] = selected_context_key
+        result = self._send_backend_command(command_name, payload)
         self._active_account_fingerprint = dict(self._pending_account_fingerprint)
         self._active_context_binding = dict(result.get("binding") or {})
         self._pending_account_fingerprint = None
+        self._pending_account_contexts = []
+        self._selected_pending_context_index = 0
         self._account_review_active = False
         self.account_review_card.hide()
-        self.runtime_status.setText("Akun baru diterima. Workspace siap dipakai.")
+        self.runtime_status.setText("Akun baru diterima. Menjalankan readiness ulang.")
         self.approval_status.setText("Tidak ada approval aktif")
-        self._sync_button_states()
+        self._start_startup_gate()
 
     def _create_pending_account_context(self) -> None:
         if self._pending_account_fingerprint is None:
@@ -2088,14 +2149,19 @@ class BotEaQtWindow(QMainWindow):
         self._active_account_fingerprint = dict(self._pending_account_fingerprint)
         self._active_context_binding = dict(result.get("binding") or {})
         self._pending_account_fingerprint = None
+        self._pending_account_contexts = []
+        self._selected_pending_context_index = 0
         self._account_review_active = False
         self.account_review_card.hide()
-        self.runtime_status.setText("Context akun baru dibuat.")
+        self.runtime_status.setText("Context akun baru dibuat. Menjalankan readiness ulang.")
         self.approval_status.setText("Tidak ada approval aktif")
-        self._sync_button_states()
+        self._start_startup_gate()
 
     def _cancel_account_review(self) -> None:
         self._account_review_active = False
+        self._pending_account_fingerprint = None
+        self._pending_account_contexts = []
+        self._selected_pending_context_index = 0
         self.account_review_card.hide()
         self._start_startup_gate()
 

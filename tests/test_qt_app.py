@@ -32,6 +32,24 @@ class FakeBackend:
             "broker": "Broker A",
             "is_live": False,
         }
+        self.contexts = [
+            {
+                "context_key": "broker_a_broker_demo_123456",
+                "context_path": "D:\\luthfi\\project\\bot-ea\\ai_context\\broker_a_broker_demo_123456",
+                "is_mapped": True,
+                "is_active": True,
+                "last_runtime_state": "stopped",
+                "last_shutdown_reason": "operator_stop",
+            },
+            {
+                "context_key": "broker_a_broker_demo_123456_2",
+                "context_path": "D:\\luthfi\\project\\bot-ea\\ai_context\\broker_a_broker_demo_123456_2",
+                "is_mapped": False,
+                "is_active": False,
+                "last_runtime_state": "halted",
+                "last_shutdown_reason": "account_changed",
+            },
+        ]
         self._manual_snapshot = {
             "lot_mode": "manual",
             "requested_lot": 1.0,
@@ -161,9 +179,29 @@ class FakeBackend:
             return {
                 "detail": f"Context akun siap: {params.get('ai_context_root')}\\broker_demo_123456",
                 "binding": {
+                    "context_key": "broker_demo_123456_new",
                     "context_path": f"{params.get('ai_context_root')}\\broker_demo_123456",
                     "resume_prompt_path": f"{params.get('ai_context_root')}\\broker_demo_123456\\resume\\resume_prompt.md",
                     "profile_path": f"{params.get('ai_context_root')}\\broker_demo_123456\\profile.yaml",
+                },
+            }
+        if name == "list_account_contexts":
+            return {
+                "fingerprint": dict(params.get("fingerprint") or self.account_fingerprint),
+                "contexts": list(self.contexts),
+            }
+        if name == "select_account_context":
+            context_key = str(params.get("context_key") or "")
+            selected = next((ctx for ctx in self.contexts if ctx["context_key"] == context_key), None)
+            if selected is None:
+                raise RuntimeError("Context akun tidak ditemukan")
+            return {
+                "detail": f"Context akun dipilih: {context_key}",
+                "binding": {
+                    "context_key": context_key,
+                    "context_path": selected["context_path"],
+                    "resume_prompt_path": f"{selected['context_path']}\\resume\\resume_prompt.md",
+                    "profile_path": f"{selected['context_path']}\\profile.yaml",
                 },
             }
         if name == "refresh_manual":
@@ -766,11 +804,59 @@ class QtAppTests(unittest.TestCase):
             self.assertFalse(window.account_review_card.isHidden())
             self.assertFalse(window.play_button.isEnabled())
             self.assertIn("789012", window.account_review_new.text())
+            self.assertIn("Context terpilih:", window.account_review_context.text())
+            first_label = window.account_review_context.text()
+            window.account_review_select_button.click()
+            app.processEvents()
+            self.assertNotEqual(first_label, window.account_review_context.text())
+            backend.account_fingerprint = dict(new_fp)
             window._pending_account_fingerprint = new_fp
             window._use_pending_account_context()
             app.processEvents()
             self.assertTrue(window.account_review_card.isHidden())
+            self.assertFalse(window._account_review_active)
             self.assertEqual(window._active_account_fingerprint["login"], "789012")
+            commands = [name for name, _ in backend.requests]
+            self.assertIn("list_account_contexts", commands)
+            self.assertIn("select_account_context", commands)
+            self.assertGreaterEqual(commands.count("probe_mt5_process"), 2)
+            self.assertGreaterEqual(commands.count("probe_ai_runtime"), 2)
+        finally:
+            window.close()
+
+    def test_account_change_while_runtime_active_restarts_gate_after_new_context(self) -> None:
+        try:
+            from PySide6.QtWidgets import QApplication
+        except Exception as exc:  # pragma: no cover
+            self.skipTest(f"PySide6 unavailable: {exc}")
+
+        from bot_ea.qt_app import BotEaQtWindow
+
+        app = QApplication.instance() or QApplication([])
+        backend = FakeBackend()
+        window = BotEaQtWindow(backend=backend)
+        app.processEvents()
+        try:
+            old_fp = dict(backend.account_fingerprint)
+            new_fp = {**old_fp, "login": "789012"}
+            window._active_account_fingerprint = old_fp
+            window._runtime_running = True
+            window._live_enabled = True
+            window._handle_account_changed(old_fp, new_fp, runtime_was_running=True)
+            app.processEvents()
+            self.assertIn("Hard safe halt", window.runtime_status.text())
+            backend.account_fingerprint = dict(new_fp)
+            window._pending_account_fingerprint = new_fp
+            window._create_pending_account_context()
+            app.processEvents()
+            self.assertTrue(window.account_review_card.isHidden())
+            self.assertFalse(window._account_review_active)
+            self.assertFalse(window._runtime_running)
+            self.assertFalse(window._live_enabled)
+            commands = [name for name, _ in backend.requests]
+            self.assertIn("build_resume_state", commands)
+            self.assertGreaterEqual(commands.count("probe_mt5_process"), 2)
+            self.assertGreaterEqual(commands.count("probe_ai_runtime"), 2)
         finally:
             window.close()
 
