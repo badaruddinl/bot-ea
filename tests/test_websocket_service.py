@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from bot_ea.models import AccountSnapshot, SymbolSnapshot  # noqa: E402
 from bot_ea.mt5_adapter import PriceTickSnapshot, TerminalStatusSnapshot  # noqa: E402
+from bot_ea.operator_state import AccountFingerprint  # noqa: E402
 from bot_ea.websocket_service import BotEaWebSocketService  # noqa: E402
 
 
@@ -119,6 +120,16 @@ class FakeAdapter:
 
 
 class WebSocketServiceTests(unittest.TestCase):
+    def _fingerprint(self, **overrides) -> dict[str, object]:
+        payload: dict[str, object] = {
+            "login": "123456",
+            "server": "Demo-Server",
+            "broker": "Demo Broker",
+            "is_live": False,
+        }
+        payload.update(overrides)
+        return payload
+
     def _manual_params(self, tmpdir: str, **overrides) -> dict[str, object]:
         params: dict[str, object] = {
             "symbol": "XAUUSD",
@@ -131,6 +142,15 @@ class WebSocketServiceTests(unittest.TestCase):
             "manual_lot": 1.0,
             "side": "buy",
             "db_path": str(Path(tmpdir) / "runtime.db"),
+        }
+        params.update(overrides)
+        return params
+
+    def _context_params(self, tmpdir: str, **overrides) -> dict[str, object]:
+        params = {
+            **self._manual_params(tmpdir),
+            "ai_context_root": str(Path(tmpdir) / "ai_context"),
+            "fingerprint": self._fingerprint(),
         }
         params.update(overrides)
         return params
@@ -262,6 +282,128 @@ class WebSocketServiceTests(unittest.TestCase):
                         }
                     )
                 self.assertIn("disabled while runtime is running", str(ctx.exception))
+
+        asyncio.run(run_test())
+
+    def test_load_runtime_state_command_returns_empty_before_context_is_built(self) -> None:
+        async def run_test() -> None:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                service = BotEaWebSocketService(adapter_factory=FakeAdapter, project_root=tmpdir)
+                response = await service._handle_command({"id": "6", "name": "load_runtime_state", "params": {}})
+                self.assertTrue(response["ok"])
+                self.assertEqual(
+                    response["result"],
+                    {"exists": False, "runtime_state": None, "binding": None},
+                )
+
+        asyncio.run(run_test())
+
+    def test_list_account_contexts_command_lists_existing_variants(self) -> None:
+        async def run_test() -> None:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                service = BotEaWebSocketService(adapter_factory=FakeAdapter, project_root=tmpdir)
+                params = self._context_params(tmpdir)
+                fingerprint = AccountFingerprint.from_payload(dict(params["fingerprint"]))
+                await service._handle_command({"id": "7", "name": "build_resume_state", "params": params})
+                await service._handle_command(
+                    {
+                        "id": "8",
+                        "name": "build_resume_state",
+                        "params": {**params, "create_new": True},
+                    }
+                )
+
+                response = await service._handle_command({"id": "9", "name": "list_account_contexts", "params": params})
+                self.assertTrue(response["ok"])
+                result = response["result"]
+                self.assertEqual(result["base_context_key"], fingerprint.key)
+                self.assertEqual(result["mapped_context_key"], f"{fingerprint.key}_2")
+                self.assertEqual(result["active_context_key"], f"{fingerprint.key}_2")
+                contexts = {item["context_key"]: item for item in result["contexts"]}
+                self.assertEqual(set(contexts), {fingerprint.key, f"{fingerprint.key}_2"})
+                self.assertFalse(contexts[fingerprint.key]["is_mapped"])
+                self.assertTrue(contexts[f"{fingerprint.key}_2"]["is_mapped"])
+                self.assertTrue(contexts[f"{fingerprint.key}_2"]["is_active"])
+
+        asyncio.run(run_test())
+
+    def test_select_account_context_command_updates_mapping_and_runtime_state(self) -> None:
+        async def run_test() -> None:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                service = BotEaWebSocketService(adapter_factory=FakeAdapter, project_root=tmpdir)
+                params = self._context_params(tmpdir)
+                fingerprint = AccountFingerprint.from_payload(dict(params["fingerprint"]))
+                await service._handle_command({"id": "10", "name": "build_resume_state", "params": params})
+                await service._handle_command(
+                    {
+                        "id": "11",
+                        "name": "build_resume_state",
+                        "params": {**params, "create_new": True},
+                    }
+                )
+
+                select_response = await service._handle_command(
+                    {
+                        "id": "12",
+                        "name": "select_account_context",
+                        "params": {**params, "context_key": fingerprint.key},
+                    }
+                )
+                self.assertTrue(select_response["ok"])
+                self.assertEqual(select_response["result"]["binding"]["context_key"], fingerprint.key)
+                self.assertEqual(select_response["result"]["binding"]["mapping_source"], "selected")
+
+                runtime_state = await service._handle_command({"id": "13", "name": "load_runtime_state", "params": params})
+                self.assertTrue(runtime_state["ok"])
+                self.assertEqual(runtime_state["result"]["runtime_state"]["context_key"], fingerprint.key)
+                self.assertEqual(runtime_state["result"]["binding"]["context_key"], fingerprint.key)
+
+                listed = await service._handle_command({"id": "14", "name": "list_account_contexts", "params": params})
+                contexts = {item["context_key"]: item for item in listed["result"]["contexts"]}
+                self.assertEqual(listed["result"]["mapped_context_key"], fingerprint.key)
+                self.assertEqual(listed["result"]["active_context_key"], fingerprint.key)
+                self.assertTrue(contexts[fingerprint.key]["is_mapped"])
+                self.assertTrue(contexts[fingerprint.key]["is_active"])
+
+        asyncio.run(run_test())
+
+    def test_select_account_context_command_can_create_new_variant(self) -> None:
+        async def run_test() -> None:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                service = BotEaWebSocketService(adapter_factory=FakeAdapter, project_root=tmpdir)
+                params = self._context_params(tmpdir)
+                fingerprint = AccountFingerprint.from_payload(dict(params["fingerprint"]))
+                await service._handle_command({"id": "15", "name": "build_resume_state", "params": params})
+
+                response = await service._handle_command(
+                    {
+                        "id": "16",
+                        "name": "select_account_context",
+                        "params": {**params, "create_new": True},
+                    }
+                )
+                self.assertTrue(response["ok"])
+                self.assertEqual(response["result"]["binding"]["context_key"], f"{fingerprint.key}_2")
+                self.assertEqual(response["result"]["binding"]["mapping_source"], "new_context")
+
+        asyncio.run(run_test())
+
+    def test_select_account_context_command_rejects_context_for_other_account(self) -> None:
+        async def run_test() -> None:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                service = BotEaWebSocketService(adapter_factory=FakeAdapter, project_root=tmpdir)
+                params = self._context_params(tmpdir)
+                await service._handle_command({"id": "17", "name": "build_resume_state", "params": params})
+
+                with self.assertRaises(RuntimeError) as ctx:
+                    await service._handle_command(
+                        {
+                            "id": "18",
+                            "name": "select_account_context",
+                            "params": {**params, "context_key": "other_broker_other_server_999"},
+                        }
+                    )
+                self.assertIn("tidak cocok dengan fingerprint", str(ctx.exception))
 
         asyncio.run(run_test())
 

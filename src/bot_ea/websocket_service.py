@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+from datetime import datetime, timezone
 from dataclasses import asdict, replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -13,7 +14,7 @@ import websockets
 from .desktop_runtime import DesktopRuntimeConfig, DesktopRuntimeCoordinator
 from .models import CapitalAllocation, CapitalAllocationMode, OperatingMode, PositionSizeRequest, RiskPolicy, TradingStyle
 from .mt5_adapter import LiveMT5Adapter
-from .operator_state import OperatorRuntimeSettings, OperatorStateStore
+from .operator_state import AccountFingerprint, OperatorRuntimeSettings, OperatorStateStore
 from .mt5_execution_runtime import MT5ExecutionRuntime
 from .polling_runtime import AIIntent, DecisionAction, MT5SnapshotProvider
 from .risk_engine import RiskEngine
@@ -93,6 +94,8 @@ class BotEaWebSocketService:
             result = self.state_store.load_runtime_settings().to_dict()
         elif name == "save_runtime_settings":
             result = self.state_store.save_runtime_settings(self._settings_from_params(params))
+        elif name == "load_runtime_state":
+            result = await asyncio.to_thread(self._load_runtime_state, params)
         elif name == "probe_mt5_process":
             result = await asyncio.to_thread(self.runtime_coordinator.probe_mt5_process)
         elif name == "probe_mt5_session":
@@ -151,6 +154,10 @@ class BotEaWebSocketService:
                 fingerprint_payload=dict(params.get("fingerprint") or {}),
                 create_new=bool(params.get("create_new")),
             )
+        elif name == "list_account_contexts":
+            result = await asyncio.to_thread(self._list_account_contexts, params)
+        elif name == "select_account_context":
+            result = await asyncio.to_thread(self._select_account_context, params)
         elif name == "refresh_manual":
             self._require_runtime_idle(name)
             result = await asyncio.to_thread(self._build_manual_preview, params)
@@ -298,6 +305,111 @@ class BotEaWebSocketService:
                 "warnings": report.validation_summary.warnings + report.execution_quality.warnings,
             },
             "lifecycle_rows": inputs["lifecycle_rows"][:10],
+        }
+
+    def _load_runtime_state(self, params: dict[str, Any]) -> dict[str, Any]:
+        settings = self._settings_from_params(params)
+        runtime_state = self._load_json_dict(self.state_store.runtime_state_path)
+        if not runtime_state:
+            return {"exists": False, "runtime_state": None, "binding": None}
+        return {
+            "exists": True,
+            "runtime_state": runtime_state,
+            "binding": self._binding_from_runtime_state(settings, runtime_state),
+        }
+
+    def _list_account_contexts(self, params: dict[str, Any]) -> dict[str, Any]:
+        settings = self._settings_from_params(params)
+        fingerprint = AccountFingerprint.from_payload(dict(params.get("fingerprint") or {}))
+        context_root = Path(settings.ai_context_root).expanduser()
+        context_root.mkdir(parents=True, exist_ok=True)
+
+        mapping = self._load_json_dict(self.state_store.account_context_map_path)
+        runtime_state = self._load_json_dict(self.state_store.runtime_state_path)
+        base_key = fingerprint.key
+        mapped_context_key = self._optional_str(str(mapping.get(base_key) or ""))
+        active_context_key = self._optional_str(str(runtime_state.get("context_key") or ""))
+
+        candidate_keys: list[str] = []
+        if mapped_context_key:
+            candidate_keys.append(mapped_context_key)
+        candidate_keys.append(base_key)
+        prefix = f"{base_key}_"
+        for child in context_root.iterdir():
+            if child.is_dir() and (child.name == base_key or child.name.startswith(prefix)):
+                candidate_keys.append(child.name)
+
+        contexts: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for context_key in sorted(candidate_keys, key=self._context_sort_key):
+            if not context_key or context_key in seen:
+                continue
+            seen.add(context_key)
+            context_path = context_root / context_key
+            contexts.append(
+                {
+                    **self._context_binding_payload(
+                        fingerprint=fingerprint,
+                        context_key=context_key,
+                        context_path=context_path,
+                        mapping_source="listed",
+                        existed=context_path.exists(),
+                        created_now=False,
+                    ),
+                    "is_mapped": context_key == mapped_context_key,
+                    "is_active": context_key == active_context_key,
+                }
+            )
+
+        return {
+            "fingerprint": fingerprint.to_dict(),
+            "base_context_key": base_key,
+            "mapped_context_key": mapped_context_key,
+            "active_context_key": active_context_key,
+            "contexts": contexts,
+        }
+
+    def _select_account_context(self, params: dict[str, Any]) -> dict[str, Any]:
+        context_key = self._optional_str(str(params.get("context_key") or ""))
+        settings = self._settings_from_params(params)
+        fingerprint = AccountFingerprint.from_payload(dict(params.get("fingerprint") or {}))
+        if context_key is None:
+            return self.state_store.build_resume_state(
+                settings=settings,
+                fingerprint_payload=fingerprint.to_dict(),
+                create_new=bool(params.get("create_new")),
+            )
+
+        base_key = fingerprint.key
+        if not self._context_matches_fingerprint(base_key, context_key):
+            raise RuntimeError("Context akun tidak cocok dengan fingerprint aktif.")
+
+        candidate = self._context_path_from_key(settings, context_key)
+        if not candidate.exists():
+            raise RuntimeError(f"Context akun tidak ditemukan: {context_key}")
+        if not candidate.is_dir():
+            raise RuntimeError("Context akun harus berupa folder.")
+
+        self.state_store._ensure_context_structure(candidate, fingerprint)
+
+        mapping = self._load_json_dict(self.state_store.account_context_map_path)
+        mapping[base_key] = context_key
+        self._dump_json_dict(self.state_store.account_context_map_path, mapping)
+
+        binding = self._context_binding_payload(
+            fingerprint=fingerprint,
+            context_key=context_key,
+            context_path=candidate,
+            mapping_source="selected",
+            existed=True,
+            created_now=False,
+        )
+        runtime_state = self._write_runtime_state(fingerprint=fingerprint, binding=binding)
+        return {
+            "ok": True,
+            "detail": f"Context akun dipilih: {candidate.resolve()}",
+            "binding": binding,
+            "runtime_state": runtime_state,
         }
 
     def _manual_size_result(self, manual_snapshot: dict[str, Any], params: dict[str, Any]):
@@ -562,6 +674,111 @@ class BotEaWebSocketService:
     def _optional_str(value: str) -> str | None:
         normalized = value.strip()
         return normalized or None
+
+    def _binding_from_runtime_state(
+        self,
+        settings: OperatorRuntimeSettings,
+        runtime_state: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        fingerprint_payload = dict(runtime_state.get("active_account_fingerprint") or {})
+        if not fingerprint_payload:
+            return None
+        fingerprint = AccountFingerprint.from_payload(fingerprint_payload)
+        context_key = self._optional_str(str(runtime_state.get("context_key") or ""))
+        context_path_raw = self._optional_str(str(runtime_state.get("context_path") or ""))
+        if context_key is None and context_path_raw is None:
+            return None
+        context_path = Path(context_path_raw).expanduser() if context_path_raw else self._context_path_from_key(settings, context_key or "")
+        if context_key is None:
+            context_key = context_path.name
+        return self._context_binding_payload(
+            fingerprint=fingerprint,
+            context_key=context_key,
+            context_path=context_path,
+            mapping_source="runtime_state",
+            existed=context_path.exists(),
+            created_now=False,
+        )
+
+    def _write_runtime_state(
+        self,
+        *,
+        fingerprint: AccountFingerprint,
+        binding: dict[str, Any],
+    ) -> dict[str, Any]:
+        runtime_state = {
+            "active_account_fingerprint": fingerprint.to_dict(),
+            "context_key": binding["context_key"],
+            "context_path": binding["context_path"],
+            "last_runtime_state": "ready",
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        self._dump_json_dict(self.state_store.runtime_state_path, runtime_state)
+        return runtime_state
+
+    def _context_path_from_key(self, settings: OperatorRuntimeSettings, context_key: str) -> Path:
+        candidate_key = context_key.strip()
+        if not candidate_key:
+            raise RuntimeError("context_key wajib diisi.")
+        path_key = Path(candidate_key)
+        if path_key.name != candidate_key or any(part in {"..", "."} for part in path_key.parts):
+            raise RuntimeError("context_key tidak valid.")
+        return Path(settings.ai_context_root).expanduser() / candidate_key
+
+    @staticmethod
+    def _context_matches_fingerprint(base_key: str, context_key: str) -> bool:
+        return context_key == base_key or context_key.startswith(f"{base_key}_")
+
+    @staticmethod
+    def _context_sort_key(context_key: str) -> tuple[int, str]:
+        suffix = 0
+        if "_" in context_key:
+            _, maybe_number = context_key.rsplit("_", 1)
+            if maybe_number.isdigit():
+                suffix = int(maybe_number)
+        return (suffix, context_key)
+
+    @staticmethod
+    def _load_json_dict(path: Path) -> dict[str, Any]:
+        if not path.exists():
+            return {}
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            return {}
+        return payload if isinstance(payload, dict) else {}
+
+    @staticmethod
+    def _dump_json_dict(path: Path, payload: dict[str, Any]) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+
+    @staticmethod
+    def _context_binding_payload(
+        *,
+        fingerprint: AccountFingerprint,
+        context_key: str,
+        context_path: Path,
+        mapping_source: str,
+        existed: bool,
+        created_now: bool,
+    ) -> dict[str, Any]:
+        resolved = context_path.resolve()
+        return {
+            "fingerprint": fingerprint.to_dict(),
+            "context_key": context_key,
+            "context_path": str(resolved),
+            "existed": existed,
+            "created_now": created_now,
+            "mapping_source": mapping_source,
+            "profile_path": str((resolved / "profile.yaml").resolve()),
+            "latest_summary_path": str((resolved / "memory" / "latest_summary.md").resolve()),
+            "open_issues_path": str((resolved / "memory" / "open_issues.md").resolve()),
+            "last_session_path": str((resolved / "memory" / "last_session.json").resolve()),
+            "resume_prompt_path": str((resolved / "resume" / "resume_prompt.md").resolve()),
+            "broker_notes_path": str((resolved / "documents" / "broker_notes.md").resolve()),
+            "operator_notes_path": str((resolved / "documents" / "operator_notes.md").resolve()),
+        }
 
 
 async def serve_forever() -> None:
