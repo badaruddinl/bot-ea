@@ -18,12 +18,28 @@ from bot_ea.models import (  # noqa: E402
     SymbolSnapshot,
     TradingStyle,
 )
-from bot_ea.mt5_adapter import PriceTickSnapshot, TerminalStatusSnapshot  # noqa: E402
+from bot_ea.mt5_adapter import AccountFingerprintSnapshot, PriceTickSnapshot, TerminalStatusSnapshot  # noqa: E402
 from bot_ea.polling_runtime import AIIntent, DecisionAction  # noqa: E402
 
 
 class FakeAdapter:
+    def __init__(
+        self,
+        *,
+        fingerprint: AccountFingerprintSnapshot | None = None,
+        fail_account_info: bool = False,
+    ) -> None:
+        self.fingerprint = fingerprint or AccountFingerprintSnapshot(
+            login="123456",
+            server="Demo-Server",
+            broker="Demo Broker",
+            is_live=False,
+        )
+        self.fail_account_info = fail_account_info
+
     def load_account_snapshot(self) -> AccountSnapshot:
+        if self.fail_account_info:
+            raise RuntimeError("MT5 account_info() failed: (-10004, 'No IPC connection')")
         return AccountSnapshot(
             equity=1000.0,
             balance=1000.0,
@@ -32,6 +48,9 @@ class FakeAdapter:
             trade_allowed=True,
             trade_expert=True,
         )
+
+    def load_account_fingerprint(self) -> AccountFingerprintSnapshot:
+        return self.fingerprint
 
     def load_symbol_snapshot(self, symbol: str) -> SymbolSnapshot:
         return SymbolSnapshot(
@@ -110,13 +129,8 @@ class FakeAdapter:
 
 class BrokenIPCAdapter(FakeAdapter):
     def __init__(self, *, fail_account_info: bool = False) -> None:
-        self.fail_account_info = fail_account_info
+        super().__init__(fail_account_info=fail_account_info)
         self.shutdown_calls = 0
-
-    def load_account_snapshot(self) -> AccountSnapshot:
-        if self.fail_account_info:
-            raise RuntimeError("MT5 account_info() failed: (-10004, 'No IPC connection')")
-        return super().load_account_snapshot()
 
     def shutdown(self) -> None:
         self.shutdown_calls += 1
@@ -217,6 +231,12 @@ class DesktopRuntimeCoordinatorTests(unittest.TestCase):
                 capital_allocation=CapitalAllocation(mode=CapitalAllocationMode.FIXED_CASH, value=1000.0),
                 db_path=str(Path(tmpdir) / "runtime.db"),
                 poll_interval_seconds=1,
+                account_fingerprint={
+                    "login": "123456",
+                    "server": "Demo-Server",
+                    "broker": "Demo Broker",
+                    "is_live": False,
+                },
             )
 
             run_id = coordinator.start(config)
@@ -260,6 +280,12 @@ class DesktopRuntimeCoordinatorTests(unittest.TestCase):
                 capital_allocation=CapitalAllocation(mode=CapitalAllocationMode.FIXED_CASH, value=1000.0),
                 db_path=str(Path(tmpdir) / "runtime.db"),
                 poll_interval_seconds=1,
+                account_fingerprint={
+                    "login": "123456",
+                    "server": "Demo-Server",
+                    "broker": "Demo Broker",
+                    "is_live": False,
+                },
             )
 
             try:
@@ -282,17 +308,10 @@ class DesktopRuntimeCoordinatorTests(unittest.TestCase):
             finally:
                 coordinator.stop()
 
-    def test_runtime_reconnects_after_transient_mt5_ipc_failure(self) -> None:
+    def test_runtime_safe_halts_after_transient_mt5_ipc_failure(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
-            adapters: list[BrokenIPCAdapter] = []
-
-            def adapter_factory() -> BrokenIPCAdapter:
-                adapter = BrokenIPCAdapter(fail_account_info=len(adapters) == 0)
-                adapters.append(adapter)
-                return adapter
-
             coordinator = DesktopRuntimeCoordinator(
-                adapter_factory=adapter_factory,
+                adapter_factory=lambda: BrokenIPCAdapter(fail_account_info=True),
                 codex_engine_factory=FakeCodexEngine,
                 risk_policy=RiskPolicy(base_risk_pct=1.0, max_total_open_risk_pct=2.0, daily_loss_limit_pct=3.0),
             )
@@ -304,22 +323,76 @@ class DesktopRuntimeCoordinatorTests(unittest.TestCase):
                 capital_allocation=CapitalAllocation(mode=CapitalAllocationMode.FIXED_CASH, value=1000.0),
                 db_path=str(Path(tmpdir) / "runtime.db"),
                 poll_interval_seconds=1,
+                account_fingerprint={
+                    "login": "123456",
+                    "server": "Demo-Server",
+                    "broker": "Demo Broker",
+                    "is_live": False,
+                },
             )
 
             try:
                 coordinator.start(config)
                 deadline = time.time() + 4.0
                 seen_kinds: list[str] = []
-                while time.time() < deadline and "runtime_cycle" not in seen_kinds:
+                while time.time() < deadline and "runtime_safe_halt" not in seen_kinds:
                     for event in coordinator.drain_events():
                         seen_kinds.append(event.kind)
                     time.sleep(0.05)
+                time.sleep(0.1)
+                for event in coordinator.drain_events():
+                    seen_kinds.append(event.kind)
                 self.assertIn("runtime_started", seen_kinds)
-                self.assertIn("runtime_recovering", seen_kinds)
-                self.assertIn("runtime_cycle", seen_kinds)
+                self.assertIn("runtime_safe_halt", seen_kinds)
+                self.assertIn("runtime_halted", seen_kinds)
+                self.assertNotIn("runtime_cycle", seen_kinds)
                 self.assertNotIn("runtime_error", seen_kinds)
-                self.assertGreaterEqual(len(adapters), 2)
-                self.assertEqual(adapters[0].shutdown_calls, 1)
+                self.assertFalse(coordinator.live_enabled)
+            finally:
+                coordinator.stop()
+
+    def test_runtime_hard_halts_when_account_fingerprint_changes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            coordinator = DesktopRuntimeCoordinator(
+                adapter_factory=lambda: FakeAdapter(
+                    fingerprint=AccountFingerprintSnapshot(
+                        login="789012",
+                        server="Other-Server",
+                        broker="Other Broker",
+                        is_live=False,
+                    )
+                ),
+                codex_engine_factory=FakeCodexEngine,
+                risk_policy=RiskPolicy(base_risk_pct=1.0, max_total_open_risk_pct=2.0, daily_loss_limit_pct=3.0),
+            )
+            config = DesktopRuntimeConfig(
+                symbol="EURUSD",
+                timeframe="M5",
+                trading_style=TradingStyle.INTRADAY,
+                stop_distance_points=20.0,
+                capital_allocation=CapitalAllocation(mode=CapitalAllocationMode.FIXED_CASH, value=1000.0),
+                db_path=str(Path(tmpdir) / "runtime.db"),
+                poll_interval_seconds=1,
+                account_fingerprint={
+                    "login": "123456",
+                    "server": "Demo-Server",
+                    "broker": "Demo Broker",
+                    "is_live": False,
+                },
+            )
+
+            try:
+                coordinator.start(config)
+                deadline = time.time() + 3.0
+                seen_kinds: list[str] = []
+                while time.time() < deadline and "account_changed" not in seen_kinds:
+                    for event in coordinator.drain_events():
+                        seen_kinds.append(event.kind)
+                    time.sleep(0.05)
+                self.assertIn("runtime_safe_halt", seen_kinds)
+                self.assertIn("account_changed", seen_kinds)
+                self.assertIn("runtime_halted", seen_kinds)
+                self.assertFalse(coordinator.live_enabled)
             finally:
                 coordinator.stop()
 
@@ -346,6 +419,12 @@ class DesktopRuntimeCoordinatorTests(unittest.TestCase):
                 db_path=str(Path(tmpdir) / "runtime.db"),
                 codex_timeout_cooldown_seconds=2,
                 poll_interval_seconds=1,
+                account_fingerprint={
+                    "login": "123456",
+                    "server": "Demo-Server",
+                    "broker": "Demo Broker",
+                    "is_live": False,
+                },
             )
 
             try:
@@ -390,6 +469,12 @@ class DesktopRuntimeCoordinatorTests(unittest.TestCase):
                 capital_allocation=CapitalAllocation(mode=CapitalAllocationMode.FIXED_CASH, value=1000.0),
                 db_path=str(Path(tmpdir) / "runtime.db"),
                 poll_interval_seconds=1,
+                account_fingerprint={
+                    "login": "123456",
+                    "server": "Demo-Server",
+                    "broker": "Demo Broker",
+                    "is_live": False,
+                },
             )
 
             try:

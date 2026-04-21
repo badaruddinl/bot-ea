@@ -170,6 +170,7 @@ class PollingRuntime:
         risk_engine: RiskEngine,
         stop_policy: StopPolicy,
         config: PollingConfig | None = None,
+        expected_account_fingerprint: dict[str, Any] | None = None,
     ) -> None:
         self.store = store
         self.snapshot_provider = snapshot_provider
@@ -178,6 +179,7 @@ class PollingRuntime:
         self.risk_engine = risk_engine
         self.stop_policy = stop_policy
         self.config = config or PollingConfig()
+        self.expected_account_fingerprint = dict(expected_account_fingerprint or {}) or None
 
     def run_cycle(self, *, run_id: str, performance: SessionPerformance) -> PollingCycleResult:
         cycle_time = datetime.now(timezone.utc).isoformat()
@@ -212,6 +214,31 @@ class PollingRuntime:
             news_state=snapshot.news_state,
             payload=snapshot.context,
         )
+
+        actual_fingerprint = snapshot.context.get("account_fingerprint")
+        if self._account_fingerprint_changed(actual_fingerprint):
+            detail = (
+                "account fingerprint changed during runtime; review akun baru sebelum melanjutkan trading"
+            )
+            self.store.record_stop_event(
+                run_id=run_id,
+                cycle_id=cycle_id,
+                stop_code="ACCOUNT_CHANGED",
+                severity="hard",
+                detail=detail,
+                payload={
+                    "expected_account_fingerprint": self.expected_account_fingerprint,
+                    "actual_account_fingerprint": actual_fingerprint,
+                },
+            )
+            self.store.update_run_status(run_id, status="HALTED", stop_reason="account_changed")
+            return PollingCycleResult(
+                cycle_id=cycle_id,
+                halted=True,
+                detail=detail,
+                action=DecisionAction.HALT.value,
+                snapshot=snapshot_payload,
+            )
 
         try:
             intent = self.decision_engine.decide(snapshot)
@@ -425,3 +452,18 @@ class PollingRuntime:
             "filling_mode": snapshot.symbol_snapshot.filling_mode,
             "account_fingerprint": snapshot.context.get("account_fingerprint"),
         }
+
+    def _account_fingerprint_changed(self, actual_fingerprint: Any) -> bool:
+        if not self.expected_account_fingerprint or not isinstance(actual_fingerprint, dict):
+            return False
+        expected = {
+            "login": str(self.expected_account_fingerprint.get("login") or ""),
+            "server": str(self.expected_account_fingerprint.get("server") or ""),
+            "broker": str(self.expected_account_fingerprint.get("broker") or ""),
+        }
+        actual = {
+            "login": str(actual_fingerprint.get("login") or ""),
+            "server": str(actual_fingerprint.get("server") or ""),
+            "broker": str(actual_fingerprint.get("broker") or ""),
+        }
+        return actual != expected

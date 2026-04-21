@@ -233,7 +233,8 @@ class TimeoutTolerantDecisionEngine:
 
 
 class DesktopRuntimeCoordinator:
-    _MAX_MT5_IPC_RECOVERY_ATTEMPTS = 2
+    _SAFE_HALT_MT5_DISCONNECT = "mt5_disconnect_safe_halt"
+    _SAFE_HALT_ACCOUNT_CHANGED = "account_changed"
 
     def __init__(
         self,
@@ -519,53 +520,65 @@ class DesktopRuntimeCoordinator:
                 },
             )
 
-            ipc_recovery_attempts = 0
             while self._stop_event is not None and not self._stop_event.is_set():
                 assert runtime is not None
                 try:
                     result = runtime.run_cycle(run_id=config.run_id or "", performance=SessionPerformance())
                 except Exception as exc:
-                    if self._is_transient_mt5_ipc_error(exc) and ipc_recovery_attempts < self._MAX_MT5_IPC_RECOVERY_ATTEMPTS:
-                        ipc_recovery_attempts += 1
-                        if config.run_id is not None:
-                            store.record_log(
-                                run_id=config.run_id,
-                                cycle_id=None,
-                                level="WARNING",
-                                message=(
-                                    "transient MT5 IPC failure detected; "
-                                    f"reconnecting attempt {ipc_recovery_attempts}/{self._MAX_MT5_IPC_RECOVERY_ATTEMPTS}: {exc}"
-                                ),
-                            )
-                        self._emit(
-                            "runtime_recovering",
-                            (
-                                "transient MT5 IPC connection lost; "
-                                f"retrying ({ipc_recovery_attempts}/{self._MAX_MT5_IPC_RECOVERY_ATTEMPTS})"
-                            ),
-                            {"run_id": config.run_id, "error": str(exc), "db_path": config.db_path},
+                    if self._is_transient_mt5_ipc_error(exc):
+                        self._safe_halt_runtime(
+                            store=store,
+                            config=config,
+                            reason=self._SAFE_HALT_MT5_DISCONNECT,
+                            message="MT5 IPC connection lost; runtime stopped for safety",
+                            payload={"error": str(exc), "db_path": config.db_path},
                         )
-                        adapter, runtime = self._reconnect_runtime(config, store, adapter)
-                        continue
+                        halted = True
+                        break
                     raise
-                ipc_recovery_attempts = 0
-                overview = store.fetch_latest_run_overview()
+                overview = store.fetch_latest_run_overview(run_id=config.run_id)
                 health = store.fetch_execution_health_summary(run_id=config.run_id, limit=20)
                 supervised_runtime = self._supervised_runtime
-                self._emit(
-                    "runtime_cycle",
-                    f"{result.action}: {result.detail}",
-                    {
-                        "run_id": config.run_id,
-                        "action": result.action,
-                        "detail": result.detail,
-                        "halted": result.halted,
-                        "snapshot": result.snapshot,
-                        "overview": overview or {},
-                        "health": health,
-                        "live_enabled": supervised_runtime.live_enabled,
-                    },
-                )
+                if result.halted and result.snapshot.get("account_fingerprint") and self._account_fingerprint_changed(
+                    expected=config.account_fingerprint,
+                    actual=result.snapshot.get("account_fingerprint"),
+                ):
+                    self._safe_halt_runtime(
+                        store=store,
+                        config=config,
+                        reason=self._SAFE_HALT_ACCOUNT_CHANGED,
+                        message="MT5 account changed; runtime stopped for safety",
+                        payload={
+                            "db_path": config.db_path,
+                            "expected_account_fingerprint": config.account_fingerprint,
+                            "actual_account_fingerprint": result.snapshot.get("account_fingerprint"),
+                        },
+                    )
+                    self._emit(
+                        "account_changed",
+                        "MT5 account changed during runtime",
+                        {
+                            "run_id": config.run_id,
+                            "expected_account_fingerprint": config.account_fingerprint,
+                            "actual_account_fingerprint": result.snapshot.get("account_fingerprint"),
+                            "db_path": config.db_path,
+                        },
+                    )
+                else:
+                    self._emit(
+                        "runtime_cycle",
+                        f"{result.action}: {result.detail}",
+                        {
+                            "run_id": config.run_id,
+                            "action": result.action,
+                            "detail": result.detail,
+                            "halted": result.halted,
+                            "snapshot": result.snapshot,
+                            "overview": overview or {},
+                            "health": health,
+                            "live_enabled": supervised_runtime.live_enabled if supervised_runtime is not None else False,
+                        },
+                    )
                 if result.halted:
                     halted = True
                     break
@@ -575,8 +588,8 @@ class DesktopRuntimeCoordinator:
             if halted:
                 self._emit(
                     "runtime_halted",
-                    "desktop runtime halted by stop policy",
-                    {"run_id": config.run_id, "db_path": config.db_path},
+                    "desktop runtime halted by safety policy",
+                    {"run_id": config.run_id, "db_path": config.db_path, "stop_reason": self._current_stop_reason(store, config)},
                 )
             elif store is not None:
                 store.update_run_status(config.run_id or "", status="STOPPED", stop_reason="operator_stop")
@@ -654,12 +667,9 @@ class DesktopRuntimeCoordinator:
             risk_engine=self.risk_engine_factory(),
             stop_policy=self.stop_policy_factory(),
             config=PollingConfig(poll_interval_seconds=config.poll_interval_seconds),
+            expected_account_fingerprint=config.account_fingerprint,
         )
         return adapter, runtime
-
-    def _reconnect_runtime(self, config: DesktopRuntimeConfig, store: RuntimeStore, adapter: Any) -> tuple[Any, PollingRuntime]:
-        self._shutdown_adapter(adapter)
-        return self._build_runtime(config, store)
 
     def _build_provider(
         self,
@@ -688,6 +698,74 @@ class DesktopRuntimeCoordinator:
 
     def _emit(self, kind: str, message: str, payload: dict[str, Any] | None = None) -> None:
         self._events.put(DesktopRuntimeEvent(kind=kind, message=message, payload=payload or {}))
+
+    def _safe_halt_runtime(
+        self,
+        *,
+        store: RuntimeStore,
+        config: DesktopRuntimeConfig,
+        reason: str,
+        message: str,
+        payload: dict[str, Any] | None = None,
+    ) -> None:
+        if config.run_id is not None:
+            store.record_log(
+                run_id=config.run_id,
+                cycle_id=None,
+                level="WARNING",
+                message=message,
+                payload=payload,
+            )
+            store.record_stop_event(
+                run_id=config.run_id,
+                cycle_id=None,
+                stop_code=reason,
+                severity="hard",
+                detail=message,
+                payload=payload,
+            )
+            store.update_run_status(config.run_id, status="HALTED", stop_reason=reason)
+        self._desired_live_enabled = False
+        if self._supervised_runtime is not None:
+            self._supervised_runtime.set_live_enabled(False)
+        self._emit(
+            "runtime_safe_halt",
+            message,
+            {
+                "run_id": config.run_id,
+                "db_path": config.db_path,
+                "stop_reason": reason,
+                "live_enabled": False,
+                **(payload or {}),
+            },
+        )
+
+    @staticmethod
+    def _account_fingerprint_changed(
+        *,
+        expected: dict[str, Any] | None,
+        actual: dict[str, Any] | None,
+    ) -> bool:
+        if not expected or not actual:
+            return False
+        expected_key = (
+            str(expected.get("login") or ""),
+            str(expected.get("server") or ""),
+            str(expected.get("broker") or ""),
+        )
+        actual_key = (
+            str(actual.get("login") or ""),
+            str(actual.get("server") or ""),
+            str(actual.get("broker") or ""),
+        )
+        return expected_key != actual_key
+
+    @staticmethod
+    def _current_stop_reason(store: RuntimeStore | None, config: DesktopRuntimeConfig) -> str | None:
+        if store is None or config.run_id is None:
+            return None
+        run = store.fetch_run(config.run_id)
+        return None if run is None else run.get("stop_reason")
 
     @staticmethod
     def _is_transient_mt5_ipc_error(exc: Exception) -> bool:

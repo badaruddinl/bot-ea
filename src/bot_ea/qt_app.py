@@ -2587,8 +2587,24 @@ class BotEaQtWindow(QMainWindow):
                         self._apply_account_fingerprint(fingerprint, runtime_was_running=True)
                     self._update_summary_cards()
                 self._clear_mt5_disconnect_overlay()
-            elif name == "runtime_recovering":
-                self._handle_mt5_disconnect(self._short(message), runtime_was_running=True)
+            elif name == "runtime_safe_halt":
+                stop_reason = str(payload.get("stop_reason") or "")
+                if stop_reason == "account_changed":
+                    self._pending_account_fingerprint = dict(payload.get("actual_account_fingerprint") or {})
+                    self._handle_account_changed(
+                        dict(payload.get("expected_account_fingerprint") or self._active_account_fingerprint or {}),
+                        dict(payload.get("actual_account_fingerprint") or {}),
+                        runtime_was_running=True,
+                    )
+                else:
+                    self._handle_mt5_disconnect(self._short(message), runtime_was_running=True)
+            elif name == "account_changed":
+                self._pending_account_fingerprint = dict(payload.get("actual_account_fingerprint") or {})
+                self._handle_account_changed(
+                    dict(payload.get("expected_account_fingerprint") or self._active_account_fingerprint or {}),
+                    dict(payload.get("actual_account_fingerprint") or {}),
+                    runtime_was_running=True,
+                )
             elif name in {"runtime_error", "runtime_halted", "runtime_stopped"}:
                 self._runtime_running = False
                 self.runtime_status.setText(self._short(message))
