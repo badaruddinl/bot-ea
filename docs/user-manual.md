@@ -1,33 +1,51 @@
 # User Manual
 
-## Untuk Siapa Dokumen Ini
+## Dokumen Ini Untuk Siapa
 
-Dokumen ini dibuat untuk user/operator yang tidak ingin membaca detail teknis kode.
+Dokumen ini ditujukan untuk operator non-teknis yang memakai aplikasi desktop Qt `bot-ea`.
 
-Tujuannya sederhana:
+Tujuannya:
 
 - tahu cara membuka aplikasi
-- tahu tombol mana yang harus diklik
-- tahu arti status yang tampil
+- tahu urutan tombol yang benar
+- tahu arti halaman dan status utama
 - tahu kapan aman lanjut
 - tahu kapan harus berhenti
 
-Dokumen ini tidak menganggap Anda seorang programmer.
+Dokumen ini hanya menjelaskan perilaku yang sudah ada di aplikasi sekarang. Beberapa ide besar dari master brief seperti startup gate, mode dev/operator terpisah, dan halaman review akun belum ada di UI saat ini.
 
-## Apa Fungsi Aplikasi Ini
+## Fungsi Aplikasi Saat Ini
 
-Aplikasi desktop `bot-ea` membantu Anda:
+Aplikasi desktop membantu Anda untuk:
 
-- memeriksa apakah MT5 siap dipakai
+- memeriksa koneksi MT5
 - memeriksa apakah `codex-cli` siap dipakai
-- menjalankan bot di background
-- melihat saran dan log hasil bot
-- mengawasi sebelum order live benar-benar dikirim
+- melihat preview market, lot, dan risiko
+- menjalankan runtime polling secara supervised
+- mengaktifkan live mode secara eksplisit
+- menyetujui atau menolak proposal live
+- membaca telemetry dan validation summary setelah runtime berjalan
 
-Hal penting:
+Batas penting:
 
-- aplikasi ini belum ditujukan untuk trading live tanpa pengawasan
-- mode yang paling aman sekarang adalah `supervised demo test`
+- aplikasi ini belum siap untuk live trading tanpa pengawasan
+- mode paling aman tetap `dry-run` atau demo
+
+## Cara Menjalankan Aplikasi
+
+Jalankan Qt app sebagai entrypoint utama:
+
+```powershell
+cd D:\luthfi\project\bot-ea
+powershell -ExecutionPolicy Bypass -File .\scripts\run-qt-gui.ps1
+```
+
+Dalam penggunaan normal:
+
+- Anda tidak perlu membuka websocket service manual di jendela lain
+- GUI akan mencoba mengelola service lokal sendiri
+
+Script `run-websocket-service.ps1` masih ada, tetapi itu sekarang lebih cocok untuk debugging atau pengujian backend terpisah.
 
 ## Sebelum Mulai
 
@@ -35,514 +53,409 @@ Lakukan ini dulu:
 
 1. Buka `MetaTrader 5`.
 2. Login ke akun yang benar.
-3. Pastikan simbol yang ingin dipakai ada, misalnya `EURUSD`.
-4. Pastikan `codex` bisa dipanggil dari terminal.
-5. Jalankan aplikasi desktop.
+3. Pastikan simbol yang ingin dipakai tersedia di broker, misalnya `EURUSD` atau `XAUUSD`.
+4. Pastikan `codex --version` berhasil di terminal Windows.
+5. Baru jalankan GUI Qt.
 
 Checklist cepat:
 
 - MT5 terbuka
 - akun sudah login
-- simbol tersedia
 - `codex-cli` terpasang
-- mulai dari `dry-run` dulu
+- mulai dari akun demo
+- mulai dari `dry-run`
 
-## Cara Menjalankan Aplikasi
+## Kenali Halaman Aplikasi
 
-Cara paling mudah di Windows:
+Qt app sekarang memakai sidebar dengan 5 halaman.
 
-```powershell
-cd D:\luthfi\project\bot-ea
-powershell -ExecutionPolicy Bypass -File .\scripts\run-desktop-gui.ps1
-```
+### 1. `Dashboard`
 
-## Kenali Bagian Layar
+Fungsi:
 
-### 1. Pengaturan Trading
+- melihat ringkasan status operator
+- melihat readiness chips
+- melihat market snapshot, manual order envelope, dan risk envelope
+- melihat overview run, lot, spread, dan mode runtime
 
-Bagian ini berisi:
+Ini adalah halaman ringkas, bukan tempat utama untuk mengubah semua parameter.
 
-- `Symbol`
+### 2. `Strategy`
+
+Fungsi:
+
+- mengatur parameter trading
+- mengatur parameter Codex
+- menjalankan tombol aksi utama
+
+Di halaman ini ada kelompok utama:
+
+- `Trade Setup`
+- `Codex`
+- `Actions`
+
+### 3. `History`
+
+Fungsi:
+
+- memuat telemetry runtime
+- membaca validation summary
+- meninjau hasil run sebelumnya
+
+Gunakan halaman ini sesudah runtime berjalan.
+
+### 4. `Logs`
+
+Fungsi:
+
+- membaca runtime feed
+- membaca event dan error
+- melihat endpoint dan tick terbaru yang sudah masuk ke UI
+
+### 5. `Settings`
+
+Fungsi:
+
+- melihat endpoint websocket
+- melihat model default
+- melihat poll interval
+- melihat ringkasan runtime DB
+
+Catatan:
+
+- halaman ini bukan settings produk yang lengkap seperti di master brief
+- belum ada pengelolaan AI workspace, documents folder, atau account-scoped context di sini
+
+## Arti Area Penting di Halaman `Strategy`
+
+### `Trade Setup`
+
+Bidang utama:
+
+- `Symbol (from MT5)`
 - `Timeframe`
-- `Style`
-- `Stop Points`
-- `Allocation Mode`
-- `Allocation`
-- `Side`
-- `Runtime DB`
+- `Strategy Style`
+- `Stop Loss Distance (points, min X)`
+- `Capital Mode`
+- `Capital To Use (USD)`
+- `Lot Mode`
+- `Manual Lot Request`
+- `Manual Side Only`
+- `Log File (Runtime DB)`
 
 Arti sederhananya:
 
-- `Symbol`: instrumen yang dipakai, misalnya `EURUSD`
-- `Timeframe`: kerangka waktu, misalnya `M15`
-- `Style`: gaya trading
-- `Stop Points`: jarak stop untuk sizing/risk
-- `Allocation`: modal yang diizinkan dipakai bot
-- `Runtime DB`: file log/catatan bot
+- `Symbol`: instrumen broker yang dipilih
+- `Timeframe`: kerangka waktu analisis
+- `Strategy Style`: gaya strategi aktif
+- `Stop Loss Distance`: jarak stop loss untuk preview risiko
+- `Capital Mode`: cara modal dibaca oleh risk engine
+- `Capital To Use`: basis modal yang diizinkan
+- `Lot Mode`: apakah lot dihitung otomatis atau memakai request manual
+- `Manual Lot Request`: lot manual jika mode manual dipakai
+- `Manual Side Only`: arah order untuk aksi manual
+- `Log File (Runtime DB)`: file SQLite untuk runtime dan telemetry
 
-### 2. Pengaturan Codex
+### `Codex`
 
-Bagian ini berisi:
+Bidang utama:
 
-- `Codex CLI`
-- `Codex Model`
-- `Codex CWD`
-- `Poll Interval (s)`
+- `Codex Command`
+- `AI Model`
+- `Codex Work Folder`
+- `Check Market Every (s)`
 
 Arti sederhananya:
 
-- `Codex CLI`: nama executable Codex, biasanya cukup `codex`
-- `Codex Model`: model AI yang dipakai, biasanya boleh dikosongkan
-- `Codex CWD`: folder kerja Codex
-- `Poll Interval`: jarak waktu bot mengecek market lagi
+- `Codex Command`: command executable, biasanya `codex`
+- `AI Model`: model yang dipakai runtime
+- `Codex Work Folder`: folder kerja project untuk Codex
+- `Check Market Every (s)`: jarak polling market oleh runtime
 
-Kalau tidak paham:
+## Tombol Utama dan Fungsinya
 
-- biarkan `Codex CLI = codex`
-- biarkan `Codex Model` kosong
-- isi `Codex CWD` ke folder project
-
-### 3. Status Kesiapan
-
-Bagian ini menunjukkan:
-
-- status MT5
-- status Codex CLI
-- status runtime background
-- run yang sedang aktif
-- status approval order live
-
-### 4. Tombol Utama
-
-Tombol yang paling penting:
-
-- `Check MT5`
-- `Load Codex`
-- `Play Runtime`
-- `Stop Runtime`
-- `Enable Live` / `Disable Live`
-- `Approve Pending`
-- `Reject Pending`
-- `Refresh`
-- `Preflight`
-- `Execute`
-- `Load Telemetry`
-
-## Arti Tombol
+Label tombol di Qt app sekarang masih berbahasa Inggris/operator.
 
 ### `Check MT5`
 
 Fungsi:
 
-- mengecek apakah MT5 siap
-- membaca akun, harga, dan simbol
-
-Gunakan ini setiap kali memulai sesi.
+- memeriksa apakah terminal MT5 bisa dibaca
+- memeriksa akun, tick, dan simbol dasar
 
 ### `Load Codex`
 
 Fungsi:
 
-- mengecek apakah `codex-cli` bisa dipakai
+- memeriksa apakah `codex-cli` bisa dipanggil
+- membaca versi CLI dan model yang dipilih
 
-Gunakan ini sebelum `Play Runtime`.
-
-### `Play Runtime`
-
-Fungsi:
-
-- memulai bot di background
-
-Ini bukan berarti langsung trading live.
-
-### `Stop Runtime`
+### `Preview`
 
 Fungsi:
 
-- menghentikan bot background
-
-Gunakan ini jika ingin berhenti, mengubah setting, atau ada error.
-
-### `Enable Live`
-
-Fungsi:
-
-- mengizinkan bot mengirim order sungguhan
-
-Jangan aktifkan ini pada pengujian pertama.
-
-### `Approve Pending`
-
-Fungsi:
-
-- menyetujui proposal order live yang sedang menunggu persetujuan
-
-### `Reject Pending`
-
-Fungsi:
-
-- menolak proposal order live yang sedang menunggu persetujuan
-
-### `Refresh`
-
-Fungsi:
-
-- mengambil data harga dan akun terbaru
+- mengambil preview manual terbaru dari broker snapshot
+- memperbarui market snapshot, manual order envelope, dan risk envelope
 
 ### `Preflight`
 
 Fungsi:
 
-- mengecek apakah setup/order saat ini lolos pemeriksaan risiko dan broker
+- meminta broker/risk layer memeriksa apakah setup order lolos pemeriksaan sebelum submit
 
-Ini bukan jaminan profit.
-
-### `Execute`
+### `Execute Manual`
 
 Fungsi:
 
-- mencoba menjalankan order manual berdasarkan setting saat ini
+- mencoba menjalankan order manual dari setup saat ini
 
-Gunakan dengan hati-hati.
+Catatan:
 
-### `Load Telemetry`
+- kalau live belum aktif, hasilnya bisa `DRY_RUN_OK`
+- kalau broker menolak parameter, hasilnya bisa `REJECTED`
+
+### `Play Runtime`
 
 Fungsi:
 
-- memuat log hasil bot
-- menampilkan ringkasan runtime, health, event order, dan warning
+- memulai polling runtime di backend
+
+Ini tidak sama dengan langsung membuka posisi.
+
+### `Stop Runtime`
+
+Fungsi:
+
+- menghentikan runtime aktif
+
+### `Enable Live` / `Disable Live`
+
+Fungsi:
+
+- mengubah runtime dari dry-run menjadi live-gated
+
+Ini tetap bukan izin trading otomatis tanpa review.
+
+### `Approve`
+
+Fungsi:
+
+- menyetujui proposal order live yang sedang pending
+
+### `Reject`
+
+Fungsi:
+
+- menolak proposal order live yang sedang pending
+
+### `Telemetry`
+
+Fungsi:
+
+- memuat ulang telemetry run, validation summary, dan review status
 
 ## Urutan Pakai yang Disarankan
 
 Ikuti urutan ini:
 
-1. Isi `Symbol`, `Timeframe`, `Style`, `Stop Points`.
-2. Pilih `Allocation Mode` dan isi nilai modal.
-3. Pastikan `Runtime DB` benar.
-4. Pastikan `Codex CLI` dan `Codex CWD` benar.
+1. Buka MT5 dan login.
+2. Jalankan Qt app.
+3. Buka halaman `Strategy`.
+4. Atur `Symbol`, `Timeframe`, `Strategy Style`, dan modal.
 5. Klik `Check MT5`.
-6. Jika MT5 siap, klik `Load Codex`.
-7. Jika Codex siap, klik `Refresh`.
+6. Klik `Load Codex`.
+7. Klik `Preview`.
 8. Klik `Preflight`.
 9. Jika hasil aman, klik `Play Runtime`.
-10. Biarkan bot berjalan beberapa cycle.
-11. Klik `Load Telemetry`.
-12. Tetap di mode `dry-run` dulu.
+10. Biarkan runtime berjalan beberapa cycle.
+11. Buka `History` atau klik `Telemetry`.
+12. Tetap di dry-run dulu.
 13. Hanya jika benar-benar perlu, gunakan `Enable Live`.
-14. Jika muncul proposal live, baca dulu lalu pilih `Approve Pending` atau `Reject Pending`.
+14. Jika ada proposal live, pilih `Approve` atau `Reject`.
 
-## Alur Penggunaan Paling Aman
+## Aturan Penting Saat Runtime Aktif
 
-Untuk user baru:
+Saat runtime sudah berjalan:
 
-1. Jalankan aplikasi.
-2. Klik `Check MT5`.
-3. Klik `Load Codex`.
-4. Klik `Refresh`.
-5. Klik `Preflight`.
-6. Klik `Play Runtime`.
-7. Jangan aktifkan live dulu.
-8. Klik `Load Telemetry`.
-9. Lihat apakah bot sehat dan tidak banyak error/rejection.
+- beberapa aksi manual MT5 akan dibatasi
+- ini sengaja dilakukan agar jalur manual tidak merusak koneksi IPC MT5 yang sedang dipakai runtime
 
-Kalau semua masih normal, baru pertimbangkan langkah berikutnya.
+Artinya:
 
-## Arti Status Penting
+- jika ingin banyak mengubah setup manual, lebih aman `Stop Runtime` dulu
+- sesudah itu baru `Preview`, `Preflight`, atau `Execute Manual`
 
-### Status umum
+## Arti Status Kesiapan
 
-- `Ready`
-  Artinya aplikasi siap dibuka, tapi belum tentu MT5/Codex siap.
+Di bagian readiness, perhatikan:
 
-- `MT5 readiness checked`
-  Artinya pengecekan MT5 selesai.
+- `Service`
+- `MT5`
+- `Codex`
+- `Runtime`
+- `Run ID`
+- `Approval`
 
-- `codex-cli ready`
-  Artinya Codex berhasil dikenali.
+Interpretasi umum:
 
-- `Background runtime starting`
-  Artinya bot background sedang mulai jalan.
+- `Service connected`
+  - GUI sudah terhubung ke websocket backend
+- `MT5 ready`
+  - probe MT5 berhasil
+- `codex-cli ...`
+  - probe Codex berhasil
+- `Runtime stopped`
+  - runtime tidak sedang berjalan
+- `NO_TRADE: ...`
+  - runtime masih hidup, tetapi cycle terakhir memutuskan tidak entry
+- `Approved ...`
+  - proposal live terakhir disetujui
 
-- `desktop runtime started`
-  Artinya bot background sudah aktif.
+`NO_TRADE` bukan berarti runtime pasti berhenti.
 
-- `desktop runtime stopped`
-  Artinya bot sudah dihentikan.
+## Cara Membaca Snapshot Cards
 
-### Status hasil manual
+### `Market Snapshot`
 
-- `Snapshot refreshed`
-  Data harga dan akun berhasil diambil.
+Menampilkan:
 
-- `Preflight complete`
-  Pengecekan sebelum order selesai.
+- symbol
+- bid
+- ask
+- spread
+- equity
+- free margin
+- execution mode
 
-- `Execution attempted`
-  Sistem sudah mencoba menjalankan aksi manual.
+Saat runtime aktif, data market terbaru idealnya datang dari event runtime, bukan dari tombol manual.
 
-### Status yang perlu diperhatikan
+### `Manual Order Envelope`
 
-- `MT5 probe failed`
-  Aplikasi gagal membaca MT5.
+Menampilkan:
 
-- `codex-cli probe failed`
-  Aplikasi gagal memakai Codex.
+- `lot_mode`
+- `requested_lot`
+- `final_lot`
+- `broker_min_lot`
+- `broker_max_lot`
+- `margin_for_min_lot_usd`
+- `margin_for_final_lot_usd`
+- `manual_order_result`
+- `why_blocked`
 
-- `Runtime failed to start`
-  Bot background gagal mulai.
+Ini menjawab:
 
-- `MT5 terminal blocks live trading`
-  MT5 masih menolak live trading.
+- lot final yang akan dipakai berapa
+- apakah lot di-resize
+- apakah broker/modal masih mengizinkan order manual
 
-## Arti Hasil di Panel Output
+### `Risk Envelope`
 
-Beberapa kata penting:
+Menampilkan:
 
-- `accepted=true`
-  Setup diterima oleh sizing/risk.
+- lot hasil risk sizing
+- risk budget
+- estimated loss
+- warning atau blocker
 
-- `accepted=false`
-  Setup ditolak.
+Catatan:
 
-- `status=PRECHECK_OK`
-  Pemeriksaan broker awal lolos.
-
-- `status=PRECHECK_REJECTED`
-  Broker menolak request pada tahap awal.
-
-- `status=GUARD_REJECTED`
-  Risk guard internal menolak.
-
-- `status=DRY_RUN_OK`
-  Simulasi lolos, belum kirim order sungguhan.
-
-- `status=FILLED`
-  Order berhasil terisi.
-
-- `status=REJECTED`
-  Order ditolak/gagal.
-
-- `warning=...`
-  Ada hal yang perlu diperhatikan.
-
-- `rejection_reason=...`
-  Alasan utama penolakan.
+- kartu ini lebih dekat ke sudut pandang risk engine
+- jangan campurkan otomatis dengan `Manual Order Envelope`
 
 ## Cara Membaca Telemetry
 
-Saat klik `Load Telemetry`, fokus lihat ini:
+Saat membuka `History` atau menekan `Telemetry`, fokus ke:
 
-- `run_id`
 - `status`
-- `last_cycle`
 - `last_action`
-- `stop_reason`
 - `reject_rate`
-- `risk_guard`
-- `recent_positions`
 - `recent_execution_events`
 - `recent_rejections`
 - `validation_summary`
-- `execution_quality_run_scoped`
 
-Arti sederhananya:
+Kalau yang terlihat:
 
-- `run_id`: nomor sesi bot
-- `last_action`: keputusan bot terakhir
-- `reject_rate`: seberapa sering bot ditolak
-- `recent_positions`: posisi yang dibuka/ditutup
-- `recent_execution_events`: jejak percobaan order
-- `validation_summary`: ringkasan hasil trading pada run itu
+- `DRY_RUN_OK`
+  - order hanya diuji, belum dikirim live
+- `PRECHECK_OK`
+  - broker/risk precheck lolos
+- `REJECTED`
+  - ada penolakan dari broker atau guard internal
+- `NO_TRADE`
+  - runtime memilih tidak membuka posisi pada cycle itu
 
-## Arti Approval Flow
+## Error Umum
 
-Jika live mode aktif, bot tetap tidak langsung mengirim order live.
+### 1. `NO IPC connection`
 
-Urutannya:
+Artinya:
 
-1. Bot membuat proposal.
-2. Risk guard memeriksa.
-3. Broker preflight memeriksa.
-4. GUI menunggu persetujuan operator.
-5. Anda pilih:
-   - `Approve Pending`
-   - `Reject Pending`
-
-Arti penting:
-
-- `Approve Pending` bukan berarti trading otomatis selamanya
-- persetujuan berlaku untuk proposal yang cocok
-- jika proposal berubah, Anda harus tinjau lagi
-
-## Kapan Boleh Lanjut
-
-Anda boleh lanjut jika:
-
-- `Check MT5` berhasil
-- `Load Codex` berhasil
-- `Refresh` berhasil
-- `Preflight` menunjukkan hasil aman
-- tidak ada rejection besar
-- tidak ada warning yang jelas-jelas berbahaya
-
-Untuk live:
-
-- hanya lanjut jika Anda benar-benar paham risikonya
-- pastikan mode masih `supervised`
-
-## Kapan Harus Berhenti
-
-Berhenti jika:
-
-- MT5 gagal dibaca
-- Codex gagal dibaca
-- `accepted=false`
-- `GUARD_REJECTED`
-- `PRECHECK_REJECTED`
-- spread terlalu lebar
-- reject rate mulai tinggi
-- output panel menunjukkan error berulang
-- Anda tidak paham proposal order yang sedang menunggu approval
-
-Kalau ragu:
-
-- klik `Stop Runtime`
-
-## Error Paling Umum dan Solusinya
-
-### 1. `MT5 probe failed`
-
-Kemungkinan:
-
-- MT5 belum dibuka
-- akun belum login
-- simbol tidak tersedia
+- Python kehilangan koneksi ke MT5
 
 Yang harus dilakukan:
 
-1. buka MT5
-2. login ulang
-3. cek simbol
-4. ulang `Check MT5`
+1. pastikan hanya satu MT5 yang dipakai
+2. jangan spam aksi manual saat runtime aktif
+3. cek apakah terminal MT5 masih terbuka dan login
+4. `Check MT5` lagi
 
-### 2. `codex-cli probe failed`
+### 2. `codex exec timed out after 60 seconds`
 
-Kemungkinan:
+Artinya:
 
-- `codex` tidak ada di PATH
-- `Codex CWD` salah
-
-Yang harus dilakukan:
-
-1. cek field `Codex CLI`
-2. cek field `Codex CWD`
-3. tes `codex --version` di terminal
-4. ulang `Load Codex`
-
-### 3. `Runtime failed to start`
-
-Kemungkinan:
-
-- MT5/Codex belum ready
-- input salah
-- DB path bermasalah
+- `codex-cli` terlalu lama menjawab
 
 Yang harus dilakukan:
 
-1. ulang `Check MT5`
-2. ulang `Load Codex`
-3. cek `Runtime DB`
-4. cek angka `Stop Points`, `Allocation`, `Poll Interval`
+1. ulang `Load Codex`
+2. cek model yang dipakai
+3. cek folder kerja dan beban prompt
 
-### 4. `MT5 terminal blocks live trading`
+### 3. `codex contract invalid`
 
-Kemungkinan:
+Artinya:
 
-- izin trading di terminal belum aktif
-- akun broker tidak mengizinkan
+- respons Codex tidak mengikuti kontrak output yang diminta runtime
 
-Yang harus dilakukan:
+Sekarang runtime akan menandai ini dengan lebih jelas daripada sebelumnya.
 
-1. cek izin trading di MT5
-2. cek akun broker
-3. ulang `Check MT5`
+### 4. `address already in use` / `10048`
 
-### 5. `Runtime DB not found`
+Artinya:
 
-Kemungkinan:
+- port websocket sedang dipakai proses lain
 
-- bot belum pernah dijalankan
-- path log salah
+Biasanya terjadi jika service lama masih hidup.
 
-Yang harus dilakukan:
+### 5. `Invalid stops`
 
-1. cek field `Runtime DB`
-2. klik `Play Runtime`
-3. tunggu 1-2 cycle
-4. klik `Load Telemetry` lagi
+Artinya:
 
-## Arti Allocation Mode
+- broker menolak jarak stop loss yang terlalu dekat untuk harga saat itu
 
-Bagian ini penting karena sering membingungkan.
+Solusi praktis:
 
-- `fixed_cash`
-  Bot hanya memakai nominal uang tertentu.
+- naikkan `Stop Loss Distance`
+- lakukan `Preview` dan `Preflight` lagi
 
-- `percent_equity`
-  Bot memakai persentase tertentu dari equity akun.
+## Batas Fitur Saat Ini
 
-- `full_equity`
-  Bot memakai seluruh equity sebagai basis hitung.
+Hal yang belum ada walaupun diusulkan di master brief:
 
-Contoh:
-
-- jika pilih `fixed_cash = 250`, bot menghitung sizing dari modal 250
-- jika pilih `percent_equity = 35`, bot menghitung dari 35% equity akun
-
-Ini bukan berarti bot pasti membuka order sebesar angka itu.
-
-## Aturan Praktis untuk User Baru
-
-Lakukan:
-
-- mulai dari akun demo
-- mulai dari dry-run
-- baca hasil `Preflight`
-- baca hasil `Load Telemetry`
-- hentikan bot jika bingung
-
-Jangan lakukan:
-
-- jangan aktifkan live pada percobaan pertama
-- jangan klik `Approve Pending` jika Anda tidak paham proposalnya
-- jangan abaikan warning/rejection berulang
-- jangan anggap `Preflight complete` berarti pasti untung
-
-## Contoh Skenario Normal
-
-Contoh alur sehat:
-
-1. `Check MT5` -> berhasil
-2. `Load Codex` -> berhasil
-3. `Refresh` -> harga tampil
-4. `Preflight` -> lolos
-5. `Play Runtime` -> run aktif
-6. `Load Telemetry` -> data muncul
-7. tetap di dry-run
+- startup gate yang benar-benar mengunci workspace sebelum semua dependency lolos
+- mode `DEV / MOCK MODE` yang terlihat jelas di UI
+- reconnect overlay khusus saat MT5 hilang
+- review sheet khusus saat akun berubah
+- pengelolaan AI workspace, AI documents, dan AI context per akun
+- pelokalan penuh ke istilah Indonesia di seluruh UI
 
 ## Penutup
 
-Aplikasi ini belum ditujukan sebagai tombol “jalan otomatis tanpa pengawasan”.
+Aturan paling aman untuk operator baru:
 
-Peran Anda sebagai operator tetap penting:
-
-- memeriksa kesiapan
-- membaca proposal
-- memutuskan setuju atau menolak
-- menghentikan bot jika ada hal yang tidak wajar
-
-Jika Anda ragu, pilihan yang benar adalah:
-
-- jangan kirim order live
-- tetap di dry-run
-- klik `Stop Runtime`
+- mulai dari demo
+- mulai dari dry-run
+- baca hasil `Preview`, `Preflight`, dan `Telemetry`
+- jangan aktifkan live jika Anda belum paham status yang tampil
+- hentikan runtime jika ada error berulang atau kondisi yang membingungkan

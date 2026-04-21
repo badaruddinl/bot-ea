@@ -1,89 +1,126 @@
 # bot-ea
 
-Research-first workspace for an autonomous MetaTrader trading bot with strict risk controls.
+Research-first workspace for a supervised MetaTrader 5 trading bot with a Python risk engine, MT5 adapter, Codex-backed decision path, SQLite telemetry, websocket transport, and a Qt desktop control panel.
 
-## Current focus
+This repository is no longer just a design scaffold. It already includes a runnable desktop app for supervised demo and dry-run testing. It is still not positioned as unattended live-trading software.
 
-- Build from research, not from zero
-- Prioritize MT5 because its native APIs and Python bridge expose account, symbol, margin, profit, and order validation primitives
-- Treat internet research as a baseline only; final tuning must come from broker-specific backtests and demo forward tests
-- Build the first testable core as pure Python risk logic, then attach MT5 adapters and execution code on top
+## Current product state
 
-## Proposed stack
+Implemented now:
 
-- `MT5 native (MQL5)` for execution-critical logic
-- `Python + MetaTrader5` for research, tuning, analytics, orchestration, and possible hybrid decision logic
-- Risk engine as a first-class subsystem, not an afterthought
+- MT5 integration through the Python `MetaTrader5` bridge
+- deterministic risk sizing and execution guards
+- Codex CLI probing and decision polling
+- SQLite runtime persistence and validation summaries
+- local websocket service for GUI-to-runtime transport
+- Qt desktop app with multi-page navigation:
+  - `Dashboard`
+  - `Strategy`
+  - `History`
+  - `Logs`
+  - `Settings`
+
+Current operating posture:
+
+- supervised demo and dry-run testing: supported
+- broker preflight and manual order preview: supported
+- live order flow: operator-gated
+- unattended live trading: not ready
+
+Not implemented yet from the master brief:
+
+- startup dependency gate that locks the main workspace until all checks pass
+- dev/mock mode badge and explicit operator/dev mode split
+- reconnect overlay and safe-halt account-change review UX
+- account-scoped AI workspace, documents, and structured context store
+- full close/modify lifecycle management for autonomous position handling
+
+## Preferred desktop launch
+
+Normal operator launch on Windows:
+
+```powershell
+cd D:\luthfi\project\bot-ea
+powershell -ExecutionPolicy Bypass -File .\scripts\run-qt-gui.ps1
+```
+
+Current expected behavior:
+
+- the Qt app is the primary desktop entrypoint
+- the app can manage the local websocket backend itself during normal use
+- `scripts/run-websocket-service.ps1` is still available for debugging or isolated backend work, but it is not the preferred operator flow
+
+## Recommended operator flow
+
+Follow this order inside the Qt app:
+
+1. `Check MT5`
+2. `Load Codex`
+3. `Preview`
+4. `Preflight`
+5. `Play Runtime`
+6. optional `Enable Live`
+7. `Approve` or `Reject` only when a live proposal is pending
+8. `Telemetry` for post-run review
+
+Important runtime rule:
+
+- when the runtime is active, manual MT5 actions are intentionally restricted so the GUI does not destabilize the live MT5 IPC session
+
+## Desktop UI surface
+
+The Qt app currently exposes:
+
+- `Dashboard`
+  - operator overview, readiness chips, snapshot cards, and summary metrics
+- `Strategy`
+  - trade setup, capital management, Codex settings, and action buttons
+- `History`
+  - telemetry reload, validation summaries, and post-run review
+- `Logs`
+  - runtime feed, events, endpoint state, and latest tick visibility
+- `Settings`
+  - websocket endpoint, model defaults, polling cadence, and runtime DB summary
+
+The current UI still uses several operator/developer-oriented labels such as `Runtime Dashboard`, `Operator Console`, `Manual Order Envelope`, and `Risk Envelope`. The master brief proposes a more user-facing Indonesian copy pass, but that language overhaul is not fully implemented yet.
 
 ## Project structure
 
-- [research/2026-04-20-market-and-platform-research.md](D:\luthfi\project\bot-ea\research\2026-04-20-market-and-platform-research.md)
-- [research/2026-04-20-stage-2-deep-research.md](D:\luthfi\project\bot-ea\research\2026-04-20-stage-2-deep-research.md)
-- [research/2026-04-20-stage-3-decision-tree-and-candlestick-research.md](D:\luthfi\project\bot-ea\research\2026-04-20-stage-3-decision-tree-and-candlestick-research.md)
-- [research/2026-04-20-stage-4-implementation-and-live-research-notes.md](D:\luthfi\project\bot-ea\research\2026-04-20-stage-4-implementation-and-live-research-notes.md)
-- [research/2026-04-20-stage-5-subagent-integration-notes.md](D:\luthfi\project\bot-ea\research\2026-04-20-stage-5-subagent-integration-notes.md)
-- [docs/ea-bot-blueprint.md](D:\luthfi\project\bot-ea\docs\ea-bot-blueprint.md)
-- [docs/mt5-validation-protocol.md](D:\luthfi\project\bot-ea\docs\mt5-validation-protocol.md)
-- [docs/strategy-candidates.md](D:\luthfi\project\bot-ea\docs\strategy-candidates.md)
-- [docs/decision-tree-pseudorules.md](D:\luthfi\project\bot-ea\docs\decision-tree-pseudorules.md)
-- [docs/candlestick-patterns-assessment.md](D:\luthfi\project\bot-ea\docs\candlestick-patterns-assessment.md)
-- [docs/risk-engine-spec.md](D:\luthfi\project\bot-ea\docs\risk-engine-spec.md)
-- [docs/allocation-guidance.md](D:\luthfi\project\bot-ea\docs\allocation-guidance.md)
-- [docs/mt5-adapter-boundary.md](D:\luthfi\project\bot-ea\docs\mt5-adapter-boundary.md)
-- [docs/ea-brain-vs-config.md](D:\luthfi\project\bot-ea\docs\ea-brain-vs-config.md)
-- [docs/session-breakout-v1.md](D:\luthfi\project\bot-ea\docs\session-breakout-v1.md)
-- [docs/validation-harness-spec.md](D:\luthfi\project\bot-ea\docs\validation-harness-spec.md)
-- [docs/sqlite-runtime-schema.md](D:\luthfi\project\bot-ea\docs\sqlite-runtime-schema.md)
-- [docs/codex-polling-runtime.md](D:\luthfi\project\bot-ea\docs\codex-polling-runtime.md)
-- [docs/session-memory-export.md](D:\luthfi\project\bot-ea\docs\session-memory-export.md)
-- [docs/resume-prompt.md](D:\luthfi\project\bot-ea\docs\resume-prompt.md)
-- [docs/project-handoff.md](D:\luthfi\project\bot-ea\docs\project-handoff.md)
-- [docs/progress-summary.md](D:\luthfi\project\bot-ea\docs\progress-summary.md)
-- [config/parameter-map.md](D:\luthfi\project\bot-ea\config\parameter-map.md)
-- `src/bot_ea/`
-  - Python scaffold for risk, execution guards, decision family selection, MT5 adapter seams, strategy baseline, validation summaries, SQLite runtime store, stop policy, and Codex polling runtime
-- `docs/desktop-runtime-runbook.md`
-  - developer/operator runbook for the desktop GUI, MT5 readiness, codex-cli runtime, and safe dev testing
-- `docs/user-manual.md`
-  - non-technical user guide for operating the desktop GUI step by step
-- `docs/windows-packaging-plan.md`
-  - when to stay in dev-run mode and when packaging/installer work becomes justified
-- `scripts/run-desktop-gui.ps1`
-  - Windows helper to launch the desktop GUI in dev mode without packaging
+Key docs and code:
+
+- [docs/project-handoff.md](D:/luthfi/project/bot-ea/docs/project-handoff.md)
+- [docs/progress-summary.md](D:/luthfi/project/bot-ea/docs/progress-summary.md)
+- [docs/user-manual.md](D:/luthfi/project/bot-ea/docs/user-manual.md)
+- [docs/desktop-runtime-runbook.md](D:/luthfi/project/bot-ea/docs/desktop-runtime-runbook.md)
+- [docs/sqlite-runtime-schema.md](D:/luthfi/project/bot-ea/docs/sqlite-runtime-schema.md)
+- [docs/codex-polling-runtime.md](D:/luthfi/project/bot-ea/docs/codex-polling-runtime.md)
+- [src/bot_ea/qt_app.py](D:/luthfi/project/bot-ea/src/bot_ea/qt_app.py)
+- [src/bot_ea/websocket_service.py](D:/luthfi/project/bot-ea/src/bot_ea/websocket_service.py)
+- [src/bot_ea/desktop_runtime.py](D:/luthfi/project/bot-ea/src/bot_ea/desktop_runtime.py)
+- [src/bot_ea/codex_cli_engine.py](D:/luthfi/project/bot-ea/src/bot_ea/codex_cli_engine.py)
+- [src/bot_ea/mt5_adapter.py](D:/luthfi/project/bot-ea/src/bot_ea/mt5_adapter.py)
+
+Research and design references:
+
+- [research/2026-04-20-market-and-platform-research.md](D:/luthfi/project/bot-ea/research/2026-04-20-market-and-platform-research.md)
+- [research/2026-04-20-stage-2-deep-research.md](D:/luthfi/project/bot-ea/research/2026-04-20-stage-2-deep-research.md)
+- [research/2026-04-20-stage-3-decision-tree-and-candlestick-research.md](D:/luthfi/project/bot-ea/research/2026-04-20-stage-3-decision-tree-and-candlestick-research.md)
+- [research/2026-04-20-stage-4-implementation-and-live-research-notes.md](D:/luthfi/project/bot-ea/research/2026-04-20-stage-4-implementation-and-live-research-notes.md)
+- [research/2026-04-20-stage-5-subagent-integration-notes.md](D:/luthfi/project/bot-ea/research/2026-04-20-stage-5-subagent-integration-notes.md)
+
+## Development notes
+
+Useful helper scripts:
+
 - `scripts/run-qt-gui.ps1`
-  - Windows helper to launch the new Qt desktop GUI in dev mode
+  - launch the Qt desktop app
 - `scripts/run-websocket-service.ps1`
-  - Windows helper to launch the local websocket backend service
-- `tests/test_risk_engine.py`
-  - smoke tests for the first risk-engine slice
-
-## Desktop startup order
-
-For the Qt desktop runtime, start components in this order:
-
-1. Run `scripts/run-websocket-service.ps1` and keep that PowerShell session open.
-2. After the websocket backend is running, open a second PowerShell session and run `scripts/run-qt-gui.ps1`.
-
-The Qt GUI depends on the local websocket backend, so do not start the GUI first.
+  - launch the websocket backend separately for debugging
+- `scripts/run-desktop-gui.ps1`
+  - legacy Tk launcher kept for backward compatibility and comparison, not the preferred desktop surface now
 
 ## Research stance
 
-- Facts from official docs are separated from design recommendations
-- Any recommendation about strategy quality is provisional until validated on the target broker/account
-- Equity-limited users should receive explicit warnings, automatic downscaling, and strict-mode guardrails
-- Candlestick logic is treated as secondary context unless future broker-specific evidence proves otherwise
-
-## Desktop app status
-
-The repository now includes a Tk desktop control panel for:
-
-- checking MT5 readiness
-- checking `codex-cli` readiness
-- starting the Codex polling runtime in the background
-- keeping live trading gated behind explicit operator action
-
-Current status:
-
-- suitable for `supervised dev testing`
-- suitable for `dry-run` and broker preflight
-- not yet suitable for autonomous live trading without operator supervision
+- official MT5 documentation and broker behavior come first
+- strategy recommendations remain provisional until broker-specific demo and backtest validation exist
+- small equity accounts must receive explicit warnings, downscaling, and guardrail-driven rejection when a setup is unrealistic

@@ -2,57 +2,80 @@
 
 ## Purpose
 
-This document is the operational runbook for the Windows desktop GUI in `bot-ea`.
+This runbook describes the current Windows Qt desktop runtime for `bot-ea`.
 
-It is written for:
+It is for:
 
-- developers extending the desktop runtime
-- operators running supervised MT5 demo tests
+- developers working on the desktop/runtime stack
+- operators running supervised MT5 demo or dry-run tests
 
-This is not a claim that the project is ready for unattended live trading.
+This document only describes behavior that exists now. It does not claim the master brief is fully implemented.
 
-Current operating posture:
+## Current operating posture
 
-- `supervised dev test only`
-- `dry-run` and broker preflight are supported
-- live order submission must remain operator-gated
+- supervised dev and demo testing: supported
+- broker preflight and dry-run: supported
+- live trading: operator-gated
+- unattended autonomy: not ready
 
-## System Overview
+## Current architecture
 
-The desktop app is a control plane around the existing runtime modules:
+The current desktop stack is:
 
-1. GUI loads runtime parameters.
-2. GUI checks `MetaTrader 5` readiness.
-3. GUI checks `codex-cli` readiness.
-4. GUI starts a background polling runtime.
-5. Background runtime pulls MT5 snapshot data.
-6. `codex-cli` produces the decision intent.
-7. deterministic risk guard accepts or rejects the intent
-8. execution runtime performs broker preflight or dry-run/live execution
-9. SQLite stores run, snapshot, decision, risk, and execution telemetry
-10. GUI reloads the latest telemetry for operator feedback
+1. `qt_app.py` as the primary desktop entrypoint
+2. local websocket transport between GUI and backend
+3. `websocket_service.py` as the backend command/event service
+4. `desktop_runtime.py` coordinating probes, runtime start/stop, approvals, and telemetry
+5. `mt5_adapter.py` for MT5 bridge access
+6. `codex_cli_engine.py` for Codex CLI probing and decision parsing
+7. `runtime_store.py` for SQLite persistence
 
-Core modules:
+Important current product decision:
 
-- [gui_app.py](D:/luthfi/project/bot-ea/src/bot_ea/gui_app.py)
+- the Qt app can manage the local websocket service on behalf of the operator
+- `run-websocket-service.ps1` still exists, but it is mainly for debugging and isolated backend work
+
+## Core files
+
+- [qt_app.py](D:/luthfi/project/bot-ea/src/bot_ea/qt_app.py)
+- [websocket_service.py](D:/luthfi/project/bot-ea/src/bot_ea/websocket_service.py)
 - [desktop_runtime.py](D:/luthfi/project/bot-ea/src/bot_ea/desktop_runtime.py)
 - [codex_cli_engine.py](D:/luthfi/project/bot-ea/src/bot_ea/codex_cli_engine.py)
 - [mt5_adapter.py](D:/luthfi/project/bot-ea/src/bot_ea/mt5_adapter.py)
-- [polling_runtime.py](D:/luthfi/project/bot-ea/src/bot_ea/polling_runtime.py)
 - [runtime_store.py](D:/luthfi/project/bot-ea/src/bot_ea/runtime_store.py)
 
-## Prerequisites
+## Launch model
 
-Before launching the GUI, make sure:
+Preferred Windows launch:
 
-- Python `>= 3.11` is installed
-- `MetaTrader5` Python package is installed for live/demo MT5 access
-- MT5 terminal is installed and already open
-- MT5 is logged into the target broker account
-- `codex` is available on `PATH`
-- the repo is available locally
+```powershell
+cd D:\luthfi\project\bot-ea
+powershell -ExecutionPolicy Bypass -File .\scripts\run-qt-gui.ps1
+```
 
-Recommended host checks:
+Debug-only backend launch:
+
+```powershell
+cd D:\luthfi\project\bot-ea
+powershell -ExecutionPolicy Bypass -File .\scripts\run-websocket-service.ps1
+```
+
+Current expectation:
+
+- operator flow should start from the Qt app
+- backend script should not be required in normal use
+
+## Host prerequisites
+
+Before launching:
+
+- Python `>= 3.11`
+- `MetaTrader5` package available
+- MT5 terminal installed and open
+- broker account logged in
+- `codex` available on `PATH`
+
+Recommended checks:
 
 ```powershell
 python --version
@@ -60,249 +83,273 @@ python -c "import MetaTrader5 as mt5; print(mt5.__version__)"
 codex --version
 ```
 
-## Dev Launch
+## Operator flow
 
-The simplest Windows dev launch is:
+Current recommended runtime sequence:
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\run-desktop-gui.ps1
-```
+1. launch Qt app
+2. `Check MT5`
+3. `Load Codex`
+4. `Preview`
+5. `Preflight`
+6. `Play Runtime`
+7. optional `Enable Live`
+8. `Approve` or `Reject` if a proposal appears
+9. `Telemetry` or open `History` for review
 
-Equivalent manual launch:
+Important:
 
-```powershell
-$env:PYTHONPATH = "$PWD\src"
-python -m bot_ea.gui_app
-```
+- runtime does not auto-start just because the app opens
+- live mode does not auto-enable
+- a pending live proposal still needs operator action
 
-## Startup State Machine
+## Current UI pages
 
-The intended operator state machine is:
+### Dashboard
 
-1. `Ready`
-2. `MT5 unchecked`
-3. `codex-cli unchecked`
-4. `MT5 ready`
-5. `codex-cli ready`
-6. `Background runtime starting`
-7. `desktop runtime started`
-8. `runtime_cycle` feedback repeats
-9. optional `Enable Live` if the terminal and account allow it
-10. `desktop runtime stopped` or `desktop runtime halted by stop policy`
+Purpose:
 
-## One-Click Readiness Contract
+- operator overview
+- readiness chips
+- market snapshot
+- manual order envelope
+- risk envelope
+- current run and status hints
 
-### Check MT5
+### Strategy
 
-The GUI should confirm:
+Purpose:
+
+- trade setup
+- capital management
+- Codex inputs
+- action buttons
+
+### History
+
+Purpose:
+
+- telemetry reload
+- validation inspection
+- post-run review
+
+### Logs
+
+Purpose:
+
+- runtime feed
+- event log
+- endpoint/runtime/tick summary
+
+### Settings
+
+Purpose:
+
+- websocket endpoint summary
+- model summary
+- polling cadence
+- runtime DB summary
+
+## Command surface currently implemented
+
+Commands exposed through the websocket service include:
+
+- `probe_mt5`
+- `probe_codex`
+- `refresh_manual`
+- `preflight_manual`
+- `execute_manual`
+- `start_runtime`
+- `stop_runtime`
+- `set_live_enabled`
+- `approve_pending`
+- `reject_pending`
+- `load_telemetry`
+
+This is the current backend contract. Startup-gate commands proposed in the master brief do not exist yet.
+
+## Readiness semantics
+
+### Service
+
+Healthy means:
+
+- GUI is connected to the websocket backend
+- endpoint is reachable
+
+### MT5
+
+`Check MT5` should confirm:
 
 - terminal connection exists
-- account information can be read
-- symbol snapshot can be read
-- symbol tick can be read
-- spread/equity/free margin are visible
+- account data can be read
+- symbol snapshot and tick are available
+- trade permissions are visible
 
-Important fields to inspect:
+Key probe fields:
 
 - `connected`
 - `terminal_trade_allowed`
 - `account_trade_allowed`
-- `account_trade_expert`
 - `symbol_trade_allowed`
+- `broker_stop_min_points`
 
-Interpretation:
+### Codex
 
-- if `terminal_trade_allowed=False`, the runtime can still run in dry-run mode
-- if MT5 is connected but trading is blocked, `Enable Live` should stay rejected
+`Load Codex` should confirm:
 
-### Load Codex
+- `codex --version` works
+- command is callable
+- selected model/work folder can be passed
 
-The GUI should confirm:
+This proves readiness of the CLI path, not quality of future model responses.
 
-- `codex --version` succeeds
-- the selected `codex` executable is callable
-- optional model/cwd values are readable
+## Manual preview and preflight
 
-This does not prove that every future decision request will succeed, but it proves the CLI is available.
+### Preview
 
-## Background Runtime Lifecycle
+`Preview` uses `refresh_manual` to update:
+
+- latest market snapshot
+- normalized manual order envelope
+- risk envelope
+
+### Preflight
+
+`Preflight` uses `preflight_manual` to test whether the current setup passes broker/risk checks before a live send.
+
+Expected statuses:
+
+- `PRECHECK_OK`
+- `PRECHECK_REJECTED`
+- `GUARD_REJECTED`
+
+## Runtime lifecycle
 
 When `Play Runtime` is pressed:
 
-1. the GUI probes `codex-cli`
-2. the GUI probes MT5
-3. a `run_id` is created
-4. SQLite run metadata is initialized
-5. a background thread starts `PollingRuntime`
-6. each cycle writes:
-   - market snapshot
-   - AI decision
-   - risk guard event
-   - execution events
-7. GUI polls runtime events and refreshes telemetry
+1. GUI sends `start_runtime`
+2. backend creates a `run_id`
+3. SQLite run metadata is initialized
+4. runtime begins polling
+5. market snapshot, AI decisions, risk events, and execution events are written
+6. GUI receives runtime events through websocket
 
-The runtime may stop for:
+Expected runtime states:
 
-- operator stop
-- stop policy halt
-- runtime error
+- `Runtime stopped`
+- `Runtime running`
+- `NO_TRADE: ...`
+- `runtime_error: ...`
 
-## GUI Surface Map
+Important interpretation:
 
-### Readiness
+- `NO_TRADE` means the runtime is still alive and the latest cycle chose not to enter
+- it does not mean the runtime necessarily stopped
 
-Top readiness indicators:
+## Manual actions while runtime is active
 
-- MT5 status
-- codex-cli status
-- background runtime status
+Current protective behavior:
 
-### Runtime controls
+- while the runtime is active, some manual MT5 actions are restricted
+- this prevents the GUI manual path from colliding with the runtime MT5 path and breaking IPC stability
 
-Main control buttons:
+This guard exists because earlier mixed access produced MT5 IPC failures such as `(-10004, 'No IPC connection')`.
 
-- `Check MT5`
-- `Load Codex`
-- `Play Runtime`
-- `Stop Runtime`
-- `Enable Live` / `Disable Live`
-- `Approve Pending`
-- `Reject Pending`
+## Live gating and approvals
 
-### Manual controls
+Current live flow:
 
-These remain useful for supervised testing:
+1. operator enables live mode manually
+2. runtime still runs through guard and broker checks
+3. if approval is required, GUI shows pending approval state
+4. operator chooses `Approve` or `Reject`
 
-- `Refresh`
-- `Preflight`
-- `Execute`
-- `Load Telemetry`
+This is supervised. It is not unattended autonomy.
 
-## Safe Dev Test Sequence
+## Current failure classes
 
-Use this exact order:
+### MT5 IPC loss
 
-1. open MT5 and log into demo
-2. launch the GUI
-3. press `Check MT5`
-4. confirm connection and symbol quote visibility
-5. press `Load Codex`
-6. confirm `codex-cli` version appears
-7. keep `Allow Live Orders` disabled
-8. press `Play Runtime`
-9. wait for at least one background cycle
-10. press `Load Telemetry`
-11. inspect run state, execution health, recent execution events, and rejections
+Example:
 
-Expected safe result:
+- `MT5 account_info() failed: (-10004, 'No IPC connection')`
 
-- runtime starts
-- at least one cycle is stored
-- execution remains `DRY_RUN_OK` unless live is explicitly enabled and MT5 allows trading
+Meaning:
 
-## Supervised Approval Flow
+- backend lost its bridge to MT5
 
-When live mode is enabled, the runtime still does not send orders immediately.
+Current handling:
 
-The runtime now follows:
+- runtime may halt or report runtime error
+- operator should re-validate MT5 and avoid mixed manual/runtime access
 
-1. Codex proposes the action
-2. deterministic risk guard evaluates it
-3. broker preflight evaluates it
-4. GUI receives `approval_pending`
-5. operator chooses:
-   - `Approve Pending`
-   - `Reject Pending`
-6. only the next matching cycle may submit the approved live order
+### Codex timeout
 
-Important behavior:
+Example:
 
-- approval is not unattended autonomy
-- approval is tied to the matching proposal signature
-- if the proposal changes, it should be reviewed again
-- if live mode is disabled, execution returns to `dry-run`
+- `codex exec timed out after 60 seconds`
 
-## Example Dev Output
+Meaning:
 
-Typical dry-run smoke characteristics:
+- decision call exceeded the configured timeout
 
-- `status=RUNNING` on the run
-- `last_action` present after at least one cycle
-- execution ladder similar to:
-  - `READY`
-  - `PRECHECK_OK`
-  - `DRY_RUN_OK`
+Current behavior:
 
-## Operator Feedback Checklist
+- runtime falls back safely instead of turning that into a live trading action
 
-The operator should always inspect:
+### Codex contract invalid
 
-- `run_id`
-- `status`
-- `last_cycle`
-- `last_action`
-- `stop_reason`
-- `reject_rate`
-- latest risk guard allowance/rejection
-- latest execution attempt status
-- whether the app is in `dry-run` or `live`
-- whether there is a pending approval waiting for operator action
+Example:
 
-## Why Autonomous Live Trading Is Not Ready
+- response missing required keys
+- response is meta-text instead of the expected contract
 
-The system is not yet ready for unattended live trading because:
+Current behavior:
 
-- execution runtime still focuses on `OPEN` flow
-- close/modify lifecycle is not complete enough for autonomous position management
-- realized cost telemetry is still incomplete
-- telemetry coverage can still be partial
-- operator-facing safety feedback is improving, but not yet sufficient for unsupervised deployment
+- parser marks the response invalid
+- runtime records an explicit fallback reason in telemetry/DB
 
-This means:
+## SQLite telemetry
 
-- supervised demo tests are valid
-- broker preflight tests are valid
-- unattended live order management is not yet valid
+The runtime DB records:
 
-## Troubleshooting
+- runs
+- polling cycles
+- market snapshots
+- AI decisions
+- risk guard results
+- execution events
+- runtime logs
 
-### MT5 probe fails
+Review:
 
-Check:
-
-- terminal is open
-- broker session is connected
-- Python can import `MetaTrader5`
-- symbol name is valid for the broker
-
-### codex-cli probe fails
-
-Check:
-
-- `codex` exists on `PATH`
-- the selected executable path is correct
-- the chosen working directory exists
-
-### Runtime starts but does not produce useful events
-
-Check:
-
-- `poll_interval_seconds`
-- runtime DB path
-- `codex-cli` output and timeouts
-- MT5 symbol quotes and account permissions
-
-### Enable Live is rejected
-
-This usually means one of:
-
-- `terminal_trade_allowed=False`
-- account trading is blocked
-- MT5 trade API is disabled
-
-## Related Documents
-
-- [codex-polling-runtime.md](D:/luthfi/project/bot-ea/docs/codex-polling-runtime.md)
-- [live-mt5-python-integration-notes.md](D:/luthfi/project/bot-ea/docs/live-mt5-python-integration-notes.md)
 - [sqlite-runtime-schema.md](D:/luthfi/project/bot-ea/docs/sqlite-runtime-schema.md)
+
+## Current limitations
+
+The following are still not implemented even though the master brief proposes them:
+
+- startup dependency gate before the main workspace opens
+- operator/dev mode split with explicit `DEV / MOCK MODE` UI
+- reconnect overlay
+- account-changed review sheet
+- AI runtime workspace/documents/context readiness chain
+- account-scoped AI context storage
+- automatic close/modify lifecycle management for autonomous trading
+
+## Relationship to the master brief
+
+The master brief is now a roadmap, not a description of shipped behavior.
+
+Safe framing:
+
+- implemented now: Qt pages, websocket-managed desktop runtime, probes, preview, preflight, approvals, telemetry
+- roadmap later: startup gate, reconnect/account review UX, AI context ecosystem, stronger accessibility and responsiveness pass
+
+## Related docs
+
+- [README.md](D:/luthfi/project/bot-ea/README.md)
+- [user-manual.md](D:/luthfi/project/bot-ea/docs/user-manual.md)
+- [project-handoff.md](D:/luthfi/project/bot-ea/docs/project-handoff.md)
 - [progress-summary.md](D:/luthfi/project/bot-ea/docs/progress-summary.md)
