@@ -1,6 +1,6 @@
 # Progress Summary
 
-Date: 2026-04-20
+Date: 2026-04-21
 
 ## Project status
 
@@ -66,6 +66,12 @@ Research depth: `stage 5`
   - desktop GUI runtime controls for MT5 readiness, codex-cli readiness, and background polling runtime start/stop
   - coverage-aware execution-quality metrics for runtime telemetry
   - desktop runtime runbook and Windows packaging plan
+  - app-managed websocket service flow for the Qt desktop app
+  - multi-page Qt workspace with `Dashboard`, `Strategy`, `History`, `Logs`, and `Settings`
+  - runtime-fed market snapshot updates in the Qt workspace while runtime is active
+  - explicit blocking of manual MT5 actions while runtime owns the MT5 session
+  - stricter Codex response-contract handling plus clearer `NO_TRADE` fallback reasons
+  - first-pass startup gate in the Qt app that requires `service -> MT5 -> Codex` before unlocking the main workspace
 
 ## Key decisions already made
 
@@ -77,26 +83,24 @@ Research depth: `stage 5`
 
 ## Immediate next step
 
-Turn the integrated runtime into a feedback-driven live-validation loop:
+Move from a usable operator console toward the master-brief startup model:
 
-1. bridge runtime telemetry into `TradeRecord` and execution-quality validation summaries
-2. capture close/modify lifecycle, including realized commission, swap, and exit pnl
-3. add broker-aware execution drift monitoring and optional auto-halt thresholds
-4. expand GUI from text panel into structured health, reject, and ledger widgets
-5. add validation artifact writers for live/demo runs
-6. continue broker-specific tuning with fresh out-of-sample slices
-7. add strategy-level decision evaluation on top of the now-live execution substrate
+1. expand the startup gate beyond `service -> MT5 -> Codex` into richer dependency probing
+2. add explicit `operator` vs `dev/mock` mode behavior
+3. continue syncing copy/docs so the Qt app, runbooks, and user manual match exactly
+4. continue hardening Codex decision handling and timeout behavior
+5. add reconnect/account-change UX on top of the now-stabler runtime/session ownership model
 
 ## Desktop runtime note
 
-The GUI is now a usable desktop control panel for supervised development and demo tests:
+The Qt desktop app is now the primary operator surface for supervised development and demo tests:
 
-- probe MT5 readiness
-- probe `codex-cli`
-- launch the polling runtime in a background thread
-- gate live trading behind explicit operator action
+- it can manage the local websocket service from inside the app
+- it gates workspace entry behind a first-pass startup dependency check
+- it separates runtime work into multiple pages instead of one mixed panel
+- it keeps live trading behind explicit operator action and approval
 
-It is still not positioned as unattended live-trading software.
+It is still not positioned as unattended live-trading software, and the startup gate is still only a first implementation pass.
 
 ## What another host needs to resume
 
