@@ -414,6 +414,38 @@ class QtAppTests(unittest.TestCase):
             sock.bind(("127.0.0.1", 0))
             return int(sock.getsockname()[1])
 
+    def _assert_startup_gate_status_chips_renderable(self, window) -> None:
+        from PySide6.QtWidgets import QFrame, QLabel
+
+        self.assertIs(window.shell_stack.currentWidget(), window.startup_gate_page)
+        self.assertTrue(window.gate_card.isVisibleTo(window))
+        self.assertTrue(window.gate_status_group.isVisibleTo(window))
+        self.assertGreater(window.gate_card.width(), 500)
+        self.assertGreater(window.gate_status_group.width(), 400)
+        self.assertGreater(window.gate_status_group.height(), 700)
+        self.assertGreater(window.gate_message.height(), 0)
+        self.assertGreater(window.gate_subtitle.height(), 0)
+
+        chips = window.gate_status_group.findChildren(QFrame, "statusChip")
+        self.assertEqual(len(chips), len(window.gate_step_labels))
+        for key, value_label in window.gate_step_labels.items():
+            frame = value_label.parentWidget()
+            self.assertIsNotNone(frame, key)
+            self.assertEqual(frame.objectName(), "statusChip")
+            self.assertTrue(frame.isVisibleTo(window), key)
+            self.assertGreaterEqual(frame.height(), frame.minimumHeight(), key)
+            self.assertGreater(frame.width(), 320, key)
+            self.assertTrue(value_label.isVisibleTo(window), key)
+            self.assertNotEqual(value_label.text().strip(), "", key)
+            self.assertGreaterEqual(value_label.height(), value_label.minimumHeight(), key)
+            self.assertGreater(value_label.width(), 100, key)
+            title_labels = [child for child in frame.findChildren(QLabel, "chipTitle")]
+            self.assertEqual(len(title_labels), 1, key)
+            title_label = title_labels[0]
+            self.assertTrue(title_label.isVisibleTo(window), key)
+            self.assertNotEqual(title_label.text().strip(), "", key)
+            self.assertGreater(title_label.width(), 80, key)
+
     def test_qt_window_constructs(self) -> None:
         try:
             from PySide6.QtWidgets import QApplication
@@ -580,6 +612,91 @@ class QtAppTests(unittest.TestCase):
             self.assertIs(window.shell_stack.currentWidget(), window.startup_gate_page)
             self.assertTrue("codex" in window.gate_message.text().lower() or "ai runtime" in window.gate_message.text().lower())
             self.assertFalse(window.nav_buttons[0].isEnabled())
+        finally:
+            window.close()
+
+    def test_startup_gate_status_chips_remain_visible_after_fullscreen_resize_transitions(self) -> None:
+        try:
+            from PySide6.QtTest import QTest
+            from PySide6.QtWidgets import QApplication
+        except Exception as exc:  # pragma: no cover
+            self.skipTest(f"PySide6 unavailable: {exc}")
+
+        from bot_ea.qt_app import BotEaQtWindow
+
+        app = QApplication.instance() or QApplication([])
+        backend = FakeBackend()
+        backend.fail_codex = True
+        window = BotEaQtWindow(backend=backend)
+        window.resize(1360, 960)
+        window.show()
+        app.processEvents()
+        try:
+            QTest.qWait(180)
+            app.processEvents()
+            self._assert_startup_gate_status_chips_renderable(window)
+
+            window.showMaximized()
+            QTest.qWait(120)
+            app.processEvents()
+            self._assert_startup_gate_status_chips_renderable(window)
+
+            window.showNormal()
+            window.resize(1920, 1180)
+            QTest.qWait(120)
+            app.processEvents()
+            self._assert_startup_gate_status_chips_renderable(window)
+
+            window.showFullScreen()
+            QTest.qWait(120)
+            app.processEvents()
+            self._assert_startup_gate_status_chips_renderable(window)
+        finally:
+            window.showNormal()
+            window.close()
+
+    def test_startup_gate_labels_do_not_visually_collapse_after_large_resize(self) -> None:
+        try:
+            from PySide6.QtTest import QTest
+            from PySide6.QtWidgets import QApplication, QLabel
+        except Exception as exc:  # pragma: no cover
+            self.skipTest(f"PySide6 unavailable: {exc}")
+
+        from bot_ea.qt_app import BotEaQtWindow
+
+        app = QApplication.instance() or QApplication([])
+        backend = FakeBackend()
+        backend.fail_codex = True
+        window = BotEaQtWindow(backend=backend)
+        window.resize(1280, 900)
+        window.show()
+        app.processEvents()
+        try:
+            QTest.qWait(180)
+            app.processEvents()
+            baseline_heights = {key: label.height() for key, label in window.gate_step_labels.items()}
+            baseline_group_height = window.gate_status_group.height()
+            baseline_card_width = window.gate_card.width()
+
+            for width, height in ((1720, 980), (2260, 1400), (1500, 980)):
+                window.showNormal()
+                window.resize(width, height)
+                QTest.qWait(120)
+                app.processEvents()
+                self._assert_startup_gate_status_chips_renderable(window)
+
+            self.assertGreaterEqual(window.gate_status_group.height(), baseline_group_height)
+            self.assertGreaterEqual(window.gate_card.width(), baseline_card_width)
+            for key, label in window.gate_step_labels.items():
+                self.assertGreaterEqual(label.height(), baseline_heights[key], key)
+                self.assertGreaterEqual(label.sizeHint().height(), label.minimumHeight(), key)
+                self.assertGreater(label.fontMetrics().horizontalAdvance(label.text()), 20, key)
+                chip_labels = label.parentWidget().findChildren(QLabel)
+                self.assertGreaterEqual(len(chip_labels), 2, key)
+                for chip_label in chip_labels:
+                    self.assertTrue(chip_label.isVisibleTo(window), key)
+                    self.assertGreater(chip_label.height(), 0, key)
+                    self.assertGreater(chip_label.width(), 40, key)
         finally:
             window.close()
 
@@ -1045,6 +1162,49 @@ class QtAppTests(unittest.TestCase):
             self.assertEqual(len(history_sizes), 2)
             self.assertGreater(history_sizes[0], 0)
             self.assertGreater(history_sizes[1], 0)
+        finally:
+            window.close()
+
+    def test_startup_gate_labels_remain_visible_after_maximize(self) -> None:
+        try:
+            from PySide6.QtWidgets import QApplication
+        except Exception as exc:  # pragma: no cover
+            self.skipTest(f"PySide6 unavailable: {exc}")
+
+        from bot_ea.qt_app import BotEaQtWindow
+
+        app = QApplication.instance() or QApplication([])
+        backend = FakeBackend()
+        backend.fail_codex = True
+        window = BotEaQtWindow(backend=backend)
+        window.showMaximized()
+        app.processEvents()
+        try:
+            app.processEvents()
+            self.assertTrue(window.gate_service_status.isVisibleTo(window))
+            self.assertTrue(window.gate_service_status.text().strip())
+            self.assertGreaterEqual(window.gate_service_status.minimumHeight(), 22)
+            self.assertGreaterEqual(window.gate_card.height(), 200)
+            self.assertEqual(window.gate_service_status.objectName(), "chipValue")
+        finally:
+            window.close()
+
+    def test_invalid_ai_workspace_error_is_human_readable(self) -> None:
+        try:
+            from PySide6.QtWidgets import QApplication
+        except Exception as exc:  # pragma: no cover
+            self.skipTest(f"PySide6 unavailable: {exc}")
+
+        from bot_ea.qt_app import BotEaQtWindow
+
+        app = QApplication.instance() or QApplication([])
+        backend = FakeBackend()
+        backend.fail_codex = True
+        window = BotEaQtWindow(backend=backend)
+        app.processEvents()
+        try:
+            detail = window._format_exception_detail(RuntimeError("[WinError 267] The directory name is invalid"))
+            self.assertIn("Workspace AI", detail)
         finally:
             window.close()
 
