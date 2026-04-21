@@ -422,6 +422,9 @@ class BotEaQtWindow(QMainWindow):
         self._managed_service_owned = False
         self._mt5_ready = False
         self._codex_ready = False
+        self._mt5_status_tone = "idle"
+        self._codex_status_tone = "idle"
+        self._approval_status_tone = "idle"
         self._runtime_running = False
         self._live_enabled = False
         self._pending_approval: dict[str, Any] | None = None
@@ -1628,35 +1631,29 @@ class BotEaQtWindow(QMainWindow):
         self.run_id_status.setProperty("tone", tone)
         self._repolish(self.run_id_status)
 
+    def _set_mt5_status(self, text: str, *, tone: str) -> None:
+        self._mt5_status_tone = tone
+        self.mt5_status.setText(text)
+
+    def _set_codex_status(self, text: str, *, tone: str) -> None:
+        self._codex_status_tone = tone
+        self.codex_status.setText(text)
+
+    def _set_approval_status(self, text: str, *, tone: str) -> None:
+        self._approval_status_tone = tone
+        self.approval_status.setText(text)
+
     def _refresh_status_presentation(self) -> None:
         self._set_chip_tone("service", "ok" if self._service_connected else "warn")
-        mt5_text = self.mt5_status.text().lower()
-        if "ready" in mt5_text:
-            self._set_chip_tone("mt5", "ok")
-        elif "unchecked" in mt5_text or "belum" in mt5_text:
-            self._set_chip_tone("mt5", "idle")
-        else:
-            self._set_chip_tone("mt5", "warn")
-
-        codex_text = self.codex_status.text().lower()
-        if "unchecked" in codex_text or "belum" in codex_text:
-            self._set_chip_tone("codex", "idle")
-        elif "error" in codex_text or "failed" in codex_text:
-            self._set_chip_tone("codex", "warn")
-        else:
-            self._set_chip_tone("codex", "ok")
+        self._set_chip_tone("mt5", self._mt5_status_tone)
+        self._set_chip_tone("codex", self._codex_status_tone)
 
         if self._runtime_running:
             self._set_chip_tone("runtime", "live" if self._live_enabled else "ok")
         else:
             self._set_chip_tone("runtime", "idle")
 
-        if self._pending_approval is not None:
-            self._set_chip_tone("approval", "warn")
-        elif "approved" in self.approval_status.text().lower():
-            self._set_chip_tone("approval", "ok")
-        else:
-            self._set_chip_tone("approval", "idle")
+        self._set_chip_tone("approval", self._approval_status_tone)
 
         self._set_metric_tone("live" if self._runtime_running and self.run_id_status.text().strip() != "-" else "idle")
         self._refresh_page_summaries()
@@ -1787,6 +1784,8 @@ class BotEaQtWindow(QMainWindow):
         self._startup_active_step = "service"
         self._mt5_ready = False
         self._codex_ready = False
+        self._mt5_status_tone = "idle"
+        self._codex_status_tone = "idle"
         self._mt5_overlay_active = False
         self._account_review_active = False
         self.reconnect_overlay.hide()
@@ -1967,7 +1966,7 @@ class BotEaQtWindow(QMainWindow):
         result = self._send_backend_command("probe_ai_runtime", self._ai_runtime_probe_params())
         detail = str(result.get("detail") or result.get("version") or "AI runtime siap.")
         self._codex_ready = True
-        self.codex_status.setText(str(result.get("version") or detail))
+        self._set_codex_status(str(result.get("version") or detail), tone="ok")
         return detail
 
     def _probe_ai_workspace(self) -> str:
@@ -2032,7 +2031,7 @@ class BotEaQtWindow(QMainWindow):
         self._live_enabled = False
         self._pending_approval = None
         self.runtime_status.setText("Hard safe halt: akun MT5 berubah")
-        self.approval_status.setText("Review akun baru dibutuhkan")
+        self._set_approval_status("Review akun baru dibutuhkan", tone="idle")
         self._load_pending_account_contexts()
         self._sync_button_states()
 
@@ -2052,8 +2051,8 @@ class BotEaQtWindow(QMainWindow):
             self._live_enabled = False
             self._pending_approval = None
             self.runtime_status.setText("Safe halt: koneksi MT5 hilang")
-            self.approval_status.setText("Tidak ada approval aktif")
-        self.mt5_status.setText(detail)
+            self._set_approval_status("Tidak ada approval aktif", tone="idle")
+        self._set_mt5_status(detail, tone="warn")
         self._sync_button_states()
 
     def _clear_mt5_disconnect_overlay(self) -> None:
@@ -2132,7 +2131,7 @@ class BotEaQtWindow(QMainWindow):
         self._account_review_active = False
         self.account_review_card.hide()
         self.runtime_status.setText("Akun baru diterima. Menjalankan readiness ulang.")
-        self.approval_status.setText("Tidak ada approval aktif")
+        self._set_approval_status("Tidak ada approval aktif", tone="idle")
         self._start_startup_gate()
 
     def _create_pending_account_context(self) -> None:
@@ -2154,7 +2153,7 @@ class BotEaQtWindow(QMainWindow):
         self._account_review_active = False
         self.account_review_card.hide()
         self.runtime_status.setText("Context akun baru dibuat. Menjalankan readiness ulang.")
-        self.approval_status.setText("Tidak ada approval aktif")
+        self._set_approval_status("Tidak ada approval aktif", tone="idle")
         self._start_startup_gate()
 
     def _cancel_account_review(self) -> None:
@@ -2254,7 +2253,7 @@ class BotEaQtWindow(QMainWindow):
         except Exception as exc:
             detail = self._format_exception_detail(exc)
             self._mt5_ready = False
-            self.mt5_status.setText(detail)
+            self._set_mt5_status(detail, tone="warn")
             self._append_log([f"MT5 error: {detail}"])
             if self._workspace_unlocked() and not silent:
                 self._handle_mt5_disconnect(detail, runtime_was_running=self._runtime_running)
@@ -2270,7 +2269,7 @@ class BotEaQtWindow(QMainWindow):
         }
         self._apply_account_fingerprint(fingerprint, runtime_was_running=self._runtime_running)
         self._mt5_ready = True
-        self.mt5_status.setText("MT5 ready")
+        self._set_mt5_status("MT5 ready", tone="ok")
         self._set_symbol_choices(result.get("symbols") or [])
         self._sync_stop_distance_from_probe(snapshot)
         self.snapshot = {**(self.snapshot or {}), **dict(snapshot)}
@@ -2303,12 +2302,12 @@ class BotEaQtWindow(QMainWindow):
         except Exception as exc:
             detail = self._format_exception_detail(exc)
             self._codex_ready = False
-            self.codex_status.setText(detail)
+            self._set_codex_status(detail, tone="warn")
             self._append_log([f"Codex error: {detail}"])
             return
         version = str(result.get("version") or result.get("detail") or "")
         self._codex_ready = True
-        self.codex_status.setText(version)
+        self._set_codex_status(version, tone="ok")
         self._append_log(
             [
                 "codex_probe:",
@@ -2409,7 +2408,7 @@ class BotEaQtWindow(QMainWindow):
         self._runtime_running = True
         self.run_id_status.setText(run_id)
         self.runtime_status.setText(f"Memulai bot {run_id}")
-        self.approval_status.setText("Tidak ada approval aktif")
+        self._set_approval_status("Tidak ada approval aktif", tone="idle")
         self._append_log([f"runtime_starting run_id={run_id}", f"db_path={self._runtime_params().get('db_path')}"])
         self._sync_button_states()
 
@@ -2442,7 +2441,10 @@ class BotEaQtWindow(QMainWindow):
             self._append_log([f"Approval error: {self._format_exception_detail(exc)}"])
             return
         self._pending_approval = None
-        self.approval_status.setText(f"Approved {pending.get('symbol')} {pending.get('side')} {pending.get('volume')}")
+        self._set_approval_status(
+            f"Approved {pending.get('symbol')} {pending.get('side')} {pending.get('volume')}",
+            tone="ok",
+        )
         self._append_log([f"approval_armed: {pending.get('symbol')} {pending.get('side')} {pending.get('volume')}"])
         self._sync_button_states()
 
@@ -2453,7 +2455,7 @@ class BotEaQtWindow(QMainWindow):
             self._append_log([f"Reject error: {self._format_exception_detail(exc)}"])
             return
         self._pending_approval = None
-        self.approval_status.setText("No pending live approval")
+        self._set_approval_status("No pending live approval", tone="idle")
         self._append_log([f"approval_rejected: {pending.get('symbol')} {pending.get('side')} {pending.get('volume')}"])
         self._sync_button_states()
 
@@ -2681,17 +2683,24 @@ class BotEaQtWindow(QMainWindow):
                     self._handle_mt5_disconnect(self._short(message), runtime_was_running=True)
             elif name == "approval_pending":
                 self._pending_approval = payload
-                self.approval_status.setText("Menunggu approval")
+                self._set_approval_status("Menunggu approval", tone="warn")
                 self._append_log([f"approval_pending: {payload}"])
-            elif name in {"approval_armed", "approval_status"}:
-                self.approval_status.setText(self._short(message))
+            elif name == "approval_armed":
+                self._pending_approval = None
+                self._set_approval_status(self._short(message), tone="ok")
+            elif name == "approval_status":
+                self._pending_approval = None
+                tone = "ok" if "approved" in message.lower() else "idle"
+                self._set_approval_status(self._short(message), tone=tone)
             elif name == "approval_rejected":
                 self._pending_approval = None
-                self.approval_status.setText(self._short(message))
+                self._set_approval_status(self._short(message), tone="idle")
             elif name == "mt5_ready":
-                self.mt5_status.setText("MT5 ready")
+                self._mt5_ready = True
+                self._set_mt5_status("MT5 ready", tone="ok")
             elif name == "codex_ready":
-                self.codex_status.setText(str(payload.get("version") or message))
+                self._codex_ready = True
+                self._set_codex_status(str(payload.get("version") or message), tone="ok")
             elif name == "live_toggle":
                 self._live_enabled = bool(payload.get("enabled"))
                 self.live_button.setText("Nonaktifkan Live" if self._live_enabled else "Aktifkan Live")

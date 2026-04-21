@@ -954,6 +954,45 @@ class QtAppTests(unittest.TestCase):
         finally:
             window.close()
 
+    def test_qt_status_chip_tones_follow_internal_state_not_label_text(self) -> None:
+        try:
+            from PySide6.QtWidgets import QApplication
+        except Exception as exc:  # pragma: no cover
+            self.skipTest(f"PySide6 unavailable: {exc}")
+
+        from bot_ea.qt_app import BotEaQtWindow
+
+        app = QApplication.instance() or QApplication([])
+        backend = FakeBackend()
+        window = BotEaQtWindow(backend=backend)
+        app.processEvents()
+        try:
+            window._set_mt5_status("MT5 ready", tone="ok")
+            window._set_codex_status("gpt-5.4-mini ready", tone="ok")
+            window._set_approval_status("Approved XAUUSD BUY 0.01", tone="ok")
+            window._refresh_status_presentation()
+            self.assertEqual(window.mt5_status.property("tone"), "ok")
+            self.assertEqual(window.codex_status.property("tone"), "ok")
+            self.assertEqual(window.approval_status.property("tone"), "ok")
+
+            window.mt5_status.setText("teks lain yang tidak boleh mengubah tone")
+            window.codex_status.setText("failed text should not drive tone")
+            window.approval_status.setText("copy approval acak")
+            window._refresh_status_presentation()
+            self.assertEqual(window.mt5_status.property("tone"), "ok")
+            self.assertEqual(window.codex_status.property("tone"), "ok")
+            self.assertEqual(window.approval_status.property("tone"), "ok")
+
+            window._set_mt5_status("MT5 lost IPC connection", tone="warn")
+            window._set_codex_status("AI runtime error", tone="warn")
+            window._set_approval_status("Tidak ada approval aktif", tone="idle")
+            window._refresh_status_presentation()
+            self.assertEqual(window.mt5_status.property("tone"), "warn")
+            self.assertEqual(window.codex_status.property("tone"), "warn")
+            self.assertEqual(window.approval_status.property("tone"), "idle")
+        finally:
+            window.close()
+
 
 if __name__ == "__main__":
     unittest.main()
