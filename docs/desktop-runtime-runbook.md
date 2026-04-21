@@ -1,33 +1,33 @@
-# Desktop Runtime Runbook
+# Runbook Desktop Runtime
 
-## Purpose
+## Tujuan
 
-This runbook describes the current Qt desktop runtime for `bot-ea`.
+Runbook ini menjelaskan desktop runtime Qt yang saat ini dipakai oleh `bot-ea`.
 
-It is intended for:
+Dokumen ini ditujukan untuk:
 
-- developers maintaining the desktop/runtime stack
-- operators running supervised MT5 demo or dry-run sessions
+- developer yang memelihara stack desktop/runtime
+- operator yang menjalankan sesi MT5 supervised, demo, atau dry-run
 
-## Operating Posture
+## Postur Operasional
 
-Supported now:
+Sudah didukung:
 
-- supervised desktop operation
-- operator-gated live flow
-- MT5 reconnect protection
-- account-change review
-- account-scoped AI context preparation
+- operasi desktop supervised
+- flow live yang digate oleh operator
+- proteksi reconnect MT5
+- review saat ganti akun
+- persiapan context AI per akun
 
-Not supported now:
+Belum didukung:
 
-- unattended autonomy
-- installer-grade packaging
-- full close/modify lifecycle automation
+- autonomy tanpa operator
+- packaging setara installer
+- otomasi lifecycle close/modify yang penuh
 
-## Desktop Architecture
+## Arsitektur Desktop
 
-Primary components:
+Komponen utama:
 
 1. `src/bot_ea/qt_app.py`
 2. `src/bot_ea/websocket_service.py`
@@ -36,32 +36,32 @@ Primary components:
 5. `src/bot_ea/mt5_adapter.py`
 6. `src/bot_ea/runtime_store.py`
 
-Runtime model:
+Model runtime:
 
-- the Qt app is the main desktop surface
-- the app may start the local websocket backend itself
-- backend commands expose readiness probes, manual execution helpers, runtime control, and telemetry
-- operator state is persisted under `runtime_data/`
+- Qt app adalah permukaan desktop utama
+- app dapat menyalakan backend websocket lokal sendiri
+- command backend membuka probe readiness, helper eksekusi manual, kontrol runtime, dan telemetri
+- state operator dipersistkan di `runtime_data/`
 
-## Launch Model
+## Model Peluncuran
 
-Preferred launch:
+Peluncuran yang disarankan:
 
 ```powershell
 cd D:\luthfi\project\bot-ea
 powershell -ExecutionPolicy Bypass -File .\scripts\run-qt-gui.ps1
 ```
 
-Debug-only backend launch:
+Peluncuran backend khusus debug:
 
 ```powershell
 cd D:\luthfi\project\bot-ea
 powershell -ExecutionPolicy Bypass -File .\scripts\run-websocket-service.ps1
 ```
 
-## Startup Gate Contract
+## Kontrak Startup Gate
 
-Operator mode currently checks:
+Mode operator saat ini memeriksa:
 
 1. `probe_service_ready`
 2. `probe_mt5_process`
@@ -75,17 +75,17 @@ Operator mode currently checks:
 10. `validate_storage`
 11. `build_resume_state`
 
-Only after those pass does the app unlock the main workspace.
+Main workspace baru dibuka setelah semua langkah itu lolos.
 
-Dev mode:
+Mode dev:
 
-- bypasses the operator gate
-- unlocks the workspace directly
-- sets the UI badge to `DEV / MOCK MODE`
+- melewati operator gate
+- langsung membuka workspace
+- mengatur badge UI ke `DEV / MOCK MODE`
 
-## Backend Command Surface
+## Permukaan Command Backend
 
-Current command surface includes:
+Permukaan command saat ini mencakup:
 
 - `probe_service_ready`
 - `load_runtime_settings`
@@ -110,9 +110,9 @@ Current command surface includes:
 - `reject_pending`
 - `load_telemetry`
 
-## Operator State Persistence
+## Persistensi State Operator
 
-Files created under `runtime_data/`:
+File yang dibuat di bawah `runtime_data/`:
 
 - `runtime_settings.json`
 - `app_settings.json`
@@ -121,7 +121,7 @@ Files created under `runtime_data/`:
 
 Account contexts are created under `ai_context/<broker>_<server>_<login>/`.
 
-Generated files include:
+File yang dihasilkan mencakup:
 
 - `profile.yaml`
 - `memory/latest_summary.md`
@@ -131,90 +131,90 @@ Generated files include:
 - `documents/broker_notes.md`
 - `documents/operator_notes.md`
 
-Persistence roles:
+Peran masing-masing file:
 
-- `runtime_state.json`: cross-session operator snapshot for the last active account/context, run id, runtime state, shutdown reason, and backend-written runtime metadata
-- `memory/last_session.json`: per-account continuity record written by backend lifecycle events
-- `resume/resume_prompt.md`: reusable prompt scaffold for the account context; it survives restart but does not auto-start the runtime
+- `runtime_state.json`: snapshot operator lintas sesi untuk akun/context aktif terakhir, `run_id`, state runtime, alasan berhenti, dan metadata runtime yang ditulis backend
+- `memory/last_session.json`: catatan kelanjutan sesi per akun yang ditulis oleh event lifecycle backend
+- `resume/resume_prompt.md`: scaffold prompt yang dapat dipakai ulang untuk context akun; file ini tetap ada setelah restart tetapi tidak auto-start runtime
 
-## Runtime Lifecycle
+## Siklus Runtime
 
-### Normal supervised start
+### Start supervised normal
 
-1. startup gate passes
-2. operator clicks `Mulai Bot`
-3. backend starts a runtime thread
-4. `run_id` is created
-5. runtime events stream back through websocket
-6. telemetry is written to SQLite
+1. startup gate lolos
+2. operator menekan `Mulai Bot`
+3. backend menyalakan runtime thread
+4. `run_id` dibuat
+5. event runtime dikirim balik melalui websocket
+6. telemetri ditulis ke SQLite
 
-### MT5 disconnect while idle
+### MT5 terputus saat idle
 
 - UI shows reconnect overlay
-- trade controls are disabled
-- logs/history/settings remain accessible
-- periodic MT5 checks continue
+- kontrol trading dinonaktifkan
+- log/riwayat/pengaturan tetap bisa diakses
+- cek MT5 periodik tetap berjalan
 
-### MT5 disconnect while runtime is active
+### MT5 terputus saat runtime aktif
 
-- runtime enters safe halt
-- live mode is disabled
-- pending approval is cleared
-- operator must reconnect MT5 and start the bot manually again
+- runtime masuk ke safe halt
+- live mode dinonaktifkan
+- pending approval dibersihkan
+- operator harus menyambungkan MT5 lagi dan memulai bot secara manual
 
-Continuity contract after this halt:
+Kontrak kelanjutan sesi setelah halt ini:
 
-- preserved: `runtime_state.json` keeps the active account fingerprint, mapped context, `last_run_id`, `last_runtime_state=halted`, and `last_shutdown_reason`
-- preserved: the bound account context keeps `memory/last_session.json`, `resume/resume_prompt.md`, profile, summaries, issues, and notes
-- discarded: the in-memory runtime thread, live-enabled state as an active control flag, pending approval payload, and any armed approval key
-- restart rule: the operator must pass readiness again as needed and explicitly click `Mulai Bot`; live remains off until re-enabled manually
+- dipertahankan: `runtime_state.json` menyimpan fingerprint akun aktif, mapping context, `last_run_id`, `last_runtime_state=halted`, dan `last_shutdown_reason`
+- dipertahankan: context akun yang terikat tetap menyimpan `memory/last_session.json`, `resume/resume_prompt.md`, profile, ringkasan, daftar issue, dan catatan
+- dibuang: runtime thread di memori, state live-enabled sebagai kontrol aktif, payload pending approval, dan approval key yang sedang armed
+- aturan restart: operator harus melewati readiness lagi bila perlu dan menekan `Mulai Bot` secara eksplisit; live tetap mati sampai diaktifkan ulang manual
 
-### Account fingerprint change
+### Fingerprint akun berubah
 
-- UI opens the account review card
-- trade controls remain blocked
-- operator may reuse the mapped context or create a new one
-- runtime is not restarted automatically
+- UI membuka kartu review akun
+- kontrol trading tetap diblokir
+- operator dapat memakai context yang sudah dipetakan atau membuat yang baru
+- runtime tidak di-restart otomatis
 
-Continuity contract after account review:
+Kontrak kelanjutan sesi setelah review akun:
 
-- preserved: the previous account context remains on disk unchanged
-- preserved: when review is accepted, the selected or newly created context is stored as the mapping for the new fingerprint
-- preserved: the chosen context keeps its `resume_prompt.md`, `last_session.json`, summaries, issues, and notes for the next supervised run
-- discarded: the old active runtime session does not carry over to the new account, and any pending approval/live state from the interrupted run stays cleared
-- restart rule: after review acceptance, the app returns to the readiness flow and the operator must start a new runtime manually
+- dipertahankan: context akun sebelumnya tetap ada di disk tanpa diubah
+- dipertahankan: setelah review disetujui, context yang dipilih atau baru dibuat disimpan sebagai mapping untuk fingerprint baru
+- dipertahankan: context yang dipilih tetap menyimpan `resume_prompt.md`, `last_session.json`, ringkasan, issue, dan catatan untuk run supervised berikutnya
+- dibuang: sesi runtime aktif lama tidak ikut pindah ke akun baru, dan pending approval/live state dari run yang terputus tetap dibersihkan
+- aturan restart: setelah review diterima, app kembali ke flow readiness dan operator harus memulai runtime baru secara manual
 
-## Readiness Semantics
+## Semantik Readiness
 
 ### MT5
 
-Healthy means:
+Siap berarti:
 
 - terminal can be reached
 - session is readable
-- account fingerprint is stable
-- symbol baseline is readable
+- fingerprint akun stabil
+- symbol baseline bisa dibaca
 
 ### AI Runtime
 
-Healthy means:
+Siap berarti:
 
-- runtime command is callable
-- workspace path exists
-- documents path exists
-- context root exists and is writable
-- resume state can be bound for the active MT5 account
+- command runtime bisa dipanggil
+- path workspace ada
+- path dokumen ada
+- root context ada dan bisa ditulis
+- resume state bisa dibind ke akun MT5 aktif
 
 ### Storage
 
-Healthy means:
+Siap berarti:
 
-- runtime DB path can be created
-- runtime metadata can be written
+- path DB runtime bisa dibuat
+- metadata runtime bisa ditulis
 
-## SQLite Telemetry
+## Telemetri SQLite
 
-Telemetry remains in `runtime_store.py` and covers:
+Telemetri tetap disimpan di `runtime_store.py` dan mencakup:
 
 - runs
 - polling cycles
@@ -226,16 +226,16 @@ Telemetry remains in `runtime_store.py` and covers:
 - stop events
 - runtime logs
 
-## Remaining Gaps
+## Gap Yang Masih Tersisa
 
-Still pending after this implementation pass:
+Yang masih tertinggal setelah pass implementasi ini:
 
-- autonomous lifecycle management for close/modify
-- richer drift monitoring and unattended recovery policies
-- packaged desktop distribution
-- deeper AI prompt wiring beyond current readiness/context persistence
+- manajemen lifecycle close/modify yang otonom
+- drift monitoring yang lebih kaya dan kebijakan recovery unattended
+- distribusi desktop yang sudah ter-package
+- wiring prompt AI yang lebih dalam daripada readiness/persistensi context saat ini
 
-## Related Files
+## File Terkait
 
 - [README.md](D:/luthfi/project/bot-ea/README.md)
 - [docs/user-manual.md](D:/luthfi/project/bot-ea/docs/user-manual.md)

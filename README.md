@@ -11,76 +11,76 @@ Desktop workspace for supervised MetaTrader 5 trading with:
 
 This repository is not unattended live-trading software. It is an operator-first desktop runtime with explicit approval and halt behavior.
 
-## Current Product State
+## Status Produk Saat Ini
 
-Implemented now:
+Sudah diterapkan:
 
-- app-managed local websocket service
-- operator-mode startup gate before workspace unlock
-- explicit `operator` and `dev / mock` modes
-- MT5 readiness chain:
+- service websocket lokal yang dikelola app
+- startup gate mode operator sebelum workspace dibuka
+- mode `operator` dan `dev / mock` yang eksplisit
+- rantai readiness MT5:
   - service
   - MT5 process
   - MT5 session
   - account fingerprint
   - symbol baseline
-- AI readiness chain:
+- rantai readiness AI:
   - runtime command
   - AI workspace
   - AI documents
   - AI context root
   - runtime storage
   - account-scoped resume state
-- reconnect overlay and safe halt when MT5 disappears
-- account-change review flow with account-scoped context binding
-- supervised runtime start/stop, live toggle, approval, rejection, and telemetry review
+- reconnect overlay dan safe halt saat MT5 hilang
+- flow review ganti akun dengan context binding per akun
+- start/stop runtime supervised, toggle live, approval, rejection, dan review telemetri
 
-Still not finished:
+Masih belum selesai:
 
-- unattended autonomy
-- full close/modify lifecycle automation
-- packaging/installer distribution
-- drift monitoring beyond current telemetry and validation
+- autonomy tanpa operator
+- otomasi lifecycle close/modify yang penuh
+- distribusi packaging/installer
+- drift monitoring di luar telemetri dan validasi saat ini
 
-## Launch
+## Menjalankan Aplikasi
 
-Normal Windows launch:
+Jalankan normal di Windows:
 
 ```powershell
 cd D:\luthfi\project\bot-ea
 powershell -ExecutionPolicy Bypass -File .\scripts\run-qt-gui.ps1
 ```
 
-Operator defaults:
+Default operator:
 
-- the Qt app is the main entrypoint
-- the app can start the local websocket backend itself
-- the main workspace stays locked until the operator dependency gate passes
-- the bot runtime does not auto-start after the gate passes
+- Qt app adalah entrypoint utama
+- app dapat menyalakan backend websocket lokal sendiri
+- workspace utama tetap terkunci sampai dependency gate operator lolos
+- bot runtime tidak auto-start setelah gate lolos
 
-## Modes
+## Mode Aplikasi
 
 ### Operator Mode
 
-Rules:
+Aturan:
 
-- MT5 is required
-- a readable MT5 account is required
-- AI runtime is required
-- AI workspace/documents/context/storage are required
-- the workspace stays locked until all checks pass
+- MT5 wajib tersedia
+- akun MT5 yang bisa dibaca wajib tersedia
+- AI runtime wajib tersedia
+- AI workspace/dokumen/konteks/storage wajib tersedia
+- workspace tetap terkunci sampai semua cek lolos
 
 ### Dev / Mock Mode
 
-Rules:
+Aturan:
 
-- bypasses MT5 and AI dependencies
-- opens the main workspace for UI tuning and mock testing
-- shows a clear `DEV / MOCK MODE` badge
+- melewati dependency MT5 dan AI
+- membuka workspace utama untuk tuning UI dan pengujian mock
+- menampilkan badge `DEV / MOCK MODE` yang jelas
 
 ## Startup Gate
 
-Current operator startup sequence:
+Urutan startup operator saat ini:
 
 1. Service lokal
 2. MetaTrader 5
@@ -90,62 +90,62 @@ Current operator startup sequence:
 6. AI runtime
 7. Workspace AI
 8. Dokumen AI
-9. Context / history
+9. Konteks AI
 10. Storage
 11. Resume state
 12. Workspace utama
 
-Behavior:
+Perilaku:
 
-- if any step fails, the app stays on the gate
-- the gate shows human-readable status instead of popup spam
-- the operator can retry manually or switch to dev mode
+- jika satu langkah gagal, app tetap berada di gate
+- gate menampilkan status yang mudah dibaca, bukan spam popup
+- operator bisa retry manual atau pindah ke mode dev
 
-## MT5 Disconnect And Account Change
+## MT5 Putus Dan Ganti Akun
 
-### MT5 lost while idle
+### MT5 hilang saat idle
 
-- trading controls are disabled
-- reconnect overlay is shown
-- telemetry and diagnostics remain accessible
-- the app keeps retrying MT5 checks from the workspace
+- kontrol trading dinonaktifkan
+- reconnect overlay ditampilkan
+- telemetri dan diagnostik tetap bisa diakses
+- app terus mengulang cek MT5 dari workspace
 
-### MT5 lost while runtime is active
+### MT5 hilang saat runtime aktif
 
-- runtime enters safe halt
-- live mode is disabled
-- pending approval is cleared
-- operator must reconnect MT5 and start the bot manually again
+- runtime masuk ke safe halt
+- live mode dinonaktifkan
+- pending approval dibersihkan
+- operator harus menyambungkan kembali MT5 dan menyalakan bot secara manual
 
-### Account fingerprint changed
+### Fingerprint akun berubah
 
-- the app blocks trading controls
-- an account review card is shown
-- the operator can bind the existing context or create a fresh account context
-- runtime must be started manually again after review
+- app memblokir kontrol trading
+- kartu review akun ditampilkan
+- operator bisa memakai context yang ada atau membuat context akun baru
+- runtime harus dijalankan manual lagi setelah review
 
-### Continuity Contract After Safe Halt Or Account Change
+### Kontrak Kelanjutan Sesi Setelah Safe Halt Atau Ganti Akun
 
-Preserved across restart:
+Dipertahankan setelah restart:
 
-- `runtime_data/runtime_state.json` keeps the last active MT5 fingerprint, mapped `context_key`, `context_path`, `last_run_id`, `last_runtime_state`, and `last_shutdown_reason`
-- `ai_context/<account>/memory/last_session.json` keeps the per-account last run metadata such as symbol, timeframe, trading style, last mode, and shutdown reason
-- the selected account context stays on disk, including `profile.yaml`, `memory/latest_summary.md`, `memory/open_issues.md`, `resume/resume_prompt.md`, and operator/broker notes
-- after an account review is accepted, the chosen or newly created context becomes the stored mapping for that MT5 fingerprint
+- `runtime_data/runtime_state.json` menyimpan fingerprint MT5 aktif terakhir, `context_key`, `context_path`, `last_run_id`, `last_runtime_state`, dan `last_shutdown_reason`
+- `ai_context/<account>/memory/last_session.json` menyimpan metadata run terakhir per akun seperti simbol, timeframe, gaya trading, mode terakhir, dan alasan berhenti
+- context akun yang dipilih tetap ada di disk, termasuk `profile.yaml`, `memory/latest_summary.md`, `memory/open_issues.md`, `resume/resume_prompt.md`, dan catatan operator/broker
+- setelah review akun disetujui, context yang dipilih atau baru dibuat menjadi mapping tersimpan untuk fingerprint MT5 tersebut
 
-Intentionally discarded or forced back to safe defaults:
+Sengaja dibuang atau dipaksa kembali ke default aman:
 
-- the active runtime thread/session never survives restart; the operator must start it again manually
-- live mode is forced off on safe halt and never auto-enables on the next launch, even if the previous run ended in live mode
-- pending live approval and the armed approval key are cleared; any live order proposal must be generated again after restart
-- reconnect overlay state and account-review UI state are transient UI guards, not persisted runtime state
-- account change does not auto-resume trading; the app returns to readiness review before trading controls unlock again
+- thread/sesi runtime aktif tidak pernah bertahan setelah restart; operator harus memulainya lagi secara manual
+- live mode dipaksa mati saat safe halt dan tidak pernah aktif otomatis pada launch berikutnya, bahkan jika run sebelumnya berakhir dalam mode live
+- pending live approval dan approval key yang sedang armed dibersihkan; proposal order live harus dibuat ulang setelah restart
+- state reconnect overlay dan state UI account-review hanya guard UI sementara, bukan runtime state yang dipersistkan
+- ganti akun tidak auto-resume trading; app kembali ke review readiness sebelum kontrol trading dibuka lagi
 
-## AI Runtime Layout
+## Tata Letak AI Runtime
 
-The desktop app now treats AI runtime readiness as more than a single executable.
+Aplikasi desktop sekarang memperlakukan readiness AI runtime sebagai lebih dari satu executable.
 
-Recommended folders:
+Folder yang direkomendasikan:
 
 ```text
 bot-ea/
@@ -155,16 +155,16 @@ bot-ea/
   runtime_data/
 ```
 
-Persisted data now includes:
+Data persisten sekarang mencakup:
 
 - `runtime_data/runtime_settings.json`
 - `runtime_data/app_settings.json`
 - `runtime_data/account_context_map.json`
 - `runtime_data/runtime_state.json`
 
-`runtime_state.json` is the cross-session operator snapshot. It records the last known active account fingerprint, selected account context, last run identity, runtime state, shutdown reason, and the most recent runtime parameters written by the backend.
+`runtime_state.json` adalah snapshot operator lintas sesi. File ini mencatat fingerprint akun aktif terakhir, context akun yang dipilih, identitas run terakhir, state runtime, alasan berhenti, dan parameter runtime terbaru yang ditulis backend.
 
-Account contexts are created under `ai_context/<broker>_<server>_<login>/` with:
+Context akun dibuat di bawah `ai_context/<broker>_<server>_<login>/` dengan:
 
 - `profile.yaml`
 - `memory/latest_summary.md`
@@ -174,38 +174,38 @@ Account contexts are created under `ai_context/<broker>_<server>_<login>/` with:
 - `documents/broker_notes.md`
 - `documents/operator_notes.md`
 
-`memory/last_session.json` is the per-account continuity file. It keeps the latest run metadata for that specific MT5 account, but it does not reactivate the runtime by itself.
+`memory/last_session.json` adalah file kelanjutan sesi per akun. File ini menyimpan metadata run terbaru untuk akun MT5 tertentu, tetapi tidak mengaktifkan ulang runtime dengan sendirinya.
 
-## Operator Flow
+## Alur Operator
 
-Recommended supervised flow:
+Alur supervised yang direkomendasikan:
 
-1. Open MT5 and log into the correct account.
-2. Launch the Qt app.
-3. Let the startup gate validate dependencies.
-4. Review `Strategi`.
-5. Click `Refresh Data`.
-6. Click `Cek Safety`.
-7. Click `Mulai Bot`.
-8. Optionally click `Aktifkan Live`.
-9. Approve or reject only when a live proposal is pending.
-10. Review telemetry in `Riwayat` and `Log`.
+1. Buka MT5 dan login ke akun yang benar.
+2. Jalankan Qt app.
+3. Biarkan startup gate memvalidasi dependency.
+4. Tinjau halaman `Strategi`.
+5. Klik `Refresh Data`.
+6. Klik `Cek Safety`.
+7. Klik `Mulai Bot`.
+8. Jika perlu, klik `Aktifkan Live`.
+9. Setujui atau tolak hanya saat proposal live memang sedang pending.
+10. Tinjau telemetri di `Riwayat` dan `Log`.
 
-Important runtime rule:
+Aturan runtime penting:
 
-- the bot runtime never auto-starts just because the app launches
-- live mode never auto-enables
+- bot runtime tidak pernah auto-start hanya karena app diluncurkan
+- live mode tidak pernah aktif otomatis
 
-## Key Files
+## File Penting
 
-Docs:
+Dokumen:
 
 - [docs/user-manual.md](D:/luthfi/project/bot-ea/docs/user-manual.md)
 - [docs/desktop-runtime-runbook.md](D:/luthfi/project/bot-ea/docs/desktop-runtime-runbook.md)
 - [docs/project-handoff.md](D:/luthfi/project/bot-ea/docs/project-handoff.md)
 - [docs/progress-summary.md](D:/luthfi/project/bot-ea/docs/progress-summary.md)
 
-Code:
+Kode:
 
 - [src/bot_ea/qt_app.py](D:/luthfi/project/bot-ea/src/bot_ea/qt_app.py)
 - [src/bot_ea/websocket_service.py](D:/luthfi/project/bot-ea/src/bot_ea/websocket_service.py)
