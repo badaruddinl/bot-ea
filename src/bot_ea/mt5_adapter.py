@@ -219,9 +219,16 @@ class MockMT5Adapter:
 
     def validate_order(self, request: dict) -> OrderValidationResult:
         symbol_name = str(request.get("symbol", ""))
+        action = str(request.get("action", "open") or "open").lower()
         volume = float(request.get("volume", 0.0) or 0.0)
         stop_distance_points = float(request.get("stop_distance_points", 0.0) or 0.0)
         price = float(request.get("price", 0.0) or 0.0)
+
+        if action == "cancel_pending":
+            order_ticket = request.get("order_ticket") or request.get("order")
+            if not order_ticket:
+                return OrderValidationResult(accepted=False, detail="order ticket missing", retcode=404)
+            return OrderValidationResult(accepted=True, detail="mock cancel accepted", retcode=0)
 
         if symbol_name not in self._symbols:
             return OrderValidationResult(accepted=False, detail="unknown symbol", retcode=404)
@@ -231,7 +238,11 @@ class MockMT5Adapter:
             return OrderValidationResult(accepted=False, detail="volume below minimum", retcode=10014)
         if volume > snapshot.volume_max:
             return OrderValidationResult(accepted=False, detail="volume above maximum", retcode=10014)
-        if stop_distance_points < snapshot.stops_level_points:
+        if action == "close":
+            position_ticket = request.get("position_ticket") or request.get("position")
+            if not position_ticket:
+                return OrderValidationResult(accepted=False, detail="position ticket missing", retcode=404)
+        elif stop_distance_points < snapshot.stops_level_points:
             return OrderValidationResult(accepted=False, detail="stop distance below broker stop level", retcode=10016)
 
         margin = self.estimate_margin(symbol_name, volume, str(request.get("order_type", "market")), price)
@@ -254,6 +265,7 @@ class MockMT5Adapter:
         )
 
     def send_order(self, request: dict) -> OrderSendResult:
+        action = str(request.get("action", "open") or "open").lower()
         validation = self.validate_order(request)
         if not validation.accepted:
             return OrderSendResult(
@@ -262,6 +274,16 @@ class MockMT5Adapter:
                 retcode=validation.retcode,
                 volume=float(request.get("volume", 0.0) or 0.0),
                 price=float(request.get("price", 0.0) or 0.0),
+            )
+        if action == "cancel_pending":
+            return OrderSendResult(
+                accepted=True,
+                detail="mock pending order cancelled",
+                retcode=0,
+                order=int(request.get("order_ticket") or request.get("order") or 900001),
+                deal=None,
+                volume=0.0,
+                price=0.0,
             )
         return OrderSendResult(
             accepted=True,
@@ -587,22 +609,29 @@ class LiveMT5Adapter:
         return "no ipc connection" in message.lower()
 
     def _build_trade_request(self, mt5, symbol_info, request: dict) -> dict[str, Any]:
+        action_raw = str(request.get("action", "open") or "open").lower()
         order_type_raw = str(request.get("order_type", "buy") or "buy").lower()
         price = float(request.get("price", 0.0) or 0.0)
         if price <= 0:
             price = self._market_price(mt5, getattr(symbol_info, "name", ""), order_type_raw)
 
         trade_request: dict[str, Any] = {
-            "action": getattr(mt5, "TRADE_ACTION_DEAL"),
+            "action": getattr(mt5, "TRADE_ACTION_REMOVE") if action_raw == "cancel_pending" else getattr(mt5, "TRADE_ACTION_DEAL"),
             "symbol": getattr(symbol_info, "name", ""),
-            "volume": float(request.get("volume", 0.0) or 0.0),
-            "type": self._resolve_order_type(mt5, order_type_raw),
             "deviation": int(request.get("deviation", 20) or 20),
             "magic": int(request.get("magic", 234000) or 234000),
             "comment": str(request.get("comment", "bot-ea preflight") or "bot-ea preflight"),
             "type_time": getattr(mt5, "ORDER_TIME_GTC"),
-            "type_filling": self._resolve_filling_type(mt5, symbol_info),
         }
+        if action_raw == "cancel_pending":
+            trade_request["order"] = int(request.get("order_ticket") or request.get("order") or 0)
+            return trade_request
+
+        trade_request["volume"] = float(request.get("volume", 0.0) or 0.0)
+        trade_request["type"] = self._resolve_order_type(mt5, order_type_raw)
+        trade_request["type_filling"] = self._resolve_filling_type(mt5, symbol_info)
+        if request.get("position_ticket") is not None or request.get("position") is not None:
+            trade_request["position"] = int(request.get("position_ticket") or request.get("position"))
 
         if self._map_execution_mode(getattr(symbol_info, "trade_exemode", None)) != "market":
             trade_request["price"] = price

@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timezone
 from enum import Enum
+from types import SimpleNamespace
 from typing import Any, Protocol
 from uuid import uuid4
 
@@ -283,38 +284,51 @@ class PollingRuntime:
                 snapshot=snapshot_payload,
             )
 
-        position_request = PositionSizeRequest(
-            account=snapshot.account,
-            symbol=snapshot.symbol_snapshot,
-            policy=snapshot.risk_policy,
-            stop_distance_points=intent.stop_distance_points or snapshot.stop_distance_points,
-            trading_style=snapshot.trading_style,
-            capital_allocation=snapshot.capital_allocation,
-        )
-        size_result = self.risk_engine.compute_position_size(position_request)
-        self.store.record_risk_guard(
-            run_id=run_id,
-            cycle_id=cycle_id,
-            allowed=size_result.accepted,
-            mode=size_result.mode.value,
-            rejection_reason=size_result.rejection_reason,
-            normalized_volume=size_result.normalized_volume,
-            risk_cash_budget=size_result.risk_cash_budget,
-            payload={
-                "capital_base_cash": size_result.capital_base_cash,
-                "recommended_minimum_allocation_cash": size_result.recommended_minimum_allocation_cash,
-                "warnings": size_result.warnings,
-            },
-        )
-
-        if not size_result.accepted:
-            return PollingCycleResult(
+        if intent.action in {DecisionAction.CLOSE, DecisionAction.CANCEL_PENDING}:
+            size_result = self._lifecycle_size_result(snapshot, intent)
+            self.store.record_risk_guard(
+                run_id=run_id,
                 cycle_id=cycle_id,
-                halted=False,
-                detail=size_result.rejection_reason or "risk guard rejected",
-                action="RISK_REJECTED",
-                snapshot=snapshot_payload,
+                allowed=True,
+                mode="lifecycle",
+                rejection_reason=None,
+                normalized_volume=size_result.normalized_volume,
+                risk_cash_budget=0.0,
+                payload={"warnings": [], "lifecycle_action": intent.action.value},
             )
+        else:
+            position_request = PositionSizeRequest(
+                account=snapshot.account,
+                symbol=snapshot.symbol_snapshot,
+                policy=snapshot.risk_policy,
+                stop_distance_points=intent.stop_distance_points or snapshot.stop_distance_points,
+                trading_style=snapshot.trading_style,
+                capital_allocation=snapshot.capital_allocation,
+            )
+            size_result = self.risk_engine.compute_position_size(position_request)
+            self.store.record_risk_guard(
+                run_id=run_id,
+                cycle_id=cycle_id,
+                allowed=size_result.accepted,
+                mode=size_result.mode.value,
+                rejection_reason=size_result.rejection_reason,
+                normalized_volume=size_result.normalized_volume,
+                risk_cash_budget=size_result.risk_cash_budget,
+                payload={
+                    "capital_base_cash": size_result.capital_base_cash,
+                    "recommended_minimum_allocation_cash": size_result.recommended_minimum_allocation_cash,
+                    "warnings": size_result.warnings,
+                },
+            )
+
+            if not size_result.accepted:
+                return PollingCycleResult(
+                    cycle_id=cycle_id,
+                    halted=False,
+                    detail=size_result.rejection_reason or "risk guard rejected",
+                    action="RISK_REJECTED",
+                    snapshot=snapshot_payload,
+                )
 
         attempt_id = uuid4().hex
         intended_price = float(intent.entry_price or snapshot.ask if intent.side == "buy" else snapshot.bid)
@@ -406,17 +420,39 @@ class PollingRuntime:
                 action="APPROVAL_REQUIRED",
                 snapshot=snapshot_payload,
             )
-        if execution_result.get("status") == "FILLED" and execution_result.get("order") is not None:
+        if (
+            intent.action is not DecisionAction.CANCEL_PENDING
+            and execution_result.get("status") == "FILLED"
+            and execution_result.get("order") is not None
+        ):
+            position_status = "OPENED"
+            entry_price = execution_result.get("realized_price", execution_result.get("price"))
+            exit_price = None
+            opened_at = datetime.now(timezone.utc).isoformat()
+            closed_at = None
+            realized_pnl_cash = None
+            if intent.action is DecisionAction.CLOSE:
+                position_status = "CLOSED"
+                entry_price = None
+                exit_price = execution_result.get("realized_price", execution_result.get("price"))
+                opened_at = None
+                closed_at = datetime.now(timezone.utc).isoformat()
             self.store.record_position_event(
                 run_id=run_id,
                 cycle_id=cycle_id,
-                broker_position_id=str(execution_result.get("order")),
+                broker_position_id=str(
+                    execution_result.get("position_ticket")
+                    or execution_result.get("order")
+                ),
                 symbol=snapshot.symbol,
                 side=intent.side,
                 volume=execution_result.get("volume", size_result.normalized_volume),
-                status="OPENED",
-                entry_price=execution_result.get("realized_price", execution_result.get("price")),
-                opened_at=datetime.now(timezone.utc).isoformat(),
+                status=position_status,
+                entry_price=entry_price,
+                exit_price=exit_price,
+                opened_at=opened_at,
+                closed_at=closed_at,
+                realized_pnl_cash=realized_pnl_cash,
                 commission_cash=execution_result.get("commission_cash"),
                 swap_cash=execution_result.get("swap_cash"),
                 payload={
@@ -467,3 +503,22 @@ class PollingRuntime:
             "broker": str(actual_fingerprint.get("broker") or ""),
         }
         return actual != expected
+
+    @staticmethod
+    def _lifecycle_size_result(snapshot: RuntimeSnapshot, intent: AIIntent):
+        volume = float(intent.payload.get("volume") or intent.payload.get("position_volume") or 0.0)
+        if intent.action is DecisionAction.CANCEL_PENDING:
+            volume = 0.0
+        return SimpleNamespace(
+            accepted=True,
+            mode="lifecycle",
+            capital_base_cash=snapshot.account.equity,
+            recommended_minimum_allocation_cash=0.0,
+            effective_risk_pct=0.0,
+            risk_cash_budget=0.0,
+            normalized_volume=volume,
+            estimated_loss_cash=0.0,
+            stop_distance_points=float(intent.stop_distance_points or snapshot.stop_distance_points),
+            rejection_reason=None,
+            warnings=[],
+        )

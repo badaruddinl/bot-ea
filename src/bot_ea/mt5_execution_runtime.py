@@ -26,11 +26,11 @@ class MT5ExecutionRuntime:
         self.comment_prefix = comment_prefix
 
     def execute(self, snapshot, intent, size_result, preflight_result: dict | None = None) -> dict:
-        if intent.action is not DecisionAction.OPEN:
+        if intent.action not in {DecisionAction.OPEN, DecisionAction.CLOSE, DecisionAction.CANCEL_PENDING}:
             return self._reject(f"unsupported action {intent.action.value}")
-        if intent.side not in {"buy", "sell"}:
+        if intent.action is not DecisionAction.CANCEL_PENDING and intent.side not in {"buy", "sell"}:
             return self._reject("intent side must be buy or sell")
-        if size_result.normalized_volume <= 0:
+        if intent.action is not DecisionAction.CANCEL_PENDING and size_result.normalized_volume <= 0:
             return self._reject("normalized volume must be positive")
 
         preflight = preflight_result or self.preflight(snapshot, intent, size_result)
@@ -39,7 +39,7 @@ class MT5ExecutionRuntime:
         if not self.allow_live_orders:
             preflight["status"] = "DRY_RUN_OK"
             preflight["detail"] = f"dry-run only: {preflight['detail']}"
-            preflight["quoted_price"] = preflight["request"]["price"]
+            preflight["quoted_price"] = float(preflight["request"].get("price") or 0.0)
             preflight["realized_price"] = None
             preflight["slippage_points"] = 0.0
             preflight["fill_latency_ms"] = 0.0
@@ -66,7 +66,7 @@ class MT5ExecutionRuntime:
         started = perf_counter()
         send_result = self.adapter.send_order(live_request)
         latency_ms = (perf_counter() - started) * 1000.0
-        quoted_price = float(live_request["price"] or 0.0)
+        quoted_price = float(live_request.get("price") or 0.0)
         realized_price = float(send_result.price or quoted_price or 0.0)
         point = float(snapshot.symbol_snapshot.point or 0.0)
         slippage_points = abs(realized_price - quoted_price) / point if point > 0 and quoted_price > 0 else 0.0
@@ -94,9 +94,39 @@ class MT5ExecutionRuntime:
         }
 
     def preflight(self, snapshot, intent, size_result) -> dict:
+        if intent.action is DecisionAction.CANCEL_PENDING:
+            request = self._build_order_request(snapshot, intent, size_result, 0.0)
+            validation = self.adapter.validate_order(request)
+            return {
+                "status": "PRECHECK_OK" if validation.accepted else "PRECHECK_REJECTED",
+                "detail": validation.detail,
+                "retcode": str(validation.retcode or ""),
+                "projected_margin_free": validation.projected_margin_free,
+                "projected_margin_level": validation.projected_margin_level,
+                "guard_checks": [],
+                "request": request,
+                "live_order_submitted": False,
+                "preflight_status": "PRECHECK_OK" if validation.accepted else "PRECHECK_REJECTED",
+                "preflight_detail": validation.detail,
+            }
         if intent.side not in {"buy", "sell"}:
             return self._reject("intent side must be buy or sell")
         stop_distance_points = float(intent.stop_distance_points or snapshot.stop_distance_points)
+        if intent.action is DecisionAction.CLOSE:
+            request = self._build_order_request(snapshot, intent, size_result, stop_distance_points)
+            validation = self.adapter.validate_order(request)
+            return {
+                "status": "PRECHECK_OK" if validation.accepted else "PRECHECK_REJECTED",
+                "detail": validation.detail,
+                "retcode": str(validation.retcode or ""),
+                "projected_margin_free": validation.projected_margin_free,
+                "projected_margin_level": validation.projected_margin_level,
+                "guard_checks": [],
+                "request": request,
+                "live_order_submitted": False,
+                "preflight_status": "PRECHECK_OK" if validation.accepted else "PRECHECK_REJECTED",
+                "preflight_detail": validation.detail,
+            }
         guard_result = evaluate_execution_guards(
             snapshot.account,
             snapshot.symbol_snapshot,
@@ -130,19 +160,47 @@ class MT5ExecutionRuntime:
 
     def _build_order_request(self, snapshot, intent, size_result, stop_distance_points: float) -> dict:
         side = intent.side or "buy"
-        return {
+        request = {
             "symbol": snapshot.symbol,
-            "volume": size_result.normalized_volume,
-            "order_type": side,
-            "price": float(intent.entry_price or (snapshot.ask if side == "buy" else snapshot.bid) or 0.0),
-            "stop_distance_points": stop_distance_points,
+            "action": intent.action.value.lower(),
             "deviation": self.deviation_points,
             "magic": self.magic,
             "comment": f"{self.comment_prefix}: {(intent.reason or 'execution')[:24]}",
         }
+        if intent.action is DecisionAction.CANCEL_PENDING:
+            request["order_ticket"] = (
+                intent.payload.get("order_ticket")
+                or intent.payload.get("pending_order_ticket")
+                or intent.payload.get("order")
+            )
+            return request
+
+        request["volume"] = float(
+            intent.payload.get("volume")
+            or intent.payload.get("position_volume")
+            or size_result.normalized_volume
+            or 0.0
+        )
+        if intent.action is DecisionAction.CLOSE:
+            close_side = "sell" if side == "buy" else "buy"
+            request["order_type"] = close_side
+            request["position_ticket"] = (
+                intent.payload.get("position_ticket")
+                or intent.payload.get("broker_position_id")
+                or intent.payload.get("position")
+            )
+            request["price"] = float(snapshot.ask if close_side == "buy" else snapshot.bid or 0.0)
+            return request
+
+        request["order_type"] = side
+        request["price"] = float(intent.entry_price or (snapshot.ask if side == "buy" else snapshot.bid) or 0.0)
+        request["stop_distance_points"] = stop_distance_points
+        return request
 
     def _refresh_live_request(self, snapshot, request: dict) -> dict:
         refreshed = dict(request)
+        if str(refreshed.get("action") or "").lower() == DecisionAction.CANCEL_PENDING.value.lower():
+            return refreshed
         side = str(refreshed.get("order_type") or "buy")
         tick = self.adapter.load_price_tick(snapshot.symbol)
         refreshed_price = float(tick.ask if side == "buy" else tick.bid or 0.0)

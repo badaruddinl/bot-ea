@@ -164,3 +164,34 @@ class MT5ExecutionRuntimeTests(unittest.TestCase):
         self.assertEqual(result["request"]["price"], 1.1013)
         self.assertEqual(adapter.validated_requests[-1]["price"], 1.1013)
         self.assertEqual(adapter.sent_requests[-1]["price"], 1.1013)
+
+    def test_close_position_dry_run_is_supported(self) -> None:
+        runtime = MT5ExecutionRuntime(adapter=self.adapter)
+        intent = AIIntent(
+            action=DecisionAction.CLOSE,
+            side="buy",
+            reason="close test",
+            payload={"position_ticket": 900001, "volume": 0.01},
+        )
+
+        result = runtime.execute(self.snapshot, intent, self.size_result)
+
+        self.assertEqual(result["status"], "DRY_RUN_OK")
+        self.assertEqual(result["request"]["action"], "close")
+        self.assertEqual(result["request"]["order_type"], "sell")
+        self.assertEqual(result["request"]["position_ticket"], 900001)
+
+    def test_cancel_pending_dry_run_is_supported(self) -> None:
+        runtime = MT5ExecutionRuntime(adapter=self.adapter)
+        intent = AIIntent(
+            action=DecisionAction.CANCEL_PENDING,
+            side=None,
+            reason="cancel test",
+            payload={"order_ticket": 700001},
+        )
+
+        result = runtime.execute(self.snapshot, intent, self.size_result)
+
+        self.assertEqual(result["status"], "DRY_RUN_OK")
+        self.assertEqual(result["request"]["action"], "cancel_pending")
+        self.assertEqual(result["request"]["order_ticket"], 700001)
