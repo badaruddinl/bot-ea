@@ -32,6 +32,7 @@ from PySide6.QtWidgets import (
     QTabWidget,
     QVBoxLayout,
     QWidget,
+    QSizePolicy,
 )
 
 from .desktop_runtime import DesktopRuntimeConfig, DesktopRuntimeCoordinator
@@ -664,14 +665,25 @@ class BotEaQtWindow(QMainWindow):
         )
 
     def _make_status_chip(self, title: str, value: QLabel) -> QFrame:
-        frame = QFrame(self)
+        frame = QFrame(value.parentWidget() or self)
         frame.setObjectName("statusChip")
+        frame.setMinimumHeight(82)
+        frame.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
         layout = QVBoxLayout(frame)
         layout.setContentsMargins(12, 10, 12, 10)
         layout.setSpacing(4)
+        layout.setAlignment(Qt.AlignTop)
         title_label = QLabel(title.upper(), frame)
         title_label.setObjectName("chipTitle")
+        title_label.setWordWrap(True)
+        title_label.setMinimumHeight(16)
+        title_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
+        title_label.setAlignment(Qt.AlignLeft | Qt.AlignTop)
         value.setObjectName("chipValue")
+        value.setWordWrap(True)
+        value.setMinimumHeight(22)
+        value.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
+        value.setAlignment(Qt.AlignLeft | Qt.AlignTop)
         layout.addWidget(title_label)
         layout.addWidget(value)
         return frame
@@ -720,11 +732,26 @@ class BotEaQtWindow(QMainWindow):
         root.addWidget(self.shell_stack)
 
         self.startup_gate_page = QWidget(self)
-        startup_layout = QVBoxLayout(self.startup_gate_page)
-        startup_layout.setContentsMargins(80, 60, 80, 60)
+        startup_page_layout = QVBoxLayout(self.startup_gate_page)
+        startup_page_layout.setContentsMargins(0, 0, 0, 0)
+        startup_page_layout.setSpacing(0)
+        self.startup_gate_scroll = QScrollArea(self.startup_gate_page)
+        self.startup_gate_scroll.setWidgetResizable(True)
+        self.startup_gate_scroll.setFrameShape(QFrame.NoFrame)
+        self.startup_gate_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.startup_gate_scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
+        startup_page_layout.addWidget(self.startup_gate_scroll)
+        self.startup_gate_body = QWidget(self.startup_gate_scroll)
+        self.startup_gate_body.setObjectName("startupGateBody")
+        self.startup_gate_scroll.setWidget(self.startup_gate_body)
+        startup_layout = QVBoxLayout(self.startup_gate_body)
+        startup_layout.setContentsMargins(48, 40, 48, 40)
         startup_layout.setSpacing(18)
-        self.gate_card = QFrame(self.startup_gate_page)
+        self.gate_card = QFrame(self.startup_gate_body)
         self.gate_card.setObjectName("heroCard")
+        self.gate_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
+        self.gate_card.setMinimumWidth(720)
+        self.gate_card.setMaximumWidth(960)
         gate_card_layout = QVBoxLayout(self.gate_card)
         gate_card_layout.setContentsMargins(24, 24, 24, 24)
         gate_card_layout.setSpacing(12)
@@ -743,6 +770,7 @@ class BotEaQtWindow(QMainWindow):
         self.gate_message.setWordWrap(True)
         gate_card_layout.addWidget(self.gate_message)
         self.gate_status_group = QGroupBox("Status Kesiapan", self.gate_card)
+        self.gate_status_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
         gate_status_layout = QVBoxLayout(self.gate_status_group)
         gate_status_layout.setContentsMargins(12, 18, 12, 12)
         gate_status_layout.setSpacing(10)
@@ -763,7 +791,10 @@ class BotEaQtWindow(QMainWindow):
         ):
             label = QLabel("Belum diperiksa", self.gate_status_group)
             self.gate_step_labels[key] = label
-            gate_status_layout.addWidget(self._make_status_chip(title, label))
+            chip = self._make_status_chip(title, label)
+            chip.setProperty("startupGateChip", True)
+            chip.setMinimumHeight(84)
+            gate_status_layout.addWidget(chip)
         self.gate_service_status = self.gate_step_labels["service"]
         self.gate_mt5_status = self.gate_step_labels["mt5_session"]
         self.gate_codex_status = self.gate_step_labels["ai_runtime"]
@@ -778,8 +809,7 @@ class BotEaQtWindow(QMainWindow):
         gate_button_row.addWidget(self.gate_dev_button)
         gate_button_row.addStretch(1)
         gate_card_layout.addLayout(gate_button_row)
-        startup_layout.addStretch(1)
-        startup_layout.addWidget(self.gate_card, 0, Qt.AlignCenter)
+        startup_layout.addWidget(self.gate_card, 0, Qt.AlignTop | Qt.AlignHCenter)
         startup_layout.addStretch(1)
         self.shell_stack.addWidget(self.startup_gate_page)
 
@@ -3021,6 +3051,8 @@ class BotEaQtWindow(QMainWindow):
     @staticmethod
     def _format_exception_detail(exc: Exception) -> str:
         message = str(exc).strip() or exc.__class__.__name__
+        if "The directory name is invalid" in message or "WinError 267" in message:
+            return "Workspace AI tidak valid. Periksa path workspace atau dokumen AI lalu coba lagi."
         if "No IPC connection" in message:
             return "MT5 lost IPC connection. Reopen or refocus MT5, then click Check MT5 again."
         if "account_info() failed" in message:
