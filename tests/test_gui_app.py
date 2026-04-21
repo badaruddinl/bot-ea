@@ -3,13 +3,15 @@ from __future__ import annotations
 import sys
 import time
 import unittest
+import warnings
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 import tkinter as tk  # noqa: E402
 
-from bot_ea.gui_app import LiveControlPanel  # noqa: E402
+from bot_ea.gui_app import LEGACY_TK_MESSAGE, LiveControlPanel, main  # noqa: E402
 from bot_ea.models import CapitalAllocationMode  # noqa: E402
 from bot_ea.mt5_adapter import MockMT5Adapter  # noqa: E402
 
@@ -114,6 +116,7 @@ class GuiAppTests(unittest.TestCase):
         root = self._make_root()
         try:
             panel = LiveControlPanel(root)
+            self.assertIn("Legacy Tk", root.title())
             panel.allocation_mode_var.set(CapitalAllocationMode.FIXED_CASH.value)
             panel.allocation_var.set("250")
             allocation = panel._capital_allocation()
@@ -121,6 +124,16 @@ class GuiAppTests(unittest.TestCase):
             self.assertEqual(allocation.value, 250.0)
         finally:
             root.destroy()
+
+    def test_main_warns_that_tk_panel_is_legacy(self) -> None:
+        fake_root = MagicMock()
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            with patch("bot_ea.gui_app.tk.Tk", return_value=fake_root), patch("bot_ea.gui_app.LiveControlPanel") as panel_cls:
+                main()
+        self.assertTrue(any(str(item.message) == LEGACY_TK_MESSAGE for item in caught))
+        panel_cls.assert_called_once_with(fake_root)
+        fake_root.mainloop.assert_called_once_with()
 
     def test_capital_allocation_supports_percent_equity(self) -> None:
         root = self._make_root()

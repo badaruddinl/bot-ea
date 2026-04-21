@@ -1,6 +1,12 @@
+"""Legacy Tk control panel kept for backward compatibility.
+
+The Qt operator app is the primary desktop entrypoint for current workflows.
+"""
+
 from __future__ import annotations
 
 import tkinter as tk
+import warnings
 from pathlib import Path
 from tkinter import ttk
 from types import SimpleNamespace
@@ -14,8 +20,14 @@ from .risk_engine import RiskEngine
 from .runtime_store import RuntimeStore
 from .validation import build_runtime_validation_report
 
+LEGACY_TK_MESSAGE = (
+    "Legacy Tk control panel is deprecated; use bot_ea.qt_app as the primary desktop UI."
+)
+
 
 class LiveControlPanel:
+    """Backward-compatible Tk panel for older operator flows."""
+
     TIMEFRAME_OPTIONS = ("M1", "M5", "M15", "M30", "H1", "H4", "D1")
     STYLE_OPTIONS = tuple(style.value for style in TradingStyle)
     ALLOCATION_MODE_OPTIONS = tuple(mode.value for mode in CapitalAllocationMode)
@@ -41,7 +53,7 @@ class LiveControlPanel:
         risk_policy: RiskPolicy | None = None,
     ) -> None:
         self.root = root
-        self.root.title("bot-ea Desktop Runtime")
+        self.root.title("bot-ea Desktop Runtime (Legacy Tk)")
         self.adapter = adapter or LiveMT5Adapter()
         self.risk_engine = risk_engine or RiskEngine()
         self.risk_policy = risk_policy or RiskPolicy(
@@ -1246,6 +1258,7 @@ class LiveControlPanel:
 
 
 def main() -> None:
+    warnings.warn(LEGACY_TK_MESSAGE, DeprecationWarning, stacklevel=2)
     root = tk.Tk()
     LiveControlPanel(root)
     root.mainloop()
