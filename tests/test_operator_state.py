@@ -74,6 +74,9 @@ def test_last_session_round_trip_and_update(tmp_path: Path) -> None:
     raw = json.loads((context_path / "memory" / "last_session.json").read_text(encoding="utf-8"))
     assert raw["last_run_id"] == "run-123"
     assert raw["last_runtime_state"] == "safe_halt"
+    resume_prompt = (context_path / "resume" / "resume_prompt.md").read_text(encoding="utf-8")
+    assert "## Last Session" in resume_prompt
+    assert "run-123" in resume_prompt
 
 
 def test_list_account_contexts_reports_mapped_existing_and_new_candidates(tmp_path: Path) -> None:
@@ -171,6 +174,7 @@ def test_create_new_context_preserves_existing_resume_prompt_and_session(tmp_pat
     assert store.load_last_session(context_path=first_context_path)["last_shutdown_reason"] == "mt5_disconnect"
     assert (second_context_path / "resume" / "resume_prompt.md").exists()
     assert store.load_runtime_state()["context_key"] == second["binding"]["context_key"]
+    assert "<!-- bot-ea managed resume prompt -->" in (second_context_path / "resume" / "resume_prompt.md").read_text(encoding="utf-8")
 
 
 def test_rebinding_existing_context_does_not_overwrite_resume_prompt(tmp_path: Path) -> None:
@@ -228,3 +232,25 @@ def test_build_resume_state_replaces_stale_runtime_state_with_existing_context(t
     assert runtime_state["context_key"] == "broker_demo_demo_server_123456"
     assert runtime_state["context_path"] == str(existing_path.resolve())
     assert runtime_state["last_runtime_state"] == "ready"
+
+
+def test_managed_resume_prompt_includes_account_notes(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    settings = store.default_settings()
+    result = store.build_resume_state(settings=settings, fingerprint_payload=FINGERPRINT)
+    context_path = Path(result["binding"]["context_path"])
+
+    (context_path / "documents" / "broker_notes.md").write_text("# Broker Notes\n\n- spread lebar saat sesi Asia\n", encoding="utf-8")
+    (context_path / "documents" / "operator_notes.md").write_text("# Operator Notes\n\n- hindari entry saat news merah\n", encoding="utf-8")
+    store.update_last_session(
+        context_path=context_path,
+        last_run_id="run-456",
+        last_runtime_state="stopped",
+        last_shutdown_reason="operator_stop",
+    )
+
+    resume_prompt = (context_path / "resume" / "resume_prompt.md").read_text(encoding="utf-8")
+    assert "## Broker Notes" in resume_prompt
+    assert "spread lebar saat sesi Asia" in resume_prompt
+    assert "## Operator Notes" in resume_prompt
+    assert "hindari entry saat news merah" in resume_prompt

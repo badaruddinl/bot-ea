@@ -277,7 +277,10 @@ class CodexCLIEngine:
             content = self._read_context_file(path)
             if content:
                 sections.append(f"[{title}]\n{content}")
-        if self.ai_documents_path:
+        docs_manifest = self._build_documents_manifest(self.ai_documents_path)
+        if docs_manifest:
+            sections.append(f"[AI_DOCUMENTS_MANIFEST]\n{docs_manifest}")
+        elif self.ai_documents_path:
             sections.append(f"[AI_DOCUMENTS_PATH]\n{self.ai_documents_path}")
 
         block = "\n\n".join(section for section in sections if section).strip()
@@ -295,3 +298,27 @@ class CodexCLIEngine:
             return candidate.read_text(encoding="utf-8").strip()
         except OSError:
             return ""
+
+    @staticmethod
+    def _build_documents_manifest(path: str | None, *, limit: int = 20) -> str:
+        if not path:
+            return ""
+        try:
+            root = Path(path).expanduser()
+            if not root.exists() or not root.is_dir():
+                return ""
+            candidates = sorted(
+                candidate
+                for candidate in root.rglob("*")
+                if candidate.is_file() and candidate.suffix.lower() in {".md", ".txt", ".json", ".yaml", ".yml"}
+            )
+        except OSError:
+            return ""
+
+        manifest_lines: list[str] = []
+        for candidate in candidates[:limit]:
+            try:
+                manifest_lines.append(str(candidate.relative_to(root)).replace("\\", "/"))
+            except ValueError:
+                manifest_lines.append(candidate.name)
+        return "\n".join(manifest_lines)

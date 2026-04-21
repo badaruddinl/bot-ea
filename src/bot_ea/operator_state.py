@@ -30,6 +30,9 @@ def _json_load(path: Path) -> dict[str, Any]:
     return raw if isinstance(raw, dict) else {}
 
 
+_MANAGED_RESUME_PROMPT_MARKER = "<!-- bot-ea managed resume prompt -->"
+
+
 def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -280,6 +283,7 @@ class OperatorStateStore:
         created_now = not existed
 
         self._ensure_context_structure(context_path, fingerprint)
+        self._refresh_managed_resume_prompt(context_path)
 
         mapping[fingerprint.key] = resolved_context_key
         _json_dump(self.account_context_map_path, mapping)
@@ -412,7 +416,9 @@ class OperatorStateStore:
             current.update(updates)
         if changes:
             current.update(changes)
-        return self.save_last_session(context_path=context_path, payload=current)
+        saved = self.save_last_session(context_path=context_path, payload=current)
+        self._refresh_managed_resume_prompt(Path(context_path).expanduser())
+        return saved
 
     def _ensure_context_structure(self, context_path: Path, fingerprint: AccountFingerprint) -> None:
         (context_path / "memory").mkdir(parents=True, exist_ok=True)
@@ -475,16 +481,7 @@ class OperatorStateStore:
         resume_prompt = context_path / "resume" / "resume_prompt.md"
         if not resume_prompt.exists():
             resume_prompt.write_text(
-                "\n".join(
-                    [
-                        "# Resume Prompt",
-                        "",
-                        f"- Akun aktif: {fingerprint.label}",
-                        "- Gunakan bahasa Indonesia yang ringkas.",
-                        "- Hormati approval manual dan halt policy.",
-                    ]
-                )
-                + "\n",
+                self._managed_resume_prompt_contents(context_path),
                 encoding="utf-8",
             )
 
@@ -495,6 +492,62 @@ class OperatorStateStore:
         operator_notes = context_path / "documents" / "operator_notes.md"
         if not operator_notes.exists():
             operator_notes.write_text("# Operator Notes\n\n", encoding="utf-8")
+
+    def _refresh_managed_resume_prompt(self, context_path: Path) -> None:
+        resume_prompt_path = context_path / "resume" / "resume_prompt.md"
+        existing = resume_prompt_path.read_text(encoding="utf-8") if resume_prompt_path.exists() else ""
+        if existing and _MANAGED_RESUME_PROMPT_MARKER not in existing:
+            return
+        resume_prompt_path.write_text(self._managed_resume_prompt_contents(context_path), encoding="utf-8")
+
+    def _managed_resume_prompt_contents(self, context_path: Path) -> str:
+        profile_text = self._read_optional_text(context_path / "profile.yaml")
+        latest_summary_text = self._read_optional_text(context_path / "memory" / "latest_summary.md")
+        open_issues_text = self._read_optional_text(context_path / "memory" / "open_issues.md")
+        last_session_text = json.dumps(
+            self.load_last_session(context_path=context_path),
+            indent=2,
+            sort_keys=True,
+        )
+        broker_notes_text = self._read_optional_text(context_path / "documents" / "broker_notes.md")
+        operator_notes_text = self._read_optional_text(context_path / "documents" / "operator_notes.md")
+
+        return (
+            "\n".join(
+                [
+                    _MANAGED_RESUME_PROMPT_MARKER,
+                    "# Resume Prompt",
+                    "",
+                    "## Behavior Profile",
+                    profile_text or "(kosong)",
+                    "",
+                    "## Latest Summary",
+                    latest_summary_text or "(kosong)",
+                    "",
+                    "## Open Issues",
+                    open_issues_text or "(kosong)",
+                    "",
+                    "## Last Session",
+                    last_session_text,
+                    "",
+                    "## Broker Notes",
+                    broker_notes_text or "(kosong)",
+                    "",
+                    "## Operator Notes",
+                    operator_notes_text or "(kosong)",
+                ]
+            )
+            + "\n"
+        )
+
+    @staticmethod
+    def _read_optional_text(path: Path) -> str:
+        try:
+            if not path.exists():
+                return ""
+            return path.read_text(encoding="utf-8").strip()
+        except OSError:
+            return ""
 
     @staticmethod
     def _default_runtime_state() -> dict[str, Any]:

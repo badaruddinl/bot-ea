@@ -212,13 +212,17 @@ class CodexCLIEngineTests(unittest.TestCase):
             tmp_path = Path(tmpdir)
             resume_prompt = tmp_path / "resume_prompt.md"
             behavior_profile = tmp_path / "profile.yaml"
+            docs_dir = tmp_path / "docs"
+            docs_dir.mkdir()
+            (docs_dir / "strategy.md").write_text("# Strategy\n", encoding="utf-8")
+            (docs_dir / "risk.yaml").write_text("mode: conservative\n", encoding="utf-8")
             resume_prompt.write_text("resume context line", encoding="utf-8")
             behavior_profile.write_text("language: id", encoding="utf-8")
             engine = CodexCLIEngine(
                 executable="codex",
                 resume_prompt_path=str(resume_prompt),
                 behavior_profile_path=str(behavior_profile),
-                ai_documents_path=str(tmp_path / "docs"),
+                ai_documents_path=str(docs_dir),
             )
             snapshot = RuntimeSnapshot(
                 symbol="EURUSD",
@@ -252,7 +256,9 @@ class CodexCLIEngineTests(unittest.TestCase):
             self.assertIn("ACCOUNT_CONTEXT_START", prompt)
             self.assertIn("resume context line", prompt)
             self.assertIn("language: id", prompt)
-            self.assertIn(str(tmp_path / "docs"), prompt)
+            self.assertIn("AI_DOCUMENTS_MANIFEST", prompt)
+            self.assertIn("strategy.md", prompt)
+            self.assertIn("risk.yaml", prompt)
 
 
 if __name__ == "__main__":
