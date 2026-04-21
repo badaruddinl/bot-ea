@@ -215,6 +215,25 @@ class InvalidContractCodexEngine:
 
 
 class DesktopRuntimeCoordinatorTests(unittest.TestCase):
+    @staticmethod
+    def _create_context(project_root: Path) -> Path:
+        context_path = project_root / "ai_context" / "demo_broker_demo_server_123456"
+        (context_path / "memory").mkdir(parents=True, exist_ok=True)
+        (context_path / "resume").mkdir(parents=True, exist_ok=True)
+        (context_path / "documents").mkdir(parents=True, exist_ok=True)
+        (context_path / "profile.yaml").write_text("language: id\n", encoding="utf-8")
+        (context_path / "resume" / "resume_prompt.md").write_text("resume prompt\n", encoding="utf-8")
+        (context_path / "memory" / "latest_summary.md").write_text("latest summary\n", encoding="utf-8")
+        (context_path / "memory" / "open_issues.md").write_text("open issues\n", encoding="utf-8")
+        (context_path / "memory" / "last_session.json").write_text("{}", encoding="utf-8")
+        return context_path
+
+    @staticmethod
+    def _load_persisted_state(project_root: Path, context_path: Path) -> tuple[dict, dict]:
+        runtime_state = json.loads((project_root / "runtime_data" / "runtime_state.json").read_text(encoding="utf-8"))
+        last_session = json.loads((context_path / "memory" / "last_session.json").read_text(encoding="utf-8"))
+        return runtime_state, last_session
+
     def test_probe_methods_return_runtime_readiness(self) -> None:
         coordinator = DesktopRuntimeCoordinator(
             adapter_factory=FakeAdapter,
@@ -329,6 +348,8 @@ class DesktopRuntimeCoordinatorTests(unittest.TestCase):
 
     def test_runtime_safe_halts_after_transient_mt5_ipc_failure(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
+            project_root = Path(tmpdir)
+            context_path = self._create_context(project_root)
             coordinator = DesktopRuntimeCoordinator(
                 adapter_factory=lambda: BrokenIPCAdapter(fail_account_info=True),
                 codex_engine_factory=FakeCodexEngine,
@@ -340,8 +361,11 @@ class DesktopRuntimeCoordinatorTests(unittest.TestCase):
                 trading_style=TradingStyle.INTRADAY,
                 stop_distance_points=20.0,
                 capital_allocation=CapitalAllocation(mode=CapitalAllocationMode.FIXED_CASH, value=1000.0),
-                db_path=str(Path(tmpdir) / "runtime.db"),
+                db_path=str(project_root / "runtime.db"),
                 poll_interval_seconds=1,
+                ai_context_path=str(context_path),
+                resume_prompt_path=str(context_path / "resume" / "resume_prompt.md"),
+                behavior_profile_path=str(context_path / "profile.yaml"),
                 account_fingerprint={
                     "login": "123456",
                     "server": "Demo-Server",
@@ -367,11 +391,21 @@ class DesktopRuntimeCoordinatorTests(unittest.TestCase):
                 self.assertNotIn("runtime_cycle", seen_kinds)
                 self.assertNotIn("runtime_error", seen_kinds)
                 self.assertFalse(coordinator.live_enabled)
+                runtime_state, last_session = self._load_persisted_state(project_root, context_path)
+                self.assertEqual(runtime_state["context_key"], context_path.name)
+                self.assertEqual(runtime_state["last_runtime_state"], "halted")
+                self.assertEqual(runtime_state["last_shutdown_reason"], "mt5_disconnect_safe_halt")
+                self.assertEqual(last_session["context_key"], context_path.name)
+                self.assertEqual(last_session["last_runtime_state"], "halted")
+                self.assertEqual(last_session["last_shutdown_reason"], "mt5_disconnect_safe_halt")
+                self.assertEqual(last_session["last_mode"], "dry-run")
             finally:
                 coordinator.stop()
 
     def test_runtime_hard_halts_when_account_fingerprint_changes(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
+            project_root = Path(tmpdir)
+            context_path = self._create_context(project_root)
             coordinator = DesktopRuntimeCoordinator(
                 adapter_factory=lambda: FakeAdapter(
                     fingerprint=AccountFingerprintSnapshot(
@@ -390,8 +424,11 @@ class DesktopRuntimeCoordinatorTests(unittest.TestCase):
                 trading_style=TradingStyle.INTRADAY,
                 stop_distance_points=20.0,
                 capital_allocation=CapitalAllocation(mode=CapitalAllocationMode.FIXED_CASH, value=1000.0),
-                db_path=str(Path(tmpdir) / "runtime.db"),
+                db_path=str(project_root / "runtime.db"),
                 poll_interval_seconds=1,
+                ai_context_path=str(context_path),
+                resume_prompt_path=str(context_path / "resume" / "resume_prompt.md"),
+                behavior_profile_path=str(context_path / "profile.yaml"),
                 account_fingerprint={
                     "login": "123456",
                     "server": "Demo-Server",
@@ -412,6 +449,14 @@ class DesktopRuntimeCoordinatorTests(unittest.TestCase):
                 self.assertIn("account_changed", seen_kinds)
                 self.assertIn("runtime_halted", seen_kinds)
                 self.assertFalse(coordinator.live_enabled)
+                runtime_state, last_session = self._load_persisted_state(project_root, context_path)
+                self.assertEqual(runtime_state["context_key"], context_path.name)
+                self.assertEqual(runtime_state["last_runtime_state"], "halted")
+                self.assertEqual(runtime_state["last_shutdown_reason"], "account_changed")
+                self.assertEqual(last_session["context_key"], context_path.name)
+                self.assertEqual(last_session["last_runtime_state"], "halted")
+                self.assertEqual(last_session["last_shutdown_reason"], "account_changed")
+                self.assertEqual(last_session["account_fingerprint"]["login"], "123456")
             finally:
                 coordinator.stop()
 
@@ -656,15 +701,7 @@ class DesktopRuntimeCoordinatorTests(unittest.TestCase):
     def test_runtime_persists_account_session_state_on_stop(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             project_root = Path(tmpdir)
-            context_path = project_root / "ai_context" / "demo_broker_demo_server_123456"
-            (context_path / "memory").mkdir(parents=True, exist_ok=True)
-            (context_path / "resume").mkdir(parents=True, exist_ok=True)
-            (context_path / "documents").mkdir(parents=True, exist_ok=True)
-            (context_path / "profile.yaml").write_text("language: id\n", encoding="utf-8")
-            (context_path / "resume" / "resume_prompt.md").write_text("resume prompt\n", encoding="utf-8")
-            (context_path / "memory" / "latest_summary.md").write_text("latest summary\n", encoding="utf-8")
-            (context_path / "memory" / "open_issues.md").write_text("open issues\n", encoding="utf-8")
-            (context_path / "memory" / "last_session.json").write_text("{}", encoding="utf-8")
+            context_path = self._create_context(project_root)
 
             coordinator = DesktopRuntimeCoordinator(
                 adapter_factory=FakeAdapter,
@@ -697,8 +734,7 @@ class DesktopRuntimeCoordinatorTests(unittest.TestCase):
             coordinator.stop()
             time.sleep(0.1)
 
-            runtime_state = json.loads((project_root / "runtime_data" / "runtime_state.json").read_text(encoding="utf-8"))
-            last_session = json.loads((context_path / "memory" / "last_session.json").read_text(encoding="utf-8"))
+            runtime_state, last_session = self._load_persisted_state(project_root, context_path)
 
             self.assertEqual(runtime_state["context_key"], context_path.name)
             self.assertEqual(runtime_state["last_runtime_state"], "stopped")
@@ -706,6 +742,158 @@ class DesktopRuntimeCoordinatorTests(unittest.TestCase):
             self.assertEqual(last_session["last_runtime_state"], "stopped")
             self.assertEqual(last_session["last_shutdown_reason"], "operator_stop")
             self.assertEqual(last_session["last_symbol"], "EURUSD")
+
+    def test_runtime_persists_account_session_state_on_safe_halt(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_root = Path(tmpdir)
+            context_path = self._create_context(project_root)
+            coordinator = DesktopRuntimeCoordinator(
+                adapter_factory=lambda: BrokenIPCAdapter(fail_account_info=True),
+                codex_engine_factory=FakeCodexEngine,
+                risk_policy=RiskPolicy(base_risk_pct=1.0, max_total_open_risk_pct=2.0, daily_loss_limit_pct=3.0),
+            )
+            config = DesktopRuntimeConfig(
+                symbol="EURUSD",
+                timeframe="M5",
+                trading_style=TradingStyle.INTRADAY,
+                stop_distance_points=20.0,
+                capital_allocation=CapitalAllocation(mode=CapitalAllocationMode.FIXED_CASH, value=1000.0),
+                db_path=str(project_root / "runtime.db"),
+                poll_interval_seconds=1,
+                ai_context_path=str(context_path),
+                resume_prompt_path=str(context_path / "resume" / "resume_prompt.md"),
+                behavior_profile_path=str(context_path / "profile.yaml"),
+                account_fingerprint={
+                    "login": "123456",
+                    "server": "Demo-Server",
+                    "broker": "Demo Broker",
+                    "is_live": False,
+                },
+            )
+
+            try:
+                coordinator.start(config)
+                deadline = time.time() + 4.0
+                seen_kinds: list[str] = []
+                while time.time() < deadline and "runtime_halted" not in seen_kinds:
+                    for event in coordinator.drain_events():
+                        seen_kinds.append(event.kind)
+                    time.sleep(0.05)
+
+                self.assertIn("runtime_safe_halt", seen_kinds)
+                self.assertIn("runtime_halted", seen_kinds)
+                runtime_state, last_session = self._load_persisted_state(project_root, context_path)
+                self.assertEqual(runtime_state["last_runtime_state"], "halted")
+                self.assertEqual(runtime_state["last_shutdown_reason"], "mt5_disconnect_safe_halt")
+                self.assertEqual(last_session["last_runtime_state"], "halted")
+                self.assertEqual(last_session["last_shutdown_reason"], "mt5_disconnect_safe_halt")
+            finally:
+                coordinator.stop()
+
+    def test_runtime_persists_account_session_state_on_account_change_halt(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_root = Path(tmpdir)
+            context_path = self._create_context(project_root)
+            coordinator = DesktopRuntimeCoordinator(
+                adapter_factory=lambda: FakeAdapter(
+                    fingerprint=AccountFingerprintSnapshot(
+                        login="789012",
+                        server="Other-Server",
+                        broker="Other Broker",
+                        is_live=False,
+                    )
+                ),
+                codex_engine_factory=FakeCodexEngine,
+                risk_policy=RiskPolicy(base_risk_pct=1.0, max_total_open_risk_pct=2.0, daily_loss_limit_pct=3.0),
+            )
+            config = DesktopRuntimeConfig(
+                symbol="EURUSD",
+                timeframe="M5",
+                trading_style=TradingStyle.INTRADAY,
+                stop_distance_points=20.0,
+                capital_allocation=CapitalAllocation(mode=CapitalAllocationMode.FIXED_CASH, value=1000.0),
+                db_path=str(project_root / "runtime.db"),
+                poll_interval_seconds=1,
+                ai_context_path=str(context_path),
+                resume_prompt_path=str(context_path / "resume" / "resume_prompt.md"),
+                behavior_profile_path=str(context_path / "profile.yaml"),
+                account_fingerprint={
+                    "login": "123456",
+                    "server": "Demo-Server",
+                    "broker": "Demo Broker",
+                    "is_live": False,
+                },
+            )
+
+            try:
+                coordinator.start(config)
+                deadline = time.time() + 4.0
+                seen_kinds: list[str] = []
+                while time.time() < deadline and "account_changed" not in seen_kinds:
+                    for event in coordinator.drain_events():
+                        seen_kinds.append(event.kind)
+                    time.sleep(0.05)
+
+                self.assertIn("runtime_safe_halt", seen_kinds)
+                self.assertIn("account_changed", seen_kinds)
+                runtime_state, last_session = self._load_persisted_state(project_root, context_path)
+                self.assertEqual(runtime_state["last_runtime_state"], "halted")
+                self.assertEqual(runtime_state["last_shutdown_reason"], "account_changed")
+                self.assertEqual(last_session["last_runtime_state"], "halted")
+                self.assertEqual(last_session["last_shutdown_reason"], "account_changed")
+            finally:
+                coordinator.stop()
+
+    def test_runtime_persists_account_session_state_on_runtime_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_root = Path(tmpdir)
+            context_path = self._create_context(project_root)
+
+            def exploding_adapter_factory():
+                raise RuntimeError("adapter bootstrap failed")
+
+            coordinator = DesktopRuntimeCoordinator(
+                adapter_factory=exploding_adapter_factory,
+                codex_engine_factory=FakeCodexEngine,
+                risk_policy=RiskPolicy(base_risk_pct=1.0, max_total_open_risk_pct=2.0, daily_loss_limit_pct=3.0),
+            )
+            config = DesktopRuntimeConfig(
+                symbol="EURUSD",
+                timeframe="M5",
+                trading_style=TradingStyle.INTRADAY,
+                stop_distance_points=20.0,
+                capital_allocation=CapitalAllocation(mode=CapitalAllocationMode.FIXED_CASH, value=1000.0),
+                db_path=str(project_root / "runtime.db"),
+                poll_interval_seconds=1,
+                ai_context_path=str(context_path),
+                resume_prompt_path=str(context_path / "resume" / "resume_prompt.md"),
+                behavior_profile_path=str(context_path / "profile.yaml"),
+                account_fingerprint={
+                    "login": "123456",
+                    "server": "Demo-Server",
+                    "broker": "Demo Broker",
+                    "is_live": False,
+                },
+            )
+
+            try:
+                coordinator.start(config)
+                deadline = time.time() + 4.0
+                seen_kinds: list[str] = []
+                while time.time() < deadline and "runtime_error" not in seen_kinds:
+                    for event in coordinator.drain_events():
+                        seen_kinds.append(event.kind)
+                    time.sleep(0.05)
+
+                self.assertIn("runtime_error", seen_kinds)
+                runtime_state, last_session = self._load_persisted_state(project_root, context_path)
+                self.assertEqual(runtime_state["last_runtime_state"], "error")
+                self.assertEqual(runtime_state["last_shutdown_reason"], "runtime_failure")
+                self.assertEqual(last_session["last_runtime_state"], "error")
+                self.assertEqual(last_session["last_shutdown_reason"], "runtime_failure")
+                self.assertEqual(last_session["last_symbol"], "EURUSD")
+            finally:
+                coordinator.stop()
 
 
 if __name__ == "__main__":
