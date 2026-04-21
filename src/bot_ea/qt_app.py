@@ -2286,6 +2286,10 @@ class BotEaQtWindow(QMainWindow):
             self._refresh_preview_state()
 
     def check_mt5(self, *, silent: bool = False) -> None:
+        if self._runtime_running and not silent:
+            self._append_log(["MT5 check dilewati: bot sedang berjalan dan probe manual diblokir untuk menjaga session MT5."])
+            self._set_mt5_status("MT5 memakai session bot aktif. Hentikan bot untuk cek manual.", tone="ok")
+            return
         try:
             self._probe_mt5_process()
             self._probe_mt5_session()
@@ -2293,6 +2297,10 @@ class BotEaQtWindow(QMainWindow):
             result = self._send_backend_command("probe_symbol_baseline", self._probe_params())
         except Exception as exc:
             detail = self._format_exception_detail(exc)
+            if "disabled while runtime is running" in str(exc):
+                self._append_log(["MT5 check dilewati: bot sedang berjalan dan probe manual diblokir untuk menjaga session MT5."])
+                self._set_mt5_status("MT5 memakai session bot aktif. Hentikan bot untuk cek manual.", tone="ok")
+                return
             self._mt5_ready = False
             self._set_mt5_status(detail, tone="warn")
             self._append_log([f"MT5 error: {detail}"])

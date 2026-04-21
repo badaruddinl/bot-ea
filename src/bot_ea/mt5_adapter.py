@@ -238,7 +238,7 @@ class MockMT5Adapter:
             return OrderValidationResult(accepted=False, detail="volume below minimum", retcode=10014)
         if volume > snapshot.volume_max:
             return OrderValidationResult(accepted=False, detail="volume above maximum", retcode=10014)
-        if action == "close":
+        if action in {"close", "reduce"}:
             position_ticket = request.get("position_ticket") or request.get("position")
             if not position_ticket:
                 return OrderValidationResult(accepted=False, detail="position ticket missing", retcode=404)

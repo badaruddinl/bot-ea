@@ -284,7 +284,7 @@ class PollingRuntime:
                 snapshot=snapshot_payload,
             )
 
-        if intent.action in {DecisionAction.CLOSE, DecisionAction.CANCEL_PENDING}:
+        if intent.action in {DecisionAction.ADD, DecisionAction.REDUCE, DecisionAction.CLOSE, DecisionAction.CANCEL_PENDING}:
             size_result = self._lifecycle_size_result(snapshot, intent)
             self.store.record_risk_guard(
                 run_id=run_id,
@@ -437,6 +437,12 @@ class PollingRuntime:
                 exit_price = execution_result.get("realized_price", execution_result.get("price"))
                 opened_at = None
                 closed_at = datetime.now(timezone.utc).isoformat()
+            elif intent.action is DecisionAction.REDUCE:
+                position_status = "REDUCED"
+                entry_price = None
+                opened_at = None
+            elif intent.action is DecisionAction.ADD:
+                position_status = "ADDED"
             self.store.record_position_event(
                 run_id=run_id,
                 cycle_id=cycle_id,
@@ -509,6 +515,8 @@ class PollingRuntime:
         volume = float(intent.payload.get("volume") or intent.payload.get("position_volume") or 0.0)
         if intent.action is DecisionAction.CANCEL_PENDING:
             volume = 0.0
+        elif intent.action is DecisionAction.ADD and volume <= 0:
+            volume = 0.01
         return SimpleNamespace(
             accepted=True,
             mode="lifecycle",

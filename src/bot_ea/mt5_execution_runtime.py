@@ -26,7 +26,13 @@ class MT5ExecutionRuntime:
         self.comment_prefix = comment_prefix
 
     def execute(self, snapshot, intent, size_result, preflight_result: dict | None = None) -> dict:
-        if intent.action not in {DecisionAction.OPEN, DecisionAction.CLOSE, DecisionAction.CANCEL_PENDING}:
+        if intent.action not in {
+            DecisionAction.OPEN,
+            DecisionAction.ADD,
+            DecisionAction.REDUCE,
+            DecisionAction.CLOSE,
+            DecisionAction.CANCEL_PENDING,
+        }:
             return self._reject(f"unsupported action {intent.action.value}")
         if intent.action is not DecisionAction.CANCEL_PENDING and intent.side not in {"buy", "sell"}:
             return self._reject("intent side must be buy or sell")
@@ -112,7 +118,7 @@ class MT5ExecutionRuntime:
         if intent.side not in {"buy", "sell"}:
             return self._reject("intent side must be buy or sell")
         stop_distance_points = float(intent.stop_distance_points or snapshot.stop_distance_points)
-        if intent.action is DecisionAction.CLOSE:
+        if intent.action in {DecisionAction.CLOSE, DecisionAction.REDUCE}:
             request = self._build_order_request(snapshot, intent, size_result, stop_distance_points)
             validation = self.adapter.validate_order(request)
             return {
@@ -181,7 +187,7 @@ class MT5ExecutionRuntime:
             or size_result.normalized_volume
             or 0.0
         )
-        if intent.action is DecisionAction.CLOSE:
+        if intent.action in {DecisionAction.CLOSE, DecisionAction.REDUCE}:
             close_side = "sell" if side == "buy" else "buy"
             request["order_type"] = close_side
             request["position_ticket"] = (

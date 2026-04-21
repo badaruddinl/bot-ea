@@ -195,3 +195,37 @@ class MT5ExecutionRuntimeTests(unittest.TestCase):
         self.assertEqual(result["status"], "DRY_RUN_OK")
         self.assertEqual(result["request"]["action"], "cancel_pending")
         self.assertEqual(result["request"]["order_ticket"], 700001)
+
+    def test_reduce_position_dry_run_is_supported(self) -> None:
+        runtime = MT5ExecutionRuntime(adapter=self.adapter)
+        intent = AIIntent(
+            action=DecisionAction.REDUCE,
+            side="buy",
+            reason="reduce test",
+            payload={"position_ticket": 900001, "volume": 0.02},
+        )
+
+        result = runtime.execute(self.snapshot, intent, self.size_result)
+
+        self.assertEqual(result["status"], "DRY_RUN_OK")
+        self.assertEqual(result["request"]["action"], "reduce")
+        self.assertEqual(result["request"]["order_type"], "sell")
+        self.assertEqual(result["request"]["position_ticket"], 900001)
+        self.assertEqual(result["request"]["volume"], 0.02)
+
+    def test_add_position_dry_run_is_supported(self) -> None:
+        runtime = MT5ExecutionRuntime(adapter=self.adapter)
+        intent = AIIntent(
+            action=DecisionAction.ADD,
+            side="buy",
+            reason="add test",
+            payload={"volume": 0.03},
+            entry_price=1.1002,
+        )
+
+        result = runtime.execute(self.snapshot, intent, self.size_result)
+
+        self.assertEqual(result["status"], "DRY_RUN_OK")
+        self.assertEqual(result["request"]["action"], "add")
+        self.assertEqual(result["request"]["order_type"], "buy")
+        self.assertEqual(result["request"]["volume"], 0.03)

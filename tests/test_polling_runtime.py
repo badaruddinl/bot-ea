@@ -97,6 +97,29 @@ class LifecycleExecutionRuntime:
         return payload
 
 
+class ReduceDecisionEngine:
+    def decide(self, snapshot: RuntimeSnapshot) -> AIIntent:
+        return AIIntent(
+            action=DecisionAction.REDUCE,
+            side="buy",
+            confidence=0.8,
+            reason="reduce open position",
+            payload={"position_ticket": "900001", "volume": 0.02},
+        )
+
+
+class AddDecisionEngine:
+    def decide(self, snapshot: RuntimeSnapshot) -> AIIntent:
+        return AIIntent(
+            action=DecisionAction.ADD,
+            side="buy",
+            confidence=0.8,
+            reason="add to position",
+            payload={"volume": 0.03},
+            entry_price=snapshot.ask,
+        )
+
+
 class PollingRuntimeTests(unittest.TestCase):
     def test_run_cycle_records_trade_flow(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -364,3 +387,103 @@ class PollingRuntimeTests(unittest.TestCase):
             self.assertEqual(result.action, DecisionAction.CANCEL_PENDING.value)
             self.assertEqual(len(positions), 0)
             self.assertEqual(events[0]["status"], "FILLED")
+
+    def test_reduce_cycle_records_reduced_position_event(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "runtime.db"
+            store = RuntimeStore(db_path)
+            store.initialize()
+            store.start_run(run_id="run-reduce", started_at="2026-04-20T00:00:00Z", status="RUNNING", symbol="EURUSD")
+
+            snapshot = RuntimeSnapshot(
+                symbol="EURUSD",
+                timeframe="M5",
+                bid=1.1000,
+                ask=1.1002,
+                spread_points=2.0,
+                account=AccountSnapshot(equity=1000.0, balance=1000.0, free_margin=900.0, margin_level=500.0),
+                symbol_snapshot=SymbolSnapshot(
+                    name="EURUSD",
+                    instrument_class="forex_major",
+                    risk_weight=1.0,
+                    point=0.0001,
+                    tick_size=0.0001,
+                    tick_value=1.0,
+                    volume_min=0.01,
+                    volume_max=10.0,
+                    volume_step=0.01,
+                    spread_points=2.0,
+                    stops_level_points=10.0,
+                    freeze_level_points=0.0,
+                    volatility_points=100.0,
+                ),
+                risk_policy=RiskPolicy(base_risk_pct=1.0, max_total_open_risk_pct=2.0, daily_loss_limit_pct=3.0),
+                trading_style=TradingStyle.INTRADAY,
+                stop_distance_points=50.0,
+                capital_allocation=CapitalAllocation(mode=CapitalAllocationMode.PERCENT_EQUITY, value=25.0),
+            )
+
+            runtime = PollingRuntime(
+                store=store,
+                snapshot_provider=FakeSnapshotProvider(snapshot),
+                decision_engine=ReduceDecisionEngine(),
+                execution_runtime=LifecycleExecutionRuntime(),
+                risk_engine=RiskEngine(),
+                stop_policy=StopPolicy(),
+            )
+            result = runtime.run_cycle(run_id="run-reduce", performance=SessionPerformance())
+            positions = store.fetch_recent_position_events(run_id="run-reduce", limit=5)
+
+            self.assertFalse(result.halted)
+            self.assertEqual(result.action, DecisionAction.REDUCE.value)
+            self.assertEqual(positions[0]["status"], "REDUCED")
+
+    def test_add_cycle_records_added_position_event(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "runtime.db"
+            store = RuntimeStore(db_path)
+            store.initialize()
+            store.start_run(run_id="run-add", started_at="2026-04-20T00:00:00Z", status="RUNNING", symbol="EURUSD")
+
+            snapshot = RuntimeSnapshot(
+                symbol="EURUSD",
+                timeframe="M5",
+                bid=1.1000,
+                ask=1.1002,
+                spread_points=2.0,
+                account=AccountSnapshot(equity=1000.0, balance=1000.0, free_margin=900.0, margin_level=500.0),
+                symbol_snapshot=SymbolSnapshot(
+                    name="EURUSD",
+                    instrument_class="forex_major",
+                    risk_weight=1.0,
+                    point=0.0001,
+                    tick_size=0.0001,
+                    tick_value=1.0,
+                    volume_min=0.01,
+                    volume_max=10.0,
+                    volume_step=0.01,
+                    spread_points=2.0,
+                    stops_level_points=10.0,
+                    freeze_level_points=0.0,
+                    volatility_points=100.0,
+                ),
+                risk_policy=RiskPolicy(base_risk_pct=1.0, max_total_open_risk_pct=2.0, daily_loss_limit_pct=3.0),
+                trading_style=TradingStyle.INTRADAY,
+                stop_distance_points=50.0,
+                capital_allocation=CapitalAllocation(mode=CapitalAllocationMode.PERCENT_EQUITY, value=25.0),
+            )
+
+            runtime = PollingRuntime(
+                store=store,
+                snapshot_provider=FakeSnapshotProvider(snapshot),
+                decision_engine=AddDecisionEngine(),
+                execution_runtime=LifecycleExecutionRuntime(),
+                risk_engine=RiskEngine(),
+                stop_policy=StopPolicy(),
+            )
+            result = runtime.run_cycle(run_id="run-add", performance=SessionPerformance())
+            positions = store.fetch_recent_position_events(run_id="run-add", limit=5)
+
+            self.assertFalse(result.halted)
+            self.assertEqual(result.action, DecisionAction.ADD.value)
+            self.assertEqual(positions[0]["status"], "ADDED")
