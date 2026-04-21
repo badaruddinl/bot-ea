@@ -145,3 +145,86 @@ def test_build_resume_state_uses_existing_base_context_when_mapping_missing(tmp_
     assert result["binding"]["context_key"] == "broker_demo_demo_server_123456"
     assert result["binding"]["mapping_source"] == "existing"
     assert result["binding"]["created_now"] is False
+
+
+def test_create_new_context_preserves_existing_resume_prompt_and_session(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    settings = store.default_settings()
+
+    first = store.build_resume_state(settings=settings, fingerprint_payload=FINGERPRINT)
+    first_context_path = Path(first["binding"]["context_path"])
+    first_resume_prompt = first_context_path / "resume" / "resume_prompt.md"
+    first_resume_prompt.write_text("# Resume Prompt\n\n- catatan lama harus tetap ada.\n", encoding="utf-8")
+    store.update_last_session(
+        context_path=first_context_path,
+        last_run_id="run-existing",
+        last_runtime_state="halted",
+        last_shutdown_reason="mt5_disconnect",
+    )
+
+    second = store.build_resume_state(settings=settings, fingerprint_payload=FINGERPRINT, create_new=True)
+    second_context_path = Path(second["binding"]["context_path"])
+
+    assert second["binding"]["context_key"] != first["binding"]["context_key"]
+    assert first_resume_prompt.read_text(encoding="utf-8") == "# Resume Prompt\n\n- catatan lama harus tetap ada.\n"
+    assert store.load_last_session(context_path=first_context_path)["last_run_id"] == "run-existing"
+    assert store.load_last_session(context_path=first_context_path)["last_shutdown_reason"] == "mt5_disconnect"
+    assert (second_context_path / "resume" / "resume_prompt.md").exists()
+    assert store.load_runtime_state()["context_key"] == second["binding"]["context_key"]
+
+
+def test_rebinding_existing_context_does_not_overwrite_resume_prompt(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    settings = store.default_settings()
+
+    initial = store.build_resume_state(settings=settings, fingerprint_payload=FINGERPRINT)
+    context_path = Path(initial["binding"]["context_path"])
+    resume_prompt = context_path / "resume" / "resume_prompt.md"
+    custom_prompt = "# Resume Prompt\n\n- lanjutkan konteks lama.\n- jangan reset manual notes.\n"
+    resume_prompt.write_text(custom_prompt, encoding="utf-8")
+
+    rebound = store.build_resume_state(
+        settings=settings,
+        fingerprint_payload=FINGERPRINT,
+        context_key=initial["binding"]["context_key"],
+    )
+
+    assert rebound["binding"]["context_key"] == initial["binding"]["context_key"]
+    assert rebound["binding"]["created_now"] is False
+    assert resume_prompt.read_text(encoding="utf-8") == custom_prompt
+    assert store.load_runtime_state()["context_path"] == rebound["binding"]["context_path"]
+
+
+def test_build_resume_state_replaces_stale_runtime_state_with_existing_context(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    settings = store.default_settings()
+    context_root = Path(settings.ai_context_root)
+    existing_path = context_root / "broker_demo_demo_server_123456"
+    existing_path.mkdir(parents=True, exist_ok=True)
+    store.save_last_session(
+        context_path=existing_path,
+        payload={
+            "account_fingerprint": dict(FINGERPRINT),
+            "last_run_id": "run-persisted",
+            "last_runtime_state": "stopped",
+        },
+    )
+    store.save_runtime_state(
+        {
+            "active_account_fingerprint": dict(FINGERPRINT),
+            "context_key": "stale_context_key",
+            "context_path": str((context_root / "stale_context_key").resolve()),
+            "last_runtime_state": "running",
+            "last_run_id": "run-stale",
+            "last_shutdown_reason": "unknown",
+        }
+    )
+
+    result = store.build_resume_state(settings=settings, fingerprint_payload=FINGERPRINT)
+    runtime_state = store.load_runtime_state()
+
+    assert result["binding"]["context_key"] == "broker_demo_demo_server_123456"
+    assert result["binding"]["mapping_source"] == "existing"
+    assert runtime_state["context_key"] == "broker_demo_demo_server_123456"
+    assert runtime_state["context_path"] == str(existing_path.resolve())
+    assert runtime_state["last_runtime_state"] == "ready"
