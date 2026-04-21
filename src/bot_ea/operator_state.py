@@ -5,6 +5,7 @@ import re
 import shutil
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
+from itertools import count
 from pathlib import Path
 from typing import Any
 
@@ -27,6 +28,10 @@ def _json_load(path: Path) -> dict[str, Any]:
     except json.JSONDecodeError:
         return {}
     return raw if isinstance(raw, dict) else {}
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 
 @dataclass(slots=True)
@@ -134,6 +139,26 @@ class OperatorStateStore:
         payload.update(_json_load(self.runtime_settings_path))
         return OperatorRuntimeSettings(**payload)
 
+    def load_runtime_state(self) -> dict[str, Any]:
+        payload = self._default_runtime_state()
+        payload.update(_json_load(self.runtime_state_path))
+        return payload
+
+    def save_runtime_state(self, payload: dict[str, Any]) -> dict[str, Any]:
+        current = self._default_runtime_state()
+        current.update(payload)
+        current["updated_at"] = _utc_now_iso()
+        _json_dump(self.runtime_state_path, current)
+        return current
+
+    def update_runtime_state(self, updates: dict[str, Any] | None = None, /, **changes: Any) -> dict[str, Any]:
+        current = self.load_runtime_state()
+        if updates:
+            current.update(updates)
+        if changes:
+            current.update(changes)
+        return self.save_runtime_state(current)
+
     def save_runtime_settings(self, settings: OperatorRuntimeSettings) -> dict[str, Any]:
         self.runtime_data_dir.mkdir(parents=True, exist_ok=True)
         payload = settings.to_dict()
@@ -146,7 +171,7 @@ class OperatorStateStore:
                 "allow_dev_bypass": settings.allow_dev_bypass,
                 "service_host": settings.service_host,
                 "service_port": settings.service_port,
-                "updated_at": datetime.now(timezone.utc).isoformat(),
+                "updated_at": _utc_now_iso(),
             },
         )
         return payload
@@ -225,39 +250,43 @@ class OperatorStateStore:
         settings: OperatorRuntimeSettings,
         fingerprint_payload: dict[str, Any],
         create_new: bool = False,
+        context_key: str | None = None,
     ) -> dict[str, Any]:
         fingerprint = AccountFingerprint.from_payload(fingerprint_payload)
         context_root = Path(settings.ai_context_root).expanduser()
         context_root.mkdir(parents=True, exist_ok=True)
         mapping = _json_load(self.account_context_map_path)
+        listing = self.list_account_contexts(settings=settings, fingerprint_payload=fingerprint_payload)
 
-        base_key = fingerprint.key
-        context_key = base_key
-        mapping_source = "new"
-        existed = False
-
-        if not create_new and mapping.get(base_key):
-            context_key = str(mapping[base_key])
-            mapping_source = "mapped"
-        elif create_new:
-            suffix = 2
-            while (context_root / context_key).exists():
-                context_key = f"{base_key}_{suffix}"
-                suffix += 1
+        if create_new:
+            resolved_context_key = str(listing["new_context"]["context_key"])
             mapping_source = "new_context"
+        elif context_key:
+            resolved_context_key = self._normalize_context_key(context_key)
+            available = {entry["context_key"]: entry for entry in listing["available_contexts"]}
+            if resolved_context_key in available:
+                mapping_source = str(available[resolved_context_key]["mapping_source"])
+            elif resolved_context_key == fingerprint.key:
+                mapping_source = "existing" if (context_root / resolved_context_key).exists() else "new"
+            else:
+                raise RuntimeError("Context key tidak dikenal untuk akun ini.")
+        else:
+            resolved_context_key = str(listing["default_context_key"])
+            available = {entry["context_key"]: entry for entry in listing["available_contexts"]}
+            mapping_source = str(available.get(resolved_context_key, {}).get("mapping_source") or "new")
 
-        context_path = context_root / context_key
+        context_path = context_root / resolved_context_key
         existed = context_path.exists()
         created_now = not existed
 
         self._ensure_context_structure(context_path, fingerprint)
 
-        mapping[base_key] = context_key
+        mapping[fingerprint.key] = resolved_context_key
         _json_dump(self.account_context_map_path, mapping)
 
         binding = ContextBinding(
             fingerprint=fingerprint,
-            context_key=context_key,
+            context_key=resolved_context_key,
             context_path=str(context_path.resolve()),
             existed=existed,
             created_now=created_now,
@@ -271,20 +300,119 @@ class OperatorStateStore:
             operator_notes_path=str((context_path / "documents" / "operator_notes.md").resolve()),
         )
 
-        runtime_state = {
+        runtime_state = self.save_runtime_state(
+            {
             "active_account_fingerprint": fingerprint.to_dict(),
-            "context_key": context_key,
+            "context_key": resolved_context_key,
             "context_path": binding.context_path,
             "last_runtime_state": "ready",
-            "updated_at": datetime.now(timezone.utc).isoformat(),
-        }
-        _json_dump(self.runtime_state_path, runtime_state)
+            }
+        )
         return {
             "ok": True,
             "detail": f"Context akun siap: {context_path.resolve()}",
             "binding": binding.to_dict(),
             "runtime_state": runtime_state,
         }
+
+    def list_account_contexts(
+        self,
+        *,
+        settings: OperatorRuntimeSettings,
+        fingerprint_payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        fingerprint = AccountFingerprint.from_payload(fingerprint_payload)
+        context_root = Path(settings.ai_context_root).expanduser()
+        context_root.mkdir(parents=True, exist_ok=True)
+        mapping = _json_load(self.account_context_map_path)
+        base_key = fingerprint.key
+        mapped_key = self._normalize_context_key(str(mapping.get(base_key) or "")) if mapping.get(base_key) else None
+        contexts: dict[str, dict[str, Any]] = {}
+
+        if mapped_key:
+            mapped_path = context_root / mapped_key
+            contexts[mapped_key] = self._context_entry(
+                context_root=context_root,
+                context_key=mapped_key,
+                fingerprint=fingerprint,
+                mapping_source="mapped",
+                force_exists=mapped_path.exists(),
+            )
+
+        for child in sorted(context_root.iterdir()) if context_root.exists() else []:
+            if not child.is_dir():
+                continue
+            session = self.load_last_session(context_path=child)
+            session_fingerprint = AccountFingerprint.from_payload(dict(session.get("account_fingerprint") or {}))
+            if session_fingerprint.key != base_key:
+                continue
+            entry = self._context_entry(
+                context_root=context_root,
+                context_key=child.name,
+                fingerprint=fingerprint,
+                mapping_source="mapped" if child.name == mapped_key else "existing",
+                force_exists=True,
+            )
+            existing = contexts.get(child.name)
+            if existing:
+                existing.update(entry)
+            else:
+                contexts[child.name] = entry
+
+        if base_key not in contexts and (context_root / base_key).exists():
+            contexts[base_key] = self._context_entry(
+                context_root=context_root,
+                context_key=base_key,
+                fingerprint=fingerprint,
+                mapping_source="existing",
+                force_exists=True,
+            )
+
+        default_context_key = mapped_key or (base_key if base_key in contexts else None)
+        if default_context_key is None and contexts:
+            default_context_key = sorted(contexts.values(), key=self._context_sort_key)[0]["context_key"]
+        if default_context_key is None:
+            default_context_key = base_key
+
+        available_contexts = sorted(contexts.values(), key=self._context_sort_key)
+        for entry in available_contexts:
+            entry["selected_by_default"] = entry["context_key"] == default_context_key
+
+        return {
+            "ok": True,
+            "fingerprint": fingerprint.to_dict(),
+            "mapped_context_key": mapped_key,
+            "default_context_key": default_context_key,
+            "available_contexts": available_contexts,
+            "new_context": self._new_context_entry(context_root=context_root, base_key=base_key),
+        }
+
+    def load_last_session(self, *, context_path: str | Path) -> dict[str, Any]:
+        path = self._last_session_path(context_path)
+        payload = self._default_last_session()
+        payload.update(_json_load(path))
+        return payload
+
+    def save_last_session(self, *, context_path: str | Path, payload: dict[str, Any]) -> dict[str, Any]:
+        current = self._default_last_session()
+        current.update(payload)
+        current["updated_at"] = _utc_now_iso()
+        _json_dump(self._last_session_path(context_path), current)
+        return current
+
+    def update_last_session(
+        self,
+        *,
+        context_path: str | Path,
+        updates: dict[str, Any] | None = None,
+        **changes: Any,
+    ) -> dict[str, Any]:
+        current = self.load_last_session(context_path=context_path)
+        if updates:
+            current.update(updates)
+        if changes:
+            current.update(changes)
+        return self.save_last_session(context_path=context_path, payload=current)
 
     def _ensure_context_structure(self, context_path: Path, fingerprint: AccountFingerprint) -> None:
         (context_path / "memory").mkdir(parents=True, exist_ok=True)
@@ -332,16 +460,15 @@ class OperatorStateStore:
 
         last_session = context_path / "memory" / "last_session.json"
         if not last_session.exists():
-            _json_dump(
-                last_session,
-                {
+            self.save_last_session(
+                context_path=context_path,
+                payload={
                     "account_fingerprint": fingerprint.to_dict(),
                     "last_run_id": None,
                     "last_runtime_state": "stopped",
                     "last_symbol": None,
                     "last_mode": "dry-run",
                     "last_shutdown_reason": "not_started",
-                    "updated_at": datetime.now(timezone.utc).isoformat(),
                 },
             )
 
@@ -368,3 +495,82 @@ class OperatorStateStore:
         operator_notes = context_path / "documents" / "operator_notes.md"
         if not operator_notes.exists():
             operator_notes.write_text("# Operator Notes\n\n", encoding="utf-8")
+
+    @staticmethod
+    def _default_runtime_state() -> dict[str, Any]:
+        return {
+            "active_account_fingerprint": {},
+            "context_key": "",
+            "context_path": "",
+            "last_runtime_state": "stopped",
+            "last_run_id": None,
+            "last_shutdown_reason": "not_started",
+            "updated_at": None,
+        }
+
+    @staticmethod
+    def _default_last_session() -> dict[str, Any]:
+        return {
+            "account_fingerprint": {},
+            "last_run_id": None,
+            "last_runtime_state": "stopped",
+            "last_symbol": None,
+            "last_mode": "dry-run",
+            "last_shutdown_reason": "not_started",
+            "updated_at": None,
+        }
+
+    @staticmethod
+    def _normalize_context_key(value: str) -> str:
+        normalized = value.strip()
+        if not normalized or re.search(r"[\\/]", normalized) or ".." in normalized:
+            raise RuntimeError("Context key tidak valid.")
+        return normalized
+
+    @staticmethod
+    def _context_sort_key(entry: dict[str, Any]) -> tuple[int, str, str]:
+        priority = 0 if entry.get("mapping_source") == "mapped" else 1
+        updated = str(entry.get("updated_at") or "")
+        return (priority, updated == "", updated or entry["context_key"])
+
+    def _context_entry(
+        self,
+        *,
+        context_root: Path,
+        context_key: str,
+        fingerprint: AccountFingerprint,
+        mapping_source: str,
+        force_exists: bool,
+    ) -> dict[str, Any]:
+        context_path = context_root / context_key
+        last_session = self.load_last_session(context_path=context_path)
+        session_fingerprint = dict(last_session.get("account_fingerprint") or {})
+        account_match = not session_fingerprint or AccountFingerprint.from_payload(session_fingerprint).key == fingerprint.key
+        return {
+            "context_key": context_key,
+            "context_path": str(context_path.resolve()),
+            "exists": bool(force_exists),
+            "mapping_source": mapping_source,
+            "account_match": account_match,
+            "last_run_id": last_session.get("last_run_id"),
+            "last_runtime_state": last_session.get("last_runtime_state"),
+            "last_shutdown_reason": last_session.get("last_shutdown_reason"),
+            "updated_at": last_session.get("updated_at"),
+        }
+
+    def _new_context_entry(self, *, context_root: Path, base_key: str) -> dict[str, Any]:
+        for suffix in count(start=1):
+            candidate = base_key if suffix == 1 else f"{base_key}_{suffix}"
+            path = context_root / candidate
+            if not path.exists():
+                return {
+                    "context_key": candidate,
+                    "context_path": str(path.resolve()),
+                    "exists": False,
+                    "mapping_source": "new_context",
+                }
+        raise RuntimeError("Tidak bisa menentukan context key baru.")
+
+    @staticmethod
+    def _last_session_path(context_path: str | Path) -> Path:
+        return Path(context_path).expanduser() / "memory" / "last_session.json"
