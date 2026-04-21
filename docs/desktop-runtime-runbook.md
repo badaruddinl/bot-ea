@@ -131,6 +131,12 @@ Generated files include:
 - `documents/broker_notes.md`
 - `documents/operator_notes.md`
 
+Persistence roles:
+
+- `runtime_state.json`: cross-session operator snapshot for the last active account/context, run id, runtime state, shutdown reason, and backend-written runtime metadata
+- `memory/last_session.json`: per-account continuity record written by backend lifecycle events
+- `resume/resume_prompt.md`: reusable prompt scaffold for the account context; it survives restart but does not auto-start the runtime
+
 ## Runtime Lifecycle
 
 ### Normal supervised start
@@ -156,12 +162,27 @@ Generated files include:
 - pending approval is cleared
 - operator must reconnect MT5 and start the bot manually again
 
+Continuity contract after this halt:
+
+- preserved: `runtime_state.json` keeps the active account fingerprint, mapped context, `last_run_id`, `last_runtime_state=halted`, and `last_shutdown_reason`
+- preserved: the bound account context keeps `memory/last_session.json`, `resume/resume_prompt.md`, profile, summaries, issues, and notes
+- discarded: the in-memory runtime thread, live-enabled state as an active control flag, pending approval payload, and any armed approval key
+- restart rule: the operator must pass readiness again as needed and explicitly click `Mulai Bot`; live remains off until re-enabled manually
+
 ### Account fingerprint change
 
 - UI opens the account review card
 - trade controls remain blocked
 - operator may reuse the mapped context or create a new one
 - runtime is not restarted automatically
+
+Continuity contract after account review:
+
+- preserved: the previous account context remains on disk unchanged
+- preserved: when review is accepted, the selected or newly created context is stored as the mapping for the new fingerprint
+- preserved: the chosen context keeps its `resume_prompt.md`, `last_session.json`, summaries, issues, and notes for the next supervised run
+- discarded: the old active runtime session does not carry over to the new account, and any pending approval/live state from the interrupted run stays cleared
+- restart rule: after review acceptance, the app returns to the readiness flow and the operator must start a new runtime manually
 
 ## Readiness Semantics
 

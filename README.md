@@ -124,6 +124,23 @@ Behavior:
 - the operator can bind the existing context or create a fresh account context
 - runtime must be started manually again after review
 
+### Continuity Contract After Safe Halt Or Account Change
+
+Preserved across restart:
+
+- `runtime_data/runtime_state.json` keeps the last active MT5 fingerprint, mapped `context_key`, `context_path`, `last_run_id`, `last_runtime_state`, and `last_shutdown_reason`
+- `ai_context/<account>/memory/last_session.json` keeps the per-account last run metadata such as symbol, timeframe, trading style, last mode, and shutdown reason
+- the selected account context stays on disk, including `profile.yaml`, `memory/latest_summary.md`, `memory/open_issues.md`, `resume/resume_prompt.md`, and operator/broker notes
+- after an account review is accepted, the chosen or newly created context becomes the stored mapping for that MT5 fingerprint
+
+Intentionally discarded or forced back to safe defaults:
+
+- the active runtime thread/session never survives restart; the operator must start it again manually
+- live mode is forced off on safe halt and never auto-enables on the next launch, even if the previous run ended in live mode
+- pending live approval and the armed approval key are cleared; any live order proposal must be generated again after restart
+- reconnect overlay state and account-review UI state are transient UI guards, not persisted runtime state
+- account change does not auto-resume trading; the app returns to readiness review before trading controls unlock again
+
 ## AI Runtime Layout
 
 The desktop app now treats AI runtime readiness as more than a single executable.
@@ -145,6 +162,8 @@ Persisted data now includes:
 - `runtime_data/account_context_map.json`
 - `runtime_data/runtime_state.json`
 
+`runtime_state.json` is the cross-session operator snapshot. It records the last known active account fingerprint, selected account context, last run identity, runtime state, shutdown reason, and the most recent runtime parameters written by the backend.
+
 Account contexts are created under `ai_context/<broker>_<server>_<login>/` with:
 
 - `profile.yaml`
@@ -154,6 +173,8 @@ Account contexts are created under `ai_context/<broker>_<server>_<login>/` with:
 - `resume/resume_prompt.md`
 - `documents/broker_notes.md`
 - `documents/operator_notes.md`
+
+`memory/last_session.json` is the per-account continuity file. It keeps the latest run metadata for that specific MT5 account, but it does not reactivate the runtime by itself.
 
 ## Operator Flow
 

@@ -248,6 +248,20 @@ Jika MT5 hilang saat runtime aktif:
 - approval pending dibersihkan
 - Anda harus menyalakan MT5 lalu memulai bot lagi secara manual
 
+Yang tetap tersimpan setelah restart:
+
+- fingerprint akun MT5 terakhir
+- context akun yang sedang terikat
+- `last_run_id`, `last_runtime_state`, dan `last_shutdown_reason`
+- file context akun seperti `profile.yaml`, `memory/latest_summary.md`, `memory/open_issues.md`, `memory/last_session.json`, dan `resume/resume_prompt.md`
+
+Yang sengaja tidak diteruskan:
+
+- sesi runtime yang sedang berjalan
+- status live aktif
+- approval live yang masih pending
+- state overlay reconnect di UI
+
 ## Saat Akun Berubah
 
 Jika app mendeteksi fingerprint akun baru:
@@ -264,6 +278,14 @@ Setelah akun baru diterima:
 - context akun akan di-bind ulang
 - bot tidak auto-start
 - Anda harus memulai bot lagi manual
+- app kembali ke alur readiness/startup gate sebelum kontrol trading dibuka lagi
+
+Kontrak continuity untuk ganti akun:
+
+- jika Anda memilih context akun yang sudah ada, mapping akun baru akan diarahkan ke context itu untuk restart berikutnya
+- jika Anda membuat context baru, folder context baru akan disiapkan dan dipakai sebagai mapping baru
+- `resume_prompt.md`, notes, dan memory milik context yang dipilih tetap dipertahankan
+- run aktif lama tidak diwariskan ke akun baru, dan live tetap mati sampai Anda menyalakannya lagi secara manual
 
 ## Error Umum
 
@@ -312,4 +334,5 @@ Tindakan:
 - Bot tidak auto-start setelah aplikasi dibuka.
 - Live tidak auto-enable.
 - Context AI dipisah per akun.
+- `runtime_state.json` menyimpan snapshot operator lintas restart, sedangkan `memory/last_session.json` menyimpan riwayat sesi per akun.
 - Jika kondisi membingungkan, hentikan bot lebih dulu lalu review `Log` dan `Riwayat`.
