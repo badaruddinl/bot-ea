@@ -13,8 +13,8 @@ dependencies = [
 ]
 
 [project.scripts]
-bot-ea-qt = "bot_ea.qt_app:main"
-bot-ea-websocket = "bot_ea.websocket_service:main"
+bot-ea-qt = "bot_ea.entrypoints:qt_main"
+bot-ea-websocket = "bot_ea.entrypoints:websocket_main"
 
 [project.optional-dependencies]
 live = [
