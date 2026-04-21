@@ -64,6 +64,7 @@ Current expectation:
 
 - operator flow should start from the Qt app
 - backend script should not be required in normal use
+- a first-pass startup gate now runs before the main workspace unlocks
 
 ## Host prerequisites
 
@@ -88,8 +89,11 @@ codex --version
 Current recommended runtime sequence:
 
 1. launch Qt app
-2. `Check MT5`
-3. `Load Codex`
+2. startup gate checks:
+   - service
+   - MT5
+   - Codex
+3. workspace unlocks after those checks pass
 4. `Preview`
 5. `Preflight`
 6. `Play Runtime`
@@ -102,6 +106,26 @@ Important:
 - runtime does not auto-start just because the app opens
 - live mode does not auto-enable
 - a pending live proposal still needs operator action
+
+## Startup gate
+
+Current first-pass behavior:
+
+- the app opens a startup gate before the main workspace
+- the gate checks `service -> MT5 -> Codex`
+- the main workspace remains locked until those three checks succeed
+
+Current scope only:
+
+- service readiness
+- MT5 readiness
+- Codex readiness
+
+Not included yet:
+
+- reconnect overlay
+- account-change review
+- AI workspace/documents/context validation chain from the master brief
 
 ## Current UI pages
 
@@ -166,7 +190,7 @@ Commands exposed through the websocket service include:
 - `reject_pending`
 - `load_telemetry`
 
-This is the current backend contract. Startup-gate commands proposed in the master brief do not exist yet.
+This is the current backend contract. The startup gate reuses the existing service, MT5, and Codex checks; broader startup-gate commands proposed in the master brief do not exist yet.
 
 ## Readiness semantics
 
@@ -330,7 +354,6 @@ Review:
 
 The following are still not implemented even though the master brief proposes them:
 
-- startup dependency gate before the main workspace opens
 - operator/dev mode split with explicit `DEV / MOCK MODE` UI
 - reconnect overlay
 - account-changed review sheet

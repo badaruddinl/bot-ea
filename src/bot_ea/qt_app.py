@@ -404,6 +404,8 @@ class BotEaQtWindow(QMainWindow):
         self._field_guard = False
         self._service_connected = False
         self._managed_service_owned = False
+        self._mt5_ready = False
+        self._codex_ready = False
         self._runtime_running = False
         self._live_enabled = False
         self._pending_approval: dict[str, Any] | None = None
@@ -412,6 +414,10 @@ class BotEaQtWindow(QMainWindow):
         self._telemetry_validation: dict[str, Any] | None = None
         self._preview_debounce_ms = 150
         self._preview_refresh_inflight = False
+        self._dev_mode_enabled = False
+        self._startup_gate_active = True
+        self._startup_probe_inflight = False
+        self._startup_requirements = {"service": False, "mt5": False, "codex": False}
 
         self._build_ui()
         self._wire_events()
@@ -425,7 +431,7 @@ class BotEaQtWindow(QMainWindow):
         self.preview_poll_timer = QTimer(self)
         self.preview_poll_timer.timeout.connect(self._refresh_preview_tick)
         self.preview_poll_timer.start(1000)
-        QTimer.singleShot(0, lambda: self.connect_service(show_errors=False))
+        QTimer.singleShot(0, self._start_startup_gate)
 
     def _apply_obsidian_theme(self) -> None:
         self.setStyleSheet(
@@ -680,8 +686,64 @@ class BotEaQtWindow(QMainWindow):
             lambda: self._append_log([f"Runbook: {Path.cwd() / 'docs' / 'desktop-runtime-runbook.md'}"])
         )
 
-        splitter = QSplitter(Qt.Horizontal, self)
-        root.addWidget(splitter)
+        self.shell_stack = QStackedWidget(self)
+        root.addWidget(self.shell_stack)
+
+        self.startup_gate_page = QWidget(self)
+        startup_layout = QVBoxLayout(self.startup_gate_page)
+        startup_layout.setContentsMargins(80, 60, 80, 60)
+        startup_layout.setSpacing(18)
+        self.gate_card = QFrame(self.startup_gate_page)
+        self.gate_card.setObjectName("heroCard")
+        gate_card_layout = QVBoxLayout(self.gate_card)
+        gate_card_layout.setContentsMargins(24, 24, 24, 24)
+        gate_card_layout.setSpacing(12)
+        self.gate_title = QLabel("Persiapan Sistem", self.gate_card)
+        self.gate_title.setObjectName("heroTitle")
+        self.gate_subtitle = QLabel(
+            "Workspace trading akan terbuka setelah service, MT5, dan AI runtime tervalidasi.",
+            self.gate_card,
+        )
+        self.gate_subtitle.setObjectName("heroSubtitle")
+        self.gate_subtitle.setWordWrap(True)
+        gate_card_layout.addWidget(self.gate_title)
+        gate_card_layout.addWidget(self.gate_subtitle)
+        self.gate_message = QLabel("Memulai pemeriksaan dependency...", self.gate_card)
+        self.gate_message.setObjectName("cardCaption")
+        self.gate_message.setWordWrap(True)
+        gate_card_layout.addWidget(self.gate_message)
+        self.gate_status_group = QGroupBox("Status Kesiapan", self.gate_card)
+        gate_status_layout = QVBoxLayout(self.gate_status_group)
+        gate_status_layout.setContentsMargins(12, 18, 12, 12)
+        gate_status_layout.setSpacing(10)
+        self.gate_service_status = QLabel("Belum diperiksa", self.gate_status_group)
+        self.gate_mt5_status = QLabel("Belum diperiksa", self.gate_status_group)
+        self.gate_codex_status = QLabel("Belum diperiksa", self.gate_status_group)
+        gate_status_layout.addWidget(self._make_status_chip("Service", self.gate_service_status))
+        gate_status_layout.addWidget(self._make_status_chip("MT5", self.gate_mt5_status))
+        gate_status_layout.addWidget(self._make_status_chip("AI Runtime", self.gate_codex_status))
+        gate_card_layout.addWidget(self.gate_status_group)
+        gate_button_row = QHBoxLayout()
+        gate_button_row.setSpacing(10)
+        self.gate_primary_button = QPushButton("Mulai Pemeriksaan", self.gate_card)
+        self.gate_retry_button = QPushButton("Coba Lagi", self.gate_card)
+        self.gate_dev_button = QPushButton("Masuk Mode Dev", self.gate_card)
+        gate_button_row.addWidget(self.gate_primary_button)
+        gate_button_row.addWidget(self.gate_retry_button)
+        gate_button_row.addWidget(self.gate_dev_button)
+        gate_button_row.addStretch(1)
+        gate_card_layout.addLayout(gate_button_row)
+        startup_layout.addStretch(1)
+        startup_layout.addWidget(self.gate_card, 0, Qt.AlignCenter)
+        startup_layout.addStretch(1)
+        self.shell_stack.addWidget(self.startup_gate_page)
+
+        self.workspace_page = QWidget(self)
+        workspace_layout = QVBoxLayout(self.workspace_page)
+        workspace_layout.setContentsMargins(0, 0, 0, 0)
+        workspace_layout.setSpacing(14)
+        splitter = QSplitter(Qt.Horizontal, self.workspace_page)
+        workspace_layout.addWidget(splitter)
 
         left_panel = QWidget(self)
         left_panel.setObjectName("leftRail")
@@ -1360,6 +1422,8 @@ class BotEaQtWindow(QMainWindow):
             self.settings_page,
         ):
             self.page_stack.addWidget(page)
+        self.shell_stack.addWidget(self.workspace_page)
+        self.shell_stack.setCurrentWidget(self.startup_gate_page)
         self._sync_button_states()
 
     def _make_text_card(self, title: str, caption: str) -> dict[str, QWidget | QPlainTextEdit]:
@@ -1521,6 +1585,8 @@ class BotEaQtWindow(QMainWindow):
         )
 
     def _select_page(self, index: int) -> None:
+        if self._startup_gate_active and not self._dev_mode_enabled:
+            return
         if index < 0 or index >= self.page_stack.count():
             return
         self.page_stack.setCurrentIndex(index)
@@ -1538,6 +1604,85 @@ class BotEaQtWindow(QMainWindow):
         self.hero_subtitle.setText(subtitle)
         self._refresh_page_summaries()
 
+    def _start_startup_gate(self) -> None:
+        self._startup_gate_active = True
+        self._startup_probe_inflight = False
+        self._startup_requirements = {"service": False, "mt5": False, "codex": False}
+        self._mt5_ready = False
+        self._codex_ready = False
+        self.shell_stack.setCurrentWidget(self.startup_gate_page)
+        self._update_startup_gate_ui()
+        QTimer.singleShot(0, self._run_startup_probe_sequence)
+
+    def _run_startup_probe_sequence(self) -> None:
+        if self._startup_probe_inflight or self._dev_mode_enabled:
+            return
+        self._startup_probe_inflight = True
+        self.gate_message.setText("Memeriksa service lokal, MT5, dan AI runtime...")
+        try:
+            if not self.connect_service(show_errors=False):
+                self._set_startup_requirement("service", False, self.service_status.text())
+                return
+            self._set_startup_requirement("service", True, self.service_status.text())
+
+            self.check_mt5()
+            self._set_startup_requirement("mt5", self._mt5_ready, self.mt5_status.text())
+            if not self._mt5_ready:
+                return
+
+            self.load_codex()
+            self._set_startup_requirement("codex", self._codex_ready, self.codex_status.text())
+            if not self._codex_ready:
+                return
+
+            self._unlock_workspace()
+        finally:
+            self._startup_probe_inflight = False
+            self._update_startup_gate_ui()
+
+    def _set_startup_requirement(self, name: str, ok: bool, detail: str) -> None:
+        self._startup_requirements[name] = ok
+        label_map = {
+            "service": self.gate_service_status,
+            "mt5": self.gate_mt5_status,
+            "codex": self.gate_codex_status,
+        }
+        label = label_map[name]
+        label.setText(detail if detail else ("Siap" if ok else "Belum siap"))
+        tone = "ok" if ok else ("warn" if "Belum" not in detail else "idle")
+        label.setProperty("tone", tone)
+        self._repolish(label)
+
+    def _update_startup_gate_ui(self) -> None:
+        blocked = []
+        if not self._startup_requirements["service"]:
+            blocked.append("service lokal")
+        if not self._startup_requirements["mt5"]:
+            blocked.append("MT5")
+        if not self._startup_requirements["codex"]:
+            blocked.append("AI runtime")
+        if self._dev_mode_enabled:
+            self.gate_message.setText("Mode dev aktif. Workspace dibuka tanpa semua dependency operator.")
+        elif blocked:
+            self.gate_message.setText(f"Workspace masih terkunci. Lengkapi: {', '.join(blocked)}.")
+        else:
+            self.gate_message.setText("Semua dependency inti siap. Membuka workspace...")
+
+    def _unlock_workspace(self) -> None:
+        self._startup_gate_active = False
+        self.shell_stack.setCurrentWidget(self.workspace_page)
+        self._sync_button_states()
+
+    def _enter_dev_mode(self) -> None:
+        self._dev_mode_enabled = True
+        self._startup_gate_active = False
+        self.gate_message.setText("DEV / MOCK MODE aktif.")
+        self.shell_stack.setCurrentWidget(self.workspace_page)
+        self._sync_button_states()
+
+    def _workspace_unlocked(self) -> bool:
+        return not self._startup_gate_active or self._dev_mode_enabled
+
     def _wire_events(self) -> None:
         self.connect_service_button.clicked.connect(self.connect_service)
         self.check_mt5_button.clicked.connect(self.check_mt5)
@@ -1554,6 +1699,9 @@ class BotEaQtWindow(QMainWindow):
         self.history_load_button.clicked.connect(self.load_telemetry)
         for index, button in enumerate(self.nav_buttons):
             button.clicked.connect(lambda _checked=False, idx=index: self._select_page(idx))
+        self.gate_primary_button.clicked.connect(self._run_startup_probe_sequence)
+        self.gate_retry_button.clicked.connect(self._run_startup_probe_sequence)
+        self.gate_dev_button.clicked.connect(self._enter_dev_mode)
 
         for widget in (
             self.symbol_combo.lineEdit(),
@@ -1633,7 +1781,7 @@ class BotEaQtWindow(QMainWindow):
         self._apply_refresh_result(result)
 
     def _refresh_preview_tick(self) -> None:
-        if not self._service_connected or not self.isVisible() or self._runtime_running:
+        if self._startup_gate_active or not self._service_connected or not self.isVisible() or self._runtime_running:
             return
         if self.snapshot is None:
             return
@@ -1644,11 +1792,13 @@ class BotEaQtWindow(QMainWindow):
             result = self._send_backend_command("probe_mt5", self._probe_params())
         except Exception as exc:
             detail = self._format_exception_detail(exc)
+            self._mt5_ready = False
             self.mt5_status.setText(detail)
             self._append_log([f"MT5 error: {detail}"])
             return
         terminal = result["terminal"]
         snapshot = result["snapshot"]
+        self._mt5_ready = True
         self.mt5_status.setText("MT5 ready")
         self._set_symbol_choices(result.get("symbols") or [])
         self._sync_stop_distance_from_probe(snapshot)
@@ -1672,10 +1822,12 @@ class BotEaQtWindow(QMainWindow):
             result = self._send_backend_command("probe_codex", self._codex_params())
         except Exception as exc:
             detail = self._format_exception_detail(exc)
+            self._codex_ready = False
             self.codex_status.setText(detail)
             self._append_log([f"Codex error: {detail}"])
             return
         version = str(result)
+        self._codex_ready = True
         self.codex_status.setText(version)
         self._append_log(
             [
@@ -2164,6 +2316,48 @@ class BotEaQtWindow(QMainWindow):
             and self._float_value(self.manual_order_snapshot.get("final_lot")) > 0
         )
         pending = self._pending_approval is not None
+        if self._startup_gate_active and not self._dev_mode_enabled:
+            for button in (
+                self.connect_service_button,
+                self.check_mt5_button,
+                self.load_codex_button,
+                self.refresh_button,
+                self.preflight_button,
+                self.execute_button,
+                self.play_button,
+                self.stop_button,
+                self.live_button,
+                self.approve_button,
+                self.reject_button,
+                self.load_telemetry_button,
+            ):
+                button.setEnabled(False)
+            for widget in (
+                self.symbol_combo,
+                self.timeframe_combo,
+                self.style_combo,
+                self.stop_input,
+                self.capital_mode_combo,
+                self.capital_input,
+                self.lot_mode_combo,
+                self.manual_lot_input,
+                self.side_combo,
+                self.db_input,
+                self.service_host_input,
+                self.service_port_input,
+                self.codex_command_input,
+                self.model_combo,
+                self.codex_cwd_input,
+                self.poll_interval_input,
+            ):
+                widget.setEnabled(False)
+            for button in self.nav_buttons:
+                button.setEnabled(False)
+            self.gate_primary_button.setEnabled(not self._startup_probe_inflight)
+            self.gate_retry_button.setEnabled(not self._startup_probe_inflight)
+            self.gate_dev_button.setEnabled(True)
+            self._refresh_status_presentation()
+            return
         for button in (
             self.load_codex_button,
             self.play_button,
@@ -2197,6 +2391,11 @@ class BotEaQtWindow(QMainWindow):
             widget.setEnabled(trade_setup_enabled)
         self.manual_lot_input.setEnabled(trade_setup_enabled and self.lot_mode_combo.currentText().strip() == "manual")
         self.connect_service_button.setEnabled(not self._runtime_running)
+        for button in self.nav_buttons:
+            button.setEnabled(True)
+        self.gate_primary_button.setEnabled(True)
+        self.gate_retry_button.setEnabled(True)
+        self.gate_dev_button.setEnabled(True)
         self._refresh_status_presentation()
 
     def _append_log(self, lines: list[str]) -> None:

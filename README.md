@@ -29,7 +29,7 @@ Current operating posture:
 
 Not implemented yet from the master brief:
 
-- startup dependency gate that locks the main workspace until all checks pass
+- operator/dev mode split beyond the current first-pass startup gate
 - dev/mock mode badge and explicit operator/dev mode split
 - reconnect overlay and safe-halt account-change review UX
 - account-scoped AI workspace, documents, and structured context store
@@ -48,11 +48,25 @@ Current expected behavior:
 
 - the Qt app is the primary desktop entrypoint
 - the app can manage the local websocket backend itself during normal use
+- on startup, the app now uses a first-pass startup gate before unlocking the main workspace
+- the current gate checks `service -> MT5 -> Codex`
 - `scripts/run-websocket-service.ps1` is still available for debugging or isolated backend work, but it is not the preferred operator flow
+
+Current startup-gate scope:
+
+- implemented now:
+  - local service connection
+  - MT5 readiness check
+  - Codex readiness check
+  - workspace unlock only after those checks pass
+- not implemented yet:
+  - account-change review flow
+  - reconnect overlay
+  - AI workspace/documents/context validation chain from the master brief
 
 ## Recommended operator flow
 
-Follow this order inside the Qt app:
+Follow this order inside the Qt app after the startup gate unlocks the workspace:
 
 1. `Check MT5`
 2. `Load Codex`

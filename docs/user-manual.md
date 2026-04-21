@@ -12,7 +12,7 @@ Tujuannya:
 - tahu kapan aman lanjut
 - tahu kapan harus berhenti
 
-Dokumen ini hanya menjelaskan perilaku yang sudah ada di aplikasi sekarang. Beberapa ide besar dari master brief seperti startup gate, mode dev/operator terpisah, dan halaman review akun belum ada di UI saat ini.
+Dokumen ini hanya menjelaskan perilaku yang sudah ada di aplikasi sekarang. Aplikasi sekarang sudah punya startup gate first-pass sebelum workspace utama terbuka, tetapi ide master brief lain seperti mode dev/operator terpisah penuh dan halaman review akun masih belum ada.
 
 ## Fungsi Aplikasi Saat Ini
 
@@ -44,6 +44,7 @@ Dalam penggunaan normal:
 
 - Anda tidak perlu membuka websocket service manual di jendela lain
 - GUI akan mencoba mengelola service lokal sendiri
+- sebelum halaman utama terbuka penuh, aplikasi akan melewati startup gate
 
 Script `run-websocket-service.ps1` masih ada, tetapi itu sekarang lebih cocok untuk debugging atau pengujian backend terpisah.
 
@@ -64,6 +65,31 @@ Checklist cepat:
 - `codex-cli` terpasang
 - mulai dari akun demo
 - mulai dari `dry-run`
+
+## Startup Gate First-Pass
+
+Saat aplikasi dibuka sekarang, workspace utama tidak langsung terbuka.
+
+Urutan pemeriksaan awal:
+
+1. service lokal
+2. MT5
+3. Codex
+
+Kalau ketiganya lolos:
+
+- workspace utama akan terbuka
+
+Kalau salah satunya gagal:
+
+- Anda akan tetap berada di layar startup gate
+- perbaiki dependency yang gagal dulu
+
+Yang belum termasuk di startup gate saat ini:
+
+- review akun berubah
+- reconnect overlay
+- validasi AI workspace/documents/context seperti di master brief
 
 ## Kenali Halaman Aplikasi
 
@@ -260,18 +286,17 @@ Ikuti urutan ini:
 
 1. Buka MT5 dan login.
 2. Jalankan Qt app.
-3. Buka halaman `Strategy`.
-4. Atur `Symbol`, `Timeframe`, `Strategy Style`, dan modal.
-5. Klik `Check MT5`.
-6. Klik `Load Codex`.
-7. Klik `Preview`.
-8. Klik `Preflight`.
-9. Jika hasil aman, klik `Play Runtime`.
-10. Biarkan runtime berjalan beberapa cycle.
-11. Buka `History` atau klik `Telemetry`.
-12. Tetap di dry-run dulu.
-13. Hanya jika benar-benar perlu, gunakan `Enable Live`.
-14. Jika ada proposal live, pilih `Approve` atau `Reject`.
+3. Biarkan startup gate memeriksa service, MT5, lalu Codex.
+4. Setelah workspace terbuka, buka halaman `Strategy`.
+5. Atur `Symbol`, `Timeframe`, `Strategy Style`, dan modal.
+6. Klik `Preview`.
+7. Klik `Preflight`.
+8. Jika hasil aman, klik `Play Runtime`.
+9. Biarkan runtime berjalan beberapa cycle.
+10. Buka `History` atau klik `Telemetry`.
+11. Tetap di dry-run dulu.
+12. Hanya jika benar-benar perlu, gunakan `Enable Live`.
+13. Jika ada proposal live, pilih `Approve` atau `Reject`.
 
 ## Aturan Penting Saat Runtime Aktif
 
@@ -443,12 +468,15 @@ Solusi praktis:
 
 Hal yang belum ada walaupun diusulkan di master brief:
 
-- startup gate yang benar-benar mengunci workspace sebelum semua dependency lolos
 - mode `DEV / MOCK MODE` yang terlihat jelas di UI
 - reconnect overlay khusus saat MT5 hilang
 - review sheet khusus saat akun berubah
 - pengelolaan AI workspace, AI documents, dan AI context per akun
 - pelokalan penuh ke istilah Indonesia di seluruh UI
+
+Hal yang sudah ada sekarang:
+
+- startup gate first-pass untuk `service -> MT5 -> Codex`
 
 ## Penutup
 

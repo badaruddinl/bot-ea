@@ -20,6 +20,9 @@ class FakeBackend:
         self.stop_managed_calls = 0
         self._managed_running = False
         self.refresh_counter = 0
+        self.fail_service = False
+        self.fail_mt5 = False
+        self.fail_codex = False
         self._manual_snapshot = {
             "lot_mode": "manual",
             "requested_lot": 1.0,
@@ -38,6 +41,8 @@ class FakeBackend:
         }
 
     def connect(self, url: str) -> dict:
+        if self.fail_service:
+            raise RuntimeError("service unavailable")
         self.connected_urls.append(url)
         return {"host": "127.0.0.1", "port": 8765}
 
@@ -63,6 +68,8 @@ class FakeBackend:
         _ = timeout
         self.requests.append((name, dict(params)))
         if name == "probe_mt5":
+            if self.fail_mt5:
+                raise RuntimeError("mt5 unavailable")
             return {
                 "terminal": {
                     "connected": True,
@@ -76,6 +83,8 @@ class FakeBackend:
                 "symbols": ["EURUSD", "XAUUSD"],
             }
         if name == "probe_codex":
+            if self.fail_codex:
+                raise RuntimeError("codex unavailable")
             return "codex 1.0.0"
         if name == "refresh_manual":
             self.refresh_counter += 1
@@ -291,9 +300,12 @@ class QtAppTests(unittest.TestCase):
         app.processEvents()
         try:
             self.assertEqual(window.windowTitle(), "bot-ea Qt Desktop Runtime")
+            self.assertIs(window.shell_stack.currentWidget(), window.startup_gate_page)
+            self.assertFalse(window.nav_buttons[0].isEnabled())
+            self.assertIn("Workspace masih terkunci", window.gate_message.text())
             self.assertEqual(window.symbol_combo.currentText(), "EURUSD")
             self.assertEqual(window.timeframe_combo.currentText(), "M15")
-            self.assertEqual(window.service_status.text(), "App-managed connected 127.0.0.1:8765")
+            self.assertEqual(window.service_status.text(), "Service disconnected")
             self.assertEqual(window.hero_title.text(), "Runtime Dashboard")
             self.assertEqual(window.nav_group.title(), "Navigation")
             self.assertEqual(window.page_stack.count(), 5)
@@ -323,22 +335,112 @@ class QtAppTests(unittest.TestCase):
             self.assertEqual(window.tabs.tabText(0), "Runtime Feed")
             self.assertEqual(window.tabs.tabText(1), "Log Console")
             self.assertIn("#0b0f10", window.styleSheet())
-            self.assertEqual(window.readiness_chips["service"]["value"].property("tone"), "ok")
-            self.assertEqual(backend.connected_urls[-1], "ws://127.0.0.1:8765")
-            self.assertEqual(backend.start_managed_calls, 1)
+            self.assertEqual(window.readiness_chips["service"]["value"].property("tone"), "warn")
+            self.assertEqual(backend.start_managed_calls, 0)
             self.assertTrue(window.preview_poll_timer.isActive())
+        finally:
+            window.close()
+            self.assertEqual(backend.stop_managed_calls, 1)
+
+    def test_startup_gate_unlocks_workspace_after_successful_probes(self) -> None:
+        try:
+            from PySide6.QtTest import QTest
+            from PySide6.QtWidgets import QApplication
+        except Exception as exc:  # pragma: no cover
+            self.skipTest(f"PySide6 unavailable: {exc}")
+
+        from bot_ea.qt_app import BotEaQtWindow
+
+        app = QApplication.instance() or QApplication([])
+        backend = FakeBackend()
+        window = BotEaQtWindow(backend=backend)
+        app.processEvents()
+        try:
+            QTest.qWait(150)
+            app.processEvents()
+            self.assertIs(window.shell_stack.currentWidget(), window.workspace_page)
+            self.assertTrue(window.nav_buttons[0].isEnabled())
+            commands = [name for name, _ in backend.requests]
+            self.assertIn("probe_mt5", commands)
+            self.assertIn("probe_codex", commands)
             window.nav_buttons[1].click()
             app.processEvents()
             self.assertEqual(window.page_stack.currentWidget(), window.strategy_page)
-            self.assertEqual(window.hero_title.text(), "Strategy Workspace")
-            self.assertEqual(window.sidebar_mode_value.text(), "Strategy")
             window.nav_buttons[4].click()
             app.processEvents()
             self.assertEqual(window.page_stack.currentWidget(), window.settings_page)
             self.assertIn("service_url=ws://127.0.0.1:8765", window.settings_summary_text.toPlainText())
         finally:
             window.close()
-            self.assertEqual(backend.stop_managed_calls, 1)
+
+    def test_startup_gate_stays_locked_when_mt5_probe_fails(self) -> None:
+        try:
+            from PySide6.QtTest import QTest
+            from PySide6.QtWidgets import QApplication
+        except Exception as exc:  # pragma: no cover
+            self.skipTest(f"PySide6 unavailable: {exc}")
+
+        from bot_ea.qt_app import BotEaQtWindow
+
+        app = QApplication.instance() or QApplication([])
+        backend = FakeBackend()
+        backend.fail_mt5 = True
+        window = BotEaQtWindow(backend=backend)
+        app.processEvents()
+        try:
+            QTest.qWait(150)
+            app.processEvents()
+            self.assertIs(window.shell_stack.currentWidget(), window.startup_gate_page)
+            self.assertIn("MT5", window.gate_message.text())
+            self.assertFalse(window.nav_buttons[0].isEnabled())
+        finally:
+            window.close()
+
+    def test_startup_gate_stays_locked_when_service_fails(self) -> None:
+        try:
+            from PySide6.QtTest import QTest
+            from PySide6.QtWidgets import QApplication
+        except Exception as exc:  # pragma: no cover
+            self.skipTest(f"PySide6 unavailable: {exc}")
+
+        from bot_ea.qt_app import BotEaQtWindow
+
+        app = QApplication.instance() or QApplication([])
+        backend = FakeBackend()
+        backend.fail_service = True
+        window = BotEaQtWindow(backend=backend)
+        app.processEvents()
+        try:
+            QTest.qWait(150)
+            app.processEvents()
+            self.assertIs(window.shell_stack.currentWidget(), window.startup_gate_page)
+            self.assertIn("service", window.gate_message.text().lower())
+            self.assertFalse(window.nav_buttons[0].isEnabled())
+        finally:
+            window.close()
+
+    def test_startup_gate_stays_locked_when_codex_probe_fails(self) -> None:
+        try:
+            from PySide6.QtTest import QTest
+            from PySide6.QtWidgets import QApplication
+        except Exception as exc:  # pragma: no cover
+            self.skipTest(f"PySide6 unavailable: {exc}")
+
+        from bot_ea.qt_app import BotEaQtWindow
+
+        app = QApplication.instance() or QApplication([])
+        backend = FakeBackend()
+        backend.fail_codex = True
+        window = BotEaQtWindow(backend=backend)
+        app.processEvents()
+        try:
+            QTest.qWait(150)
+            app.processEvents()
+            self.assertIs(window.shell_stack.currentWidget(), window.startup_gate_page)
+            self.assertIn("AI runtime", window.gate_message.text())
+            self.assertFalse(window.nav_buttons[0].isEnabled())
+        finally:
+            window.close()
 
     def test_qt_primary_actions_use_websocket_backend(self) -> None:
         try:
