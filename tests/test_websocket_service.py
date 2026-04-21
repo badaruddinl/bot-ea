@@ -241,6 +241,9 @@ class WebSocketServiceTests(unittest.TestCase):
             coordinator = FakeCoordinator()
             service = BotEaWebSocketService(adapter_factory=FakeAdapter, runtime_coordinator=coordinator)
             with tempfile.TemporaryDirectory() as tmpdir:
+                params = self._context_params(tmpdir)
+                built = await service._handle_command({"id": "4a", "name": "build_resume_state", "params": params})
+                binding = built["result"]["binding"]
                 response = await service._handle_command(
                     {
                         "id": "4",
@@ -252,6 +255,14 @@ class WebSocketServiceTests(unittest.TestCase):
                             "codex_cwd": str(Path(tmpdir)),
                             "codex_timeout_seconds": 60,
                             "poll_interval_seconds": 30,
+                            "ai_workspace_path": str(Path(tmpdir) / "ai_workspace"),
+                            "ai_documents_path": str(Path(tmpdir) / "ai_documents"),
+                            "ai_context_path": binding["context_path"],
+                            "resume_prompt_path": binding["resume_prompt_path"],
+                            "behavior_profile_path": binding["profile_path"],
+                            "account_fingerprint": self._fingerprint(),
+                            "session_state": "asia_session",
+                            "news_state": "quiet",
                         },
                     }
                 )
@@ -260,6 +271,83 @@ class WebSocketServiceTests(unittest.TestCase):
                 self.assertIsNotNone(coordinator.started_config)
                 self.assertEqual(coordinator.started_config.symbol, "XAUUSD")
                 self.assertEqual(coordinator.started_config.codex_executable, "codex")
+                self.assertEqual(coordinator.started_config.codex_model, "gpt-5.4-mini")
+                self.assertEqual(coordinator.started_config.codex_cwd, str(Path(tmpdir)))
+                self.assertEqual(coordinator.started_config.ai_workspace_path, str(Path(tmpdir) / "ai_workspace"))
+                self.assertEqual(coordinator.started_config.ai_documents_path, str(Path(tmpdir) / "ai_documents"))
+                self.assertEqual(coordinator.started_config.ai_context_path, binding["context_path"])
+                self.assertEqual(coordinator.started_config.resume_prompt_path, binding["resume_prompt_path"])
+                self.assertEqual(coordinator.started_config.behavior_profile_path, binding["profile_path"])
+                self.assertEqual(coordinator.started_config.account_fingerprint, self._fingerprint())
+                self.assertEqual(coordinator.started_config.session_state, "asia_session")
+                self.assertEqual(coordinator.started_config.news_state, "quiet")
+
+        asyncio.run(run_test())
+
+    def test_start_runtime_command_forwards_account_scoped_continuity_inputs(self) -> None:
+        class FakeCoordinator:
+            def __init__(self) -> None:
+                self.started_config = None
+                self.is_running = False
+
+            def start(self, config):
+                self.started_config = config
+                return "run-context"
+
+            def drain_events(self):
+                return []
+
+        async def run_test() -> None:
+            coordinator = FakeCoordinator()
+            with tempfile.TemporaryDirectory() as tmpdir:
+                service = BotEaWebSocketService(
+                    adapter_factory=FakeAdapter,
+                    runtime_coordinator=coordinator,
+                    project_root=tmpdir,
+                )
+                params = self._context_params(tmpdir)
+                built = await service._handle_command({"id": "ctx-1", "name": "build_resume_state", "params": params})
+                binding = built["result"]["binding"]
+                workspace = str((Path(tmpdir) / "workspace").resolve())
+                documents = str((Path(tmpdir) / "documents").resolve())
+
+                response = await service._handle_command(
+                    {
+                        "id": "ctx-2",
+                        "name": "start_runtime",
+                        "params": {
+                            **self._manual_params(tmpdir),
+                            "codex_command": "codex",
+                            "model": "gpt-5.4-mini",
+                            "codex_cwd": workspace,
+                            "codex_timeout_seconds": 75,
+                            "poll_interval_seconds": 45,
+                            "session_state": "resume_ready",
+                            "news_state": "calm",
+                            "ai_workspace_path": workspace,
+                            "ai_documents_path": documents,
+                            "ai_context_path": binding["context_path"],
+                            "resume_prompt_path": binding["resume_prompt_path"],
+                            "behavior_profile_path": binding["profile_path"],
+                            "account_fingerprint": dict(params["fingerprint"]),
+                        },
+                    }
+                )
+
+                self.assertTrue(response["ok"])
+                self.assertEqual(response["result"], "run-context")
+                self.assertIsNotNone(coordinator.started_config)
+                self.assertEqual(coordinator.started_config.ai_workspace_path, workspace)
+                self.assertEqual(coordinator.started_config.ai_documents_path, documents)
+                self.assertEqual(coordinator.started_config.ai_context_path, binding["context_path"])
+                self.assertEqual(coordinator.started_config.resume_prompt_path, binding["resume_prompt_path"])
+                self.assertEqual(coordinator.started_config.behavior_profile_path, binding["profile_path"])
+                self.assertEqual(coordinator.started_config.account_fingerprint, params["fingerprint"])
+                self.assertEqual(coordinator.started_config.codex_cwd, workspace)
+                self.assertEqual(coordinator.started_config.codex_timeout_seconds, 75)
+                self.assertEqual(coordinator.started_config.poll_interval_seconds, 45)
+                self.assertEqual(coordinator.started_config.session_state, "resume_ready")
+                self.assertEqual(coordinator.started_config.news_state, "calm")
 
         asyncio.run(run_test())
 
@@ -298,6 +386,30 @@ class WebSocketServiceTests(unittest.TestCase):
 
         asyncio.run(run_test())
 
+    def test_load_runtime_state_command_returns_binding_for_active_context(self) -> None:
+        async def run_test() -> None:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                service = BotEaWebSocketService(adapter_factory=FakeAdapter, project_root=tmpdir)
+                params = self._context_params(tmpdir)
+                built = await service._handle_command({"id": "6b", "name": "build_resume_state", "params": params})
+                binding = built["result"]["binding"]
+
+                response = await service._handle_command({"id": "6c", "name": "load_runtime_state", "params": params})
+                self.assertTrue(response["ok"])
+                result = response["result"]
+                self.assertTrue(result["exists"])
+                self.assertEqual(result["runtime_state"]["context_key"], binding["context_key"])
+                self.assertEqual(result["runtime_state"]["context_path"], binding["context_path"])
+                self.assertEqual(result["runtime_state"]["active_account_fingerprint"], params["fingerprint"])
+                self.assertEqual(result["binding"]["mapping_source"], "runtime_state")
+                self.assertEqual(result["binding"]["fingerprint"], params["fingerprint"])
+                self.assertEqual(result["binding"]["context_key"], binding["context_key"])
+                self.assertEqual(result["binding"]["context_path"], binding["context_path"])
+                self.assertEqual(result["binding"]["profile_path"], binding["profile_path"])
+                self.assertEqual(result["binding"]["resume_prompt_path"], binding["resume_prompt_path"])
+
+        asyncio.run(run_test())
+
     def test_list_account_contexts_command_lists_existing_variants(self) -> None:
         async def run_test() -> None:
             with tempfile.TemporaryDirectory() as tmpdir:
@@ -324,6 +436,54 @@ class WebSocketServiceTests(unittest.TestCase):
                 self.assertFalse(contexts[fingerprint.key]["is_mapped"])
                 self.assertTrue(contexts[f"{fingerprint.key}_2"]["is_mapped"])
                 self.assertTrue(contexts[f"{fingerprint.key}_2"]["is_active"])
+
+        asyncio.run(run_test())
+
+    def test_load_runtime_state_command_returns_runtime_binding_for_selected_context(self) -> None:
+        async def run_test() -> None:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                service = BotEaWebSocketService(adapter_factory=FakeAdapter, project_root=tmpdir)
+                params = self._context_params(tmpdir)
+                built = await service._handle_command({"id": "9a", "name": "build_resume_state", "params": params})
+
+                response = await service._handle_command({"id": "9b", "name": "load_runtime_state", "params": params})
+                self.assertTrue(response["ok"])
+                result = response["result"]
+                self.assertTrue(result["exists"])
+                self.assertEqual(result["runtime_state"]["context_key"], built["result"]["binding"]["context_key"])
+                self.assertEqual(result["binding"]["mapping_source"], "runtime_state")
+                self.assertEqual(result["binding"]["context_path"], built["result"]["binding"]["context_path"])
+                self.assertEqual(result["binding"]["resume_prompt_path"], built["result"]["binding"]["resume_prompt_path"])
+                self.assertEqual(result["binding"]["profile_path"], built["result"]["binding"]["profile_path"])
+
+        asyncio.run(run_test())
+
+    def test_list_account_contexts_reports_mapped_and_active_context_independently(self) -> None:
+        async def run_test() -> None:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                service = BotEaWebSocketService(adapter_factory=FakeAdapter, project_root=tmpdir)
+                params = self._context_params(tmpdir)
+                fingerprint = AccountFingerprint.from_payload(dict(params["fingerprint"]))
+                await service._handle_command({"id": "9c", "name": "build_resume_state", "params": params})
+                newer = await service._handle_command(
+                    {
+                        "id": "9d",
+                        "name": "build_resume_state",
+                        "params": {**params, "create_new": True},
+                    }
+                )
+                service.state_store.update_runtime_state({"context_key": fingerprint.key})
+
+                response = await service._handle_command({"id": "9e", "name": "list_account_contexts", "params": params})
+                self.assertTrue(response["ok"])
+                result = response["result"]
+                contexts = {item["context_key"]: item for item in result["contexts"]}
+                self.assertEqual(result["mapped_context_key"], newer["result"]["binding"]["context_key"])
+                self.assertEqual(result["active_context_key"], fingerprint.key)
+                self.assertTrue(contexts[newer["result"]["binding"]["context_key"]]["is_mapped"])
+                self.assertFalse(contexts[newer["result"]["binding"]["context_key"]]["is_active"])
+                self.assertTrue(contexts[fingerprint.key]["is_active"])
+                self.assertFalse(contexts[fingerprint.key]["is_mapped"])
 
         asyncio.run(run_test())
 
@@ -404,6 +564,45 @@ class WebSocketServiceTests(unittest.TestCase):
                         }
                     )
                 self.assertIn("tidak cocok dengan fingerprint", str(ctx.exception))
+
+        asyncio.run(run_test())
+
+    def test_select_account_context_command_rejects_invalid_context_key(self) -> None:
+        async def run_test() -> None:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                service = BotEaWebSocketService(adapter_factory=FakeAdapter, project_root=tmpdir)
+                params = self._context_params(tmpdir)
+                await service._handle_command({"id": "19", "name": "build_resume_state", "params": params})
+
+                with self.assertRaises(RuntimeError) as ctx:
+                    await service._handle_command(
+                        {
+                            "id": "20",
+                            "name": "select_account_context",
+                            "params": {**params, "context_key": "../broker_demo_demo_server_123456"},
+                        }
+                    )
+                self.assertIn("tidak cocok dengan fingerprint", str(ctx.exception))
+
+        asyncio.run(run_test())
+
+    def test_select_account_context_command_rejects_invalid_context_key_path(self) -> None:
+        async def run_test() -> None:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                service = BotEaWebSocketService(adapter_factory=FakeAdapter, project_root=tmpdir)
+                params = self._context_params(tmpdir)
+                fingerprint = AccountFingerprint.from_payload(dict(params["fingerprint"]))
+                await service._handle_command({"id": "19", "name": "build_resume_state", "params": params})
+
+                with self.assertRaises(RuntimeError) as ctx:
+                    await service._handle_command(
+                        {
+                            "id": "20",
+                            "name": "select_account_context",
+                            "params": {**params, "context_key": f"{fingerprint.key}_..\\escape"},
+                        }
+                    )
+                self.assertIn("context_key tidak valid", str(ctx.exception))
 
         asyncio.run(run_test())
 
