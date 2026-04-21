@@ -1,5 +1,4 @@
 from __future__ import annotations
-
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -13,6 +12,7 @@ from .codex_cli_engine import CodexCLIEngine, CodexContractError, CodexTimeoutEr
 from .models import CapitalAllocation, RiskPolicy, TradingStyle
 from .mt5_adapter import LiveMT5Adapter, TerminalStatusSnapshot
 from .mt5_execution_runtime import MT5ExecutionRuntime
+from .operator_state import OperatorStateStore
 from .polling_runtime import AIIntent, DecisionAction, MT5SnapshotProvider, PollingConfig, PollingRuntime
 from .risk_engine import RiskEngine
 from .runtime_store import RuntimeStore
@@ -510,6 +510,12 @@ class DesktopRuntimeCoordinator:
                 },
             )
             adapter, runtime = self._build_runtime(config, store)
+            self._persist_runtime_account_state(
+                config=config,
+                last_runtime_state="running",
+                shutdown_reason=None,
+                live_enabled=bool(self._supervised_runtime and self._supervised_runtime.live_enabled),
+            )
             self._emit(
                 "runtime_started",
                 "desktop runtime started",
@@ -593,6 +599,12 @@ class DesktopRuntimeCoordinator:
                 )
             elif store is not None:
                 store.update_run_status(config.run_id or "", status="STOPPED", stop_reason="operator_stop")
+                self._persist_runtime_account_state(
+                    config=config,
+                    last_runtime_state="stopped",
+                    shutdown_reason="operator_stop",
+                    live_enabled=bool(self._supervised_runtime and self._supervised_runtime.live_enabled),
+                )
                 self._emit(
                     "runtime_stopped",
                     "desktop runtime stopped",
@@ -607,6 +619,12 @@ class DesktopRuntimeCoordinator:
                     message=f"desktop runtime failure: {exc}",
                 )
                 store.update_run_status(config.run_id, status="ERROR", stop_reason="runtime_failure")
+            self._persist_runtime_account_state(
+                config=config,
+                last_runtime_state="error",
+                shutdown_reason="runtime_failure",
+                live_enabled=bool(self._supervised_runtime and self._supervised_runtime.live_enabled),
+            )
             self._emit(
                 "runtime_error",
                 f"desktop runtime error: {exc}",
@@ -646,6 +664,9 @@ class DesktopRuntimeCoordinator:
                 model=config.codex_model,
                 cwd=config.codex_cwd,
                 timeout_seconds=config.codex_timeout_seconds,
+                resume_prompt_path=config.resume_prompt_path,
+                behavior_profile_path=config.behavior_profile_path,
+                ai_documents_path=config.ai_documents_path,
             ),
             event_callback=self._emit,
             cooldown_seconds=config.codex_timeout_cooldown_seconds,
@@ -725,6 +746,12 @@ class DesktopRuntimeCoordinator:
                 payload=payload,
             )
             store.update_run_status(config.run_id, status="HALTED", stop_reason=reason)
+        self._persist_runtime_account_state(
+            config=config,
+            last_runtime_state="halted",
+            shutdown_reason=reason,
+            live_enabled=bool(self._supervised_runtime and self._supervised_runtime.live_enabled),
+        )
         self._desired_live_enabled = False
         if self._supervised_runtime is not None:
             self._supervised_runtime.set_live_enabled(False)
@@ -779,3 +806,102 @@ class DesktopRuntimeCoordinator:
         shutdown = getattr(adapter, "shutdown", None)
         if callable(shutdown):
             shutdown()
+
+    def _persist_runtime_account_state(
+        self,
+        *,
+        config: DesktopRuntimeConfig,
+        last_runtime_state: str,
+        shutdown_reason: str | None,
+        live_enabled: bool,
+    ) -> None:
+        try:
+            state_store = self._operator_state_store(config)
+            context_path = self._context_path_from_config(config)
+            runtime_updates: dict[str, Any] = {
+                "last_run_id": config.run_id,
+                "last_symbol": config.symbol,
+                "last_timeframe": config.timeframe,
+                "last_runtime_state": last_runtime_state,
+                "last_shutdown_reason": shutdown_reason,
+                "live_enabled": live_enabled,
+            }
+            if config.account_fingerprint:
+                runtime_updates["active_account_fingerprint"] = dict(config.account_fingerprint)
+            if context_path is not None:
+                runtime_updates["context_key"] = context_path.name
+                runtime_updates["context_path"] = str(context_path)
+            state_store.update_runtime_state(runtime_updates)
+
+            if context_path is None:
+                return
+
+            session_updates: dict[str, Any] = {
+                "context_key": context_path.name,
+                "context_path": str(context_path),
+                "last_run_id": config.run_id,
+                "last_runtime_state": last_runtime_state,
+                "last_symbol": config.symbol,
+                "last_timeframe": config.timeframe,
+                "last_trading_style": config.trading_style.value,
+                "last_mode": "live" if live_enabled else "dry-run",
+                "last_shutdown_reason": shutdown_reason,
+            }
+            if config.account_fingerprint:
+                session_updates["account_fingerprint"] = dict(config.account_fingerprint)
+            state_store.update_last_session(context_path=context_path, updates=session_updates)
+        except Exception as exc:
+            self._emit(
+                "runtime_state_persist_error",
+                f"failed to persist runtime/account state: {exc}",
+                {
+                    "run_id": config.run_id,
+                    "db_path": config.db_path,
+                    "last_runtime_state": last_runtime_state,
+                    "shutdown_reason": shutdown_reason,
+                    "error": str(exc),
+                },
+            )
+
+    @classmethod
+    def _operator_state_store(cls, config: DesktopRuntimeConfig) -> OperatorStateStore:
+        return OperatorStateStore(cls._project_root_from_config(config))
+
+    @classmethod
+    def _project_root_from_config(cls, config: DesktopRuntimeConfig) -> Path:
+        for candidate in (
+            config.ai_context_path,
+            config.behavior_profile_path,
+            config.resume_prompt_path,
+            config.ai_workspace_path,
+            config.ai_documents_path,
+        ):
+            root = cls._project_root_from_related_path(candidate)
+            if root is not None:
+                return root
+        return Path(config.db_path).expanduser().resolve().parent
+
+    @staticmethod
+    def _project_root_from_related_path(raw_path: str | None) -> Path | None:
+        if not raw_path:
+            return None
+        candidate = Path(raw_path).expanduser().resolve()
+        search_roots = [candidate] + list(candidate.parents)
+        for current in search_roots:
+            if current.name in {"ai_context", "ai_workspace", "ai_documents"}:
+                return current.parent
+        if candidate.suffix:
+            return candidate.parent
+        return candidate
+
+    @staticmethod
+    def _context_path_from_config(config: DesktopRuntimeConfig) -> Path | None:
+        if config.ai_context_path:
+            candidate = Path(config.ai_context_path).expanduser().resolve()
+            if candidate.name != "ai_context":
+                return candidate
+        if config.behavior_profile_path:
+            return Path(config.behavior_profile_path).expanduser().resolve().parent
+        if config.resume_prompt_path:
+            return Path(config.resume_prompt_path).expanduser().resolve().parents[1]
+        return None
