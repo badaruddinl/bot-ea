@@ -203,6 +203,57 @@ class CodexCLIEngineTests(unittest.TestCase):
 
         self.assertEqual(resolved, r"C:\nvm4w\nodejs\codex.cmd")
 
+    def test_build_prompt_includes_cached_account_context_files(self) -> None:
+        from bot_ea.models import AccountSnapshot, CapitalAllocation, CapitalAllocationMode, RiskPolicy, SymbolSnapshot, TradingStyle
+        from bot_ea.polling_runtime import RuntimeSnapshot
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            resume_prompt = tmp_path / "resume_prompt.md"
+            behavior_profile = tmp_path / "profile.yaml"
+            resume_prompt.write_text("resume context line", encoding="utf-8")
+            behavior_profile.write_text("language: id", encoding="utf-8")
+            engine = CodexCLIEngine(
+                executable="codex",
+                resume_prompt_path=str(resume_prompt),
+                behavior_profile_path=str(behavior_profile),
+                ai_documents_path=str(tmp_path / "docs"),
+            )
+            snapshot = RuntimeSnapshot(
+                symbol="EURUSD",
+                timeframe="M5",
+                bid=1.1,
+                ask=1.1002,
+                spread_points=2.0,
+                account=AccountSnapshot(equity=1000.0, balance=1000.0, free_margin=900.0, margin_level=500.0),
+                symbol_snapshot=SymbolSnapshot(
+                    name="EURUSD",
+                    instrument_class="forex_major",
+                    risk_weight=1.0,
+                    point=0.0001,
+                    tick_size=0.0001,
+                    tick_value=1.0,
+                    volume_min=0.01,
+                    volume_max=10.0,
+                    volume_step=0.01,
+                    spread_points=2.0,
+                    stops_level_points=10.0,
+                    freeze_level_points=0.0,
+                ),
+                risk_policy=RiskPolicy(base_risk_pct=1.0, max_total_open_risk_pct=2.0, daily_loss_limit_pct=3.0),
+                trading_style=TradingStyle.INTRADAY,
+                stop_distance_points=50.0,
+                capital_allocation=CapitalAllocation(mode=CapitalAllocationMode.FIXED_CASH, value=250.0),
+            )
+
+            prompt = engine._build_prompt(snapshot)
+
+            self.assertIn("ACCOUNT_CONTEXT_START", prompt)
+            self.assertIn("resume context line", prompt)
+            self.assertIn("language: id", prompt)
+            self.assertIn(str(tmp_path / "docs"), prompt)
+
 
 if __name__ == "__main__":
     unittest.main()

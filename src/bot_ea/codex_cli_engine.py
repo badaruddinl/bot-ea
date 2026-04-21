@@ -32,11 +32,18 @@ class CodexCLIEngine:
         model: str | None = None,
         cwd: str | None = None,
         timeout_seconds: int = 60,
+        resume_prompt_path: str | None = None,
+        behavior_profile_path: str | None = None,
+        ai_documents_path: str | None = None,
     ) -> None:
         self.executable = executable
         self.model = model
         self.cwd = cwd
         self.timeout_seconds = timeout_seconds
+        self.resume_prompt_path = resume_prompt_path
+        self.behavior_profile_path = behavior_profile_path
+        self.ai_documents_path = ai_documents_path
+        self._cached_context_block: str | None = None
 
     def decide(self, snapshot: RuntimeSnapshot) -> AIIntent:
         prompt = self._build_prompt(snapshot)
@@ -228,9 +235,9 @@ class CodexCLIEngine:
             return normalized
         return f"{normalized[: limit - 3]}..."
 
-    @staticmethod
-    def _build_prompt(snapshot: RuntimeSnapshot) -> str:
-        return (
+    def _build_prompt(self, snapshot: RuntimeSnapshot) -> str:
+        context_block = self._build_context_block()
+        prompt = (
             "You are the decision brain for an MT5 trading bot. "
             "Return only KEY=VALUE pairs for ACTION, SIDE, CONFIDENCE, STOP_DISTANCE_POINTS, and REASON. "
             "No markdown. No explanation. No questions. "
@@ -254,3 +261,37 @@ class CodexCLIEngine:
             f"ALLOCATION_VALUE={snapshot.capital_allocation.value if snapshot.capital_allocation else snapshot.account.equity}\n"
             f"CONTEXT={snapshot.context}\n"
         )
+        if context_block:
+            prompt += f"\nACCOUNT_CONTEXT_START\n{context_block}\nACCOUNT_CONTEXT_END\n"
+        return prompt
+
+    def _build_context_block(self) -> str:
+        if self._cached_context_block is not None:
+            return self._cached_context_block
+
+        sections: list[str] = []
+        for title, path in (
+            ("RESUME_PROMPT", self.resume_prompt_path),
+            ("BEHAVIOR_PROFILE", self.behavior_profile_path),
+        ):
+            content = self._read_context_file(path)
+            if content:
+                sections.append(f"[{title}]\n{content}")
+        if self.ai_documents_path:
+            sections.append(f"[AI_DOCUMENTS_PATH]\n{self.ai_documents_path}")
+
+        block = "\n\n".join(section for section in sections if section).strip()
+        self._cached_context_block = self._shorten(block, limit=4000) if block else ""
+        return self._cached_context_block
+
+    @staticmethod
+    def _read_context_file(path: str | None) -> str:
+        if not path:
+            return ""
+        try:
+            candidate = Path(path).expanduser()
+            if not candidate.exists() or not candidate.is_file():
+                return ""
+            return candidate.read_text(encoding="utf-8").strip()
+        except OSError:
+            return ""

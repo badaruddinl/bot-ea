@@ -4,6 +4,7 @@ import sys
 import tempfile
 import time
 import unittest
+import json
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
@@ -505,6 +506,60 @@ class DesktopRuntimeCoordinatorTests(unittest.TestCase):
                 self.assertIn("raw_response", contract_payload)
             finally:
                 coordinator.stop()
+
+    def test_runtime_persists_account_session_state_on_stop(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_root = Path(tmpdir)
+            context_path = project_root / "ai_context" / "demo_broker_demo_server_123456"
+            (context_path / "memory").mkdir(parents=True, exist_ok=True)
+            (context_path / "resume").mkdir(parents=True, exist_ok=True)
+            (context_path / "documents").mkdir(parents=True, exist_ok=True)
+            (context_path / "profile.yaml").write_text("language: id\n", encoding="utf-8")
+            (context_path / "resume" / "resume_prompt.md").write_text("resume prompt\n", encoding="utf-8")
+            (context_path / "memory" / "latest_summary.md").write_text("latest summary\n", encoding="utf-8")
+            (context_path / "memory" / "open_issues.md").write_text("open issues\n", encoding="utf-8")
+            (context_path / "memory" / "last_session.json").write_text("{}", encoding="utf-8")
+
+            coordinator = DesktopRuntimeCoordinator(
+                adapter_factory=FakeAdapter,
+                codex_engine_factory=FakeCodexEngine,
+                risk_policy=RiskPolicy(base_risk_pct=1.0, max_total_open_risk_pct=2.0, daily_loss_limit_pct=3.0),
+            )
+            config = DesktopRuntimeConfig(
+                symbol="EURUSD",
+                timeframe="M5",
+                trading_style=TradingStyle.INTRADAY,
+                stop_distance_points=20.0,
+                capital_allocation=CapitalAllocation(mode=CapitalAllocationMode.FIXED_CASH, value=1000.0),
+                db_path=str(project_root / "runtime.db"),
+                poll_interval_seconds=1,
+                ai_context_path=str(context_path),
+                resume_prompt_path=str(context_path / "resume" / "resume_prompt.md"),
+                behavior_profile_path=str(context_path / "profile.yaml"),
+                account_fingerprint={
+                    "login": "123456",
+                    "server": "Demo-Server",
+                    "broker": "Demo Broker",
+                    "is_live": False,
+                },
+            )
+
+            coordinator.start(config)
+            deadline = time.time() + 3.0
+            while time.time() < deadline and coordinator.run_id is None:
+                time.sleep(0.05)
+            coordinator.stop()
+            time.sleep(0.1)
+
+            runtime_state = json.loads((project_root / "runtime_data" / "runtime_state.json").read_text(encoding="utf-8"))
+            last_session = json.loads((context_path / "memory" / "last_session.json").read_text(encoding="utf-8"))
+
+            self.assertEqual(runtime_state["context_key"], context_path.name)
+            self.assertEqual(runtime_state["last_runtime_state"], "stopped")
+            self.assertEqual(runtime_state["last_shutdown_reason"], "operator_stop")
+            self.assertEqual(last_session["last_runtime_state"], "stopped")
+            self.assertEqual(last_session["last_shutdown_reason"], "operator_stop")
+            self.assertEqual(last_session["last_symbol"], "EURUSD")
 
 
 if __name__ == "__main__":
