@@ -118,6 +118,8 @@ class MT5SnapshotProvider:
 
     def get_snapshot(self) -> RuntimeSnapshot:
         account = self.adapter.load_account_snapshot()
+        fingerprint_loader = getattr(self.adapter, "load_account_fingerprint", None)
+        fingerprint = fingerprint_loader() if callable(fingerprint_loader) else None
         symbol_snapshot = self.adapter.load_symbol_snapshot(self.symbol)
         tick = self.adapter.load_price_tick(self.symbol)
         enriched_symbol = replace(
@@ -132,6 +134,13 @@ class MT5SnapshotProvider:
 
         context = dict(self.context)
         context["tick_time"] = tick.time
+        if fingerprint is not None:
+            context["account_fingerprint"] = {
+                "login": fingerprint.login,
+                "server": fingerprint.server,
+                "broker": fingerprint.broker,
+                "is_live": fingerprint.is_live,
+            }
         return RuntimeSnapshot(
             symbol=self.symbol,
             timeframe=self.timeframe,
@@ -414,4 +423,5 @@ class PollingRuntime:
             "trade_mode": snapshot.symbol_snapshot.trade_mode,
             "execution_mode": snapshot.symbol_snapshot.execution_mode,
             "filling_mode": snapshot.symbol_snapshot.filling_mode,
+            "account_fingerprint": snapshot.context.get("account_fingerprint"),
         }

@@ -20,6 +20,8 @@ data/forward-demo/
 *.log
 *.db
 *.db-journal
+runtime_data/
+ai_context/
 
 # MetaTrader artifacts
 *.ex5

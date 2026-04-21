@@ -37,6 +37,7 @@ from PySide6.QtWidgets import (
 from .desktop_runtime import DesktopRuntimeConfig, DesktopRuntimeCoordinator
 from .models import CapitalAllocation, CapitalAllocationMode, RiskPolicy, TradingStyle
 from .mt5_adapter import LiveMT5Adapter
+from .operator_state import OperatorRuntimeSettings, OperatorStateStore
 from .risk_engine import RiskEngine
 from .websocket_service import BotEaWebSocketService
 
@@ -62,7 +63,18 @@ class QtBotEaWebSocketService(BotEaWebSocketService):
             session_state=str(params.get("session_state") or "desktop_runtime"),
             news_state=str(params.get("news_state") or "unknown"),
             run_id=str(params["run_id"]) if params.get("run_id") else None,
+            ai_workspace_path=self._optional_str(str(params.get("ai_workspace_path") or "")),
+            ai_documents_path=self._optional_str(str(params.get("ai_documents_path") or "")),
+            ai_context_path=self._optional_str(str(params.get("ai_context_path") or params.get("ai_context_root") or "")),
+            resume_prompt_path=self._optional_str(str(params.get("resume_prompt_path") or "")),
+            behavior_profile_path=self._optional_str(str(params.get("behavior_profile_path") or "")),
+            account_fingerprint=dict(params.get("account_fingerprint") or {}) or None,
         )
+
+    @staticmethod
+    def _optional_str(value: str) -> str | None:
+        normalized = value.strip()
+        return normalized or None
 
 
 class QtBotEaLocalServiceRunner:
@@ -397,6 +409,8 @@ class BotEaQtWindow(QMainWindow):
             risk_engine=self.risk_engine,
             risk_policy=self.risk_policy,
         )
+        self.state_store = OperatorStateStore(Path.cwd())
+        self.runtime_settings = self.state_store.load_runtime_settings()
 
         self.snapshot: dict[str, Any] | None = None
         self.size_result: dict[str, Any] | None = None
@@ -415,11 +429,20 @@ class BotEaQtWindow(QMainWindow):
         self._preview_debounce_ms = 150
         self._preview_refresh_inflight = False
         self._dev_mode_enabled = False
+        self._mt5_overlay_active = False
+        self._account_review_active = False
         self._startup_gate_active = True
         self._startup_probe_inflight = False
-        self._startup_requirements = {"service": False, "mt5": False, "codex": False}
+        self._startup_requirements = {}
+        self._startup_requirement_details: dict[str, str] = {}
+        self._startup_active_step = ""
+        self._active_account_fingerprint: dict[str, Any] | None = None
+        self._active_context_binding: dict[str, Any] | None = None
+        self._pending_account_fingerprint: dict[str, Any] | None = None
 
         self._build_ui()
+        self._apply_runtime_settings_to_form()
+        self._apply_accessibility_defaults()
         self._wire_events()
 
         self.event_timer = QTimer(self)
@@ -701,7 +724,7 @@ class BotEaQtWindow(QMainWindow):
         self.gate_title = QLabel("Persiapan Sistem", self.gate_card)
         self.gate_title.setObjectName("heroTitle")
         self.gate_subtitle = QLabel(
-            "Workspace trading akan terbuka setelah service, MT5, dan AI runtime tervalidasi.",
+            "Workspace trading akan terbuka setelah service, MT5, akun, AI runtime, dokumen, context, dan storage tervalidasi.",
             self.gate_card,
         )
         self.gate_subtitle.setObjectName("heroSubtitle")
@@ -716,12 +739,27 @@ class BotEaQtWindow(QMainWindow):
         gate_status_layout = QVBoxLayout(self.gate_status_group)
         gate_status_layout.setContentsMargins(12, 18, 12, 12)
         gate_status_layout.setSpacing(10)
-        self.gate_service_status = QLabel("Belum diperiksa", self.gate_status_group)
-        self.gate_mt5_status = QLabel("Belum diperiksa", self.gate_status_group)
-        self.gate_codex_status = QLabel("Belum diperiksa", self.gate_status_group)
-        gate_status_layout.addWidget(self._make_status_chip("Service", self.gate_service_status))
-        gate_status_layout.addWidget(self._make_status_chip("MT5", self.gate_mt5_status))
-        gate_status_layout.addWidget(self._make_status_chip("AI Runtime", self.gate_codex_status))
+        self.gate_step_labels: dict[str, QLabel] = {}
+        for key, title in (
+            ("service", "Service Lokal"),
+            ("mt5_process", "MetaTrader 5"),
+            ("mt5_session", "Sesi MT5"),
+            ("account", "Akun Aktif"),
+            ("symbol", "Simbol Dasar"),
+            ("ai_runtime", "AI Runtime"),
+            ("ai_workspace", "Workspace AI"),
+            ("ai_documents", "Dokumen AI"),
+            ("ai_context", "Context / History"),
+            ("storage", "Storage"),
+            ("resume_state", "Resume State"),
+            ("workspace", "Workspace Utama"),
+        ):
+            label = QLabel("Belum diperiksa", self.gate_status_group)
+            self.gate_step_labels[key] = label
+            gate_status_layout.addWidget(self._make_status_chip(title, label))
+        self.gate_service_status = self.gate_step_labels["service"]
+        self.gate_mt5_status = self.gate_step_labels["mt5_session"]
+        self.gate_codex_status = self.gate_step_labels["ai_runtime"]
         gate_card_layout.addWidget(self.gate_status_group)
         gate_button_row = QHBoxLayout()
         gate_button_row.setSpacing(10)
@@ -771,10 +809,10 @@ class BotEaQtWindow(QMainWindow):
         sidebar_intro_layout.setSpacing(4)
         sidebar_intro_eyebrow = QLabel("Navigation", self.sidebar_intro_card)
         sidebar_intro_eyebrow.setObjectName("heroEyebrow")
-        sidebar_intro_title = QLabel("Runtime Shell", self.sidebar_intro_card)
+        sidebar_intro_title = QLabel("Menu Utama", self.sidebar_intro_card)
         sidebar_intro_title.setObjectName("heroTitle")
         sidebar_intro_subtitle = QLabel(
-            "Sidebar for navigation and service transport. Main execution controls live in the dashboard body.",
+            "Navigasi utama operator. Kontrol trading utama tetap berada di area kerja sebelah kanan.",
             self.sidebar_intro_card,
         )
         sidebar_intro_subtitle.setObjectName("heroSubtitle")
@@ -790,7 +828,7 @@ class BotEaQtWindow(QMainWindow):
         nav_layout.setContentsMargins(12, 20, 12, 12)
         nav_layout.setSpacing(8)
         self.nav_buttons: list[QPushButton] = []
-        for index, label in enumerate(("Dashboard", "Strategy", "History", "Logs", "Settings")):
+        for index, label in enumerate(("Dasbor", "Strategi", "Riwayat", "Log", "Pengaturan")):
             button = QPushButton(label, self)
             button.setCheckable(True)
             button.setChecked(index == 0)
@@ -804,12 +842,12 @@ class BotEaQtWindow(QMainWindow):
         hero_layout = QVBoxLayout(self.hero_card)
         hero_layout.setContentsMargins(18, 16, 18, 16)
         hero_layout.setSpacing(4)
-        self.hero_eyebrow = QLabel("Operator Console", self.hero_card)
+        self.hero_eyebrow = QLabel("Panel Bot", self.hero_card)
         self.hero_eyebrow.setObjectName("heroEyebrow")
-        self.hero_title = QLabel("Runtime Dashboard", self.hero_card)
+        self.hero_title = QLabel("Dasbor Bot", self.hero_card)
         self.hero_title.setObjectName("heroTitle")
         self.hero_subtitle = QLabel(
-            "Top app bar for readiness chips and operator actions. The dashboard body below separates trade controls from live market cards.",
+            "Status sistem, kesiapan operator, dan kontrol trading terpusat di workspace ini.",
             self.hero_card,
         )
         self.hero_subtitle.setObjectName("heroSubtitle")
@@ -817,6 +855,9 @@ class BotEaQtWindow(QMainWindow):
         hero_layout.addWidget(self.hero_eyebrow)
         hero_layout.addWidget(self.hero_title)
         hero_layout.addWidget(self.hero_subtitle)
+        self.mode_badge = QLabel("OPERATOR MODE", self.hero_card)
+        self.mode_badge.setObjectName("chipValue")
+        hero_layout.addWidget(self.mode_badge, 0, Qt.AlignLeft)
         self.top_status_row = QGridLayout()
         self.top_status_row.setHorizontalSpacing(10)
         self.top_status_row.setVerticalSpacing(10)
@@ -824,6 +865,56 @@ class BotEaQtWindow(QMainWindow):
         self.app_bar_actions = QHBoxLayout()
         self.app_bar_actions.setSpacing(8)
         hero_layout.addLayout(self.app_bar_actions)
+        self.reconnect_overlay = QFrame(self)
+        self.reconnect_overlay.setObjectName("dataCardAccent")
+        reconnect_layout = QVBoxLayout(self.reconnect_overlay)
+        reconnect_layout.setContentsMargins(16, 16, 16, 16)
+        reconnect_layout.setSpacing(6)
+        self.reconnect_title = QLabel("Menunggu MetaTrader 5", self.reconnect_overlay)
+        self.reconnect_title.setObjectName("cardTitle")
+        self.reconnect_message = QLabel(
+            "Terminal MT5 tidak tersedia. Trading dibekukan sampai koneksi kembali stabil.",
+            self.reconnect_overlay,
+        )
+        self.reconnect_message.setWordWrap(True)
+        reconnect_layout.addWidget(self.reconnect_title)
+        reconnect_layout.addWidget(self.reconnect_message)
+        self.reconnect_overlay.hide()
+        right_layout.addWidget(self.reconnect_overlay)
+        self.account_review_card = QFrame(self)
+        self.account_review_card.setObjectName("dataCardAccent")
+        account_review_layout = QVBoxLayout(self.account_review_card)
+        account_review_layout.setContentsMargins(16, 16, 16, 16)
+        account_review_layout.setSpacing(6)
+        self.account_review_title = QLabel("Review Perubahan Akun", self.account_review_card)
+        self.account_review_title.setObjectName("cardTitle")
+        self.account_review_message = QLabel(
+            "Aplikasi mendeteksi akun MT5 baru. Review context akun sebelum trading dilanjutkan.",
+            self.account_review_card,
+        )
+        self.account_review_message.setWordWrap(True)
+        self.account_review_old = QLabel("-", self.account_review_card)
+        self.account_review_new = QLabel("-", self.account_review_card)
+        account_review_layout.addWidget(self.account_review_title)
+        account_review_layout.addWidget(self.account_review_message)
+        account_review_layout.addWidget(self.account_review_old)
+        account_review_layout.addWidget(self.account_review_new)
+        review_button_row = QHBoxLayout()
+        self.account_review_use_button = QPushButton("Gunakan akun ini", self.account_review_card)
+        self.account_review_cancel_button = QPushButton("Batalkan", self.account_review_card)
+        self.account_review_select_button = QPushButton("Pilih context akun", self.account_review_card)
+        self.account_review_new_context_button = QPushButton("Buat context baru", self.account_review_card)
+        for button in (
+            self.account_review_use_button,
+            self.account_review_cancel_button,
+            self.account_review_select_button,
+            self.account_review_new_context_button,
+        ):
+            review_button_row.addWidget(button)
+        review_button_row.addStretch(1)
+        account_review_layout.addLayout(review_button_row)
+        self.account_review_card.hide()
+        right_layout.addWidget(self.account_review_card)
         right_layout.addWidget(self.hero_card)
 
         self.service_group = QGroupBox("Backend Service", self)
@@ -836,7 +927,7 @@ class BotEaQtWindow(QMainWindow):
         service_form.addRow("Port", self.service_port_input)
         left_layout.addWidget(self.service_group)
 
-        self.trade_group = QGroupBox("Trade Setup", self)
+        self.trade_group = QGroupBox("Parameter Trading", self)
         trade_form = QFormLayout(self.trade_group)
         self._configure_form_layout(trade_form)
         self.symbol_combo = QComboBox(self)
@@ -861,18 +952,18 @@ class BotEaQtWindow(QMainWindow):
         self.side_combo.addItems(self.MANUAL_SIDE_OPTIONS)
         self.db_input = QLineEdit(str(Path.cwd() / "bot_ea_runtime.db"), self)
 
-        trade_form.addRow("Symbol (from MT5)", self.symbol_combo)
+        trade_form.addRow("Simbol", self.symbol_combo)
         trade_form.addRow("Timeframe", self.timeframe_combo)
-        trade_form.addRow("Strategy Style", self.style_combo)
+        trade_form.addRow("Gaya Strategi", self.style_combo)
         trade_form.addRow(self.stop_label, self.stop_input)
-        trade_form.addRow("Capital Mode", self.capital_mode_combo)
-        trade_form.addRow("Capital To Use (USD)", self.capital_input)
-        trade_form.addRow("Lot Mode", self.lot_mode_combo)
-        trade_form.addRow("Manual Lot Request", self.manual_lot_input)
-        trade_form.addRow("Manual Side Only", self.side_combo)
-        trade_form.addRow("Log File (Runtime DB)", self.db_input)
+        trade_form.addRow("Mode Modal", self.capital_mode_combo)
+        trade_form.addRow("Modal Dipakai (USD)", self.capital_input)
+        trade_form.addRow("Mode Lot", self.lot_mode_combo)
+        trade_form.addRow("Request Lot Manual", self.manual_lot_input)
+        trade_form.addRow("Sisi Order Manual", self.side_combo)
+        trade_form.addRow("File Runtime DB", self.db_input)
 
-        self.codex_group = QGroupBox("Codex", self)
+        self.codex_group = QGroupBox("AI Runtime", self)
         codex_form = QFormLayout(self.codex_group)
         self._configure_form_layout(codex_form)
         self.codex_command_input = QLineEdit("codex", self)
@@ -880,29 +971,35 @@ class BotEaQtWindow(QMainWindow):
         self.model_combo.setEditable(True)
         self.model_combo.addItems(self.CODEX_MODEL_PRESETS)
         self.model_combo.setCurrentText("gpt-5.4-mini")
-        self.codex_cwd_input = QLineEdit(str(Path.cwd()), self)
+        self.codex_cwd_input = QLineEdit(str(Path.cwd() / "ai_workspace"), self)
+        self.ai_documents_input = QLineEdit(str(Path.cwd() / "ai_documents"), self)
+        self.ai_context_input = QLineEdit(str(Path.cwd() / "ai_context"), self)
+        self.timeout_input = QLineEdit("60", self)
         self.poll_interval_input = QLineEdit("30", self)
-        codex_form.addRow("Codex Command", self.codex_command_input)
-        codex_form.addRow("AI Model", self.model_combo)
-        codex_form.addRow("Codex Work Folder", self.codex_cwd_input)
-        codex_form.addRow("Check Market Every (s)", self.poll_interval_input)
+        codex_form.addRow("Command AI Runtime", self.codex_command_input)
+        codex_form.addRow("Model Default", self.model_combo)
+        codex_form.addRow("Workspace AI", self.codex_cwd_input)
+        codex_form.addRow("Dokumen AI", self.ai_documents_input)
+        codex_form.addRow("Context Root", self.ai_context_input)
+        codex_form.addRow("Timeout (s)", self.timeout_input)
+        codex_form.addRow("Cek Market Tiap (s)", self.poll_interval_input)
 
-        self.action_group = QGroupBox("Actions", self)
+        self.action_group = QGroupBox("Tombol Eksekusi", self)
         action_layout = QGridLayout(self.action_group)
         action_layout.setHorizontalSpacing(10)
         action_layout.setVerticalSpacing(10)
         self.connect_service_button = QPushButton("Service", self)
-        self.check_mt5_button = QPushButton("Check MT5", self)
-        self.load_codex_button = QPushButton("Load Codex", self)
-        self.refresh_button = QPushButton("Preview", self)
-        self.preflight_button = QPushButton("Preflight", self)
-        self.execute_button = QPushButton("Execute", self)
-        self.play_button = QPushButton("Play Runtime", self)
-        self.stop_button = QPushButton("Stop Runtime", self)
-        self.live_button = QPushButton("Live Mode", self)
-        self.approve_button = QPushButton("Approve", self)
-        self.reject_button = QPushButton("Reject", self)
-        self.load_telemetry_button = QPushButton("Telemetry", self)
+        self.check_mt5_button = QPushButton("Cek MT5", self)
+        self.load_codex_button = QPushButton("Cek AI Runtime", self)
+        self.refresh_button = QPushButton("Refresh Data", self)
+        self.preflight_button = QPushButton("Cek Safety", self)
+        self.execute_button = QPushButton("Eksekusi Order", self)
+        self.play_button = QPushButton("Mulai Bot", self)
+        self.stop_button = QPushButton("Berhenti Bot", self)
+        self.live_button = QPushButton("Aktifkan Live", self)
+        self.approve_button = QPushButton("Setujui Proposal", self)
+        self.reject_button = QPushButton("Tolak Proposal", self)
+        self.load_telemetry_button = QPushButton("Lihat Telemetri", self)
         for button, tooltip in (
             (self.connect_service_button, "Start or connect the websocket service"),
             (self.refresh_button, "Refresh manual preview from broker snapshot"),
@@ -913,7 +1010,7 @@ class BotEaQtWindow(QMainWindow):
             (self.load_telemetry_button, "Load runtime telemetry and validation"),
         ):
             button.setToolTip(tooltip)
-        self.sidebar_actions_group = QGroupBox("Quick Actions", self)
+        self.sidebar_actions_group = QGroupBox("Tindakan Cepat", self)
         self.sidebar_actions_group.setObjectName("sidebarPanel")
         sidebar_actions_layout = QVBoxLayout(self.sidebar_actions_group)
         sidebar_actions_layout.setContentsMargins(12, 20, 12, 12)
@@ -935,7 +1032,7 @@ class BotEaQtWindow(QMainWindow):
         sidebar_summary_layout.setSpacing(4)
         self.sidebar_mode_label = QLabel("Current page", self.sidebar_summary_card)
         self.sidebar_mode_label.setObjectName("metricTitle")
-        self.sidebar_mode_value = QLabel("Dashboard", self.sidebar_summary_card)
+        self.sidebar_mode_value = QLabel("Dasbor", self.sidebar_summary_card)
         self.sidebar_mode_value.setObjectName("metricValue")
         self.sidebar_endpoint_note = QLabel("Runtime endpoint not connected", self.sidebar_summary_card)
         self.sidebar_endpoint_note.setObjectName("cardCaption")
@@ -960,22 +1057,22 @@ class BotEaQtWindow(QMainWindow):
         action_layout.setColumnStretch(1, 1)
         left_layout.addStretch(1)
 
-        self.status_group = QGroupBox("Readiness", self)
+        self.status_group = QGroupBox("Status Kesiapan", self)
         status_grid = QGridLayout(self.status_group)
         status_grid.setContentsMargins(10, 18, 10, 10)
         status_grid.setHorizontalSpacing(12)
         status_grid.setVerticalSpacing(12)
         self.service_status = QLabel("Service disconnected", self)
-        self.mt5_status = QLabel("MT5 unchecked", self)
-        self.codex_status = QLabel("codex-cli unchecked", self)
-        self.runtime_status = QLabel("Runtime stopped", self)
+        self.mt5_status = QLabel("MT5 belum dicek", self)
+        self.codex_status = QLabel("AI runtime belum dicek", self)
+        self.runtime_status = QLabel("Bot berhenti", self)
         self.run_id_status = QLabel("-", self)
         self.approval_status = QLabel("No pending live approval", self)
         self.readiness_chips = {
             "service": {"frame": self._make_status_chip("Service", self.service_status), "value": self.service_status},
             "mt5": {"frame": self._make_status_chip("MT5", self.mt5_status), "value": self.mt5_status},
-            "codex": {"frame": self._make_status_chip("Codex", self.codex_status), "value": self.codex_status},
-            "runtime": {"frame": self._make_status_chip("Runtime", self.runtime_status), "value": self.runtime_status},
+            "codex": {"frame": self._make_status_chip("AI Runtime", self.codex_status), "value": self.codex_status},
+            "runtime": {"frame": self._make_status_chip("Bot", self.runtime_status), "value": self.runtime_status},
             "approval": {"frame": self._make_status_chip("Approval", self.approval_status), "value": self.approval_status},
         }
         self.run_id_card = self._make_metric_card("Run ID", self.run_id_status, "Active runtime session / audit cursor")
@@ -1002,10 +1099,10 @@ class BotEaQtWindow(QMainWindow):
         trade_control_layout = QVBoxLayout(self.trade_control_panel)
         trade_control_layout.setContentsMargins(14, 14, 14, 14)
         trade_control_layout.setSpacing(10)
-        trade_panel_title = QLabel("Trade Control Panel", self.trade_control_panel)
+        trade_panel_title = QLabel("Panel Bot", self.trade_control_panel)
         trade_panel_title.setObjectName("cardTitle")
         trade_panel_caption = QLabel(
-            "Primary execution controls, runtime configuration, and approval actions.",
+            "Kontrol trading, konfigurasi runtime, dan alur approval operator.",
             self.trade_control_panel,
         )
         trade_panel_caption.setObjectName("cardCaption")
@@ -1032,10 +1129,10 @@ class BotEaQtWindow(QMainWindow):
         snapshot_dashboard_layout = QVBoxLayout(self.snapshot_dashboard)
         snapshot_dashboard_layout.setContentsMargins(14, 14, 14, 14)
         snapshot_dashboard_layout.setSpacing(12)
-        snapshot_dashboard_title = QLabel("Snapshot Cards", self.snapshot_dashboard)
+        snapshot_dashboard_title = QLabel("Kartu Ringkasan", self.snapshot_dashboard)
         snapshot_dashboard_title.setObjectName("cardTitle")
         snapshot_dashboard_caption = QLabel(
-            "Live market state, manual order envelope, and sizing/risk projections.",
+            "Status market, ringkasan order, dan proyeksi sizing/risk yang aktif.",
             self.snapshot_dashboard,
         )
         snapshot_dashboard_caption.setObjectName("cardCaption")
@@ -1047,9 +1144,9 @@ class BotEaQtWindow(QMainWindow):
         summary_row = QGridLayout()
         summary_row.setHorizontalSpacing(12)
         summary_row.setVerticalSpacing(12)
-        self.market_card = self._make_text_card("Market Snapshot", "Realtime symbol/tick and broker execution context")
-        self.manual_card = self._make_text_card("Manual Order Envelope", "Normalized lot, margin envelope, and order path")
-        self.risk_card = self._make_text_card("Risk Envelope", "Sizing projection, loss budget, and blockers")
+        self.market_card = self._make_text_card("Ringkasan Pasar", "Symbol/tick realtime dan konteks broker")
+        self.manual_card = self._make_text_card("Ringkasan Order", "Lot final, margin, dan jalur order manual")
+        self.risk_card = self._make_text_card("Batas Risiko", "Sizing, loss budget, dan blocker")
         summary_row.addWidget(self.market_card["frame"], 0, 0, 1, 2)
         summary_row.addWidget(self.manual_card["frame"], 1, 0)
         summary_row.addWidget(self.risk_card["frame"], 1, 1)
@@ -1064,18 +1161,18 @@ class BotEaQtWindow(QMainWindow):
         self.validation_text.setReadOnly(True)
         self.events_text = QPlainTextEdit(self)
         self.events_text.setReadOnly(True)
-        self.tabs.addTab(self.runtime_text, "Runtime Feed")
-        self.tabs.addTab(self.events_text, "Log Console")
+        self.tabs.addTab(self.runtime_text, "Feed Runtime")
+        self.tabs.addTab(self.events_text, "Konsol Log")
         logs_layout.addWidget(self.tabs)
 
         self.dashboard_page = QWidget(self)
         dashboard_page_layout = QVBoxLayout(self.dashboard_page)
         dashboard_page_layout.setContentsMargins(0, 0, 0, 0)
         dashboard_page_layout.setSpacing(12)
-        dashboard_title = QLabel("Dashboard Overview", self.dashboard_page)
+        dashboard_title = QLabel("Ikhtisar Dasbor", self.dashboard_page)
         dashboard_title.setObjectName("cardTitle")
         dashboard_caption = QLabel(
-            "Live readiness, market snapshot, and operator summary in one place.",
+            "Status sistem, snapshot market, dan ringkasan operator dalam satu tempat.",
             self.dashboard_page,
         )
         dashboard_caption.setObjectName("cardCaption")
@@ -1426,6 +1523,70 @@ class BotEaQtWindow(QMainWindow):
         self.shell_stack.setCurrentWidget(self.startup_gate_page)
         self._sync_button_states()
 
+    def _apply_runtime_settings_to_form(self) -> None:
+        settings = self.runtime_settings
+        self.service_host_input.setText(settings.service_host)
+        self.service_port_input.setText(str(settings.service_port))
+        self.codex_command_input.setText(settings.ai_runtime_command)
+        self.model_combo.setCurrentText(settings.default_model)
+        self.codex_cwd_input.setText(settings.ai_workspace_path)
+        self.ai_documents_input.setText(settings.ai_documents_path)
+        self.ai_context_input.setText(settings.ai_context_root)
+        self.poll_interval_input.setText(str(settings.poll_interval_seconds))
+        self.timeout_input.setText(str(settings.timeout_seconds))
+        self.db_input.setText(settings.db_path)
+        self.symbol_combo.setCurrentText(settings.symbol)
+        self.timeframe_combo.setCurrentText(settings.timeframe)
+        self.style_combo.setCurrentText(settings.trading_style)
+        self.stop_input.setText(f"{settings.stop_distance_points:.0f}")
+        self.capital_mode_combo.setCurrentText(settings.capital_mode)
+        self.capital_input.setText(f"{settings.capital_value:.0f}")
+
+    def _collect_runtime_settings_from_form(self) -> OperatorRuntimeSettings:
+        return OperatorRuntimeSettings(
+            mode="dev" if self._dev_mode_enabled else "operator",
+            ai_runtime_command=self.codex_command_input.text().strip() or "codex",
+            ai_runtime_executable_path="",
+            ai_workspace_path=self.codex_cwd_input.text().strip() or str(Path.cwd()),
+            ai_documents_path=self.ai_documents_input.text().strip() or str(Path.cwd() / "ai_documents"),
+            ai_context_root=self.ai_context_input.text().strip() or str(Path.cwd() / "ai_context"),
+            default_model=self._optional_str(self.model_combo.currentText()) or "gpt-5.4-mini",
+            timeout_seconds=max(int(self._float_or_default(self.timeout_input.text(), default=60.0)), 1),
+            strict_startup_gate=not self._dev_mode_enabled,
+            allow_dev_bypass=True,
+            service_host=self.service_host_input.text().strip() or "127.0.0.1",
+            service_port=int(self.service_port_input.text().strip() or "8765"),
+            db_path=str(Path(self.db_input.text().strip() or "bot_ea_runtime.db").expanduser()),
+            poll_interval_seconds=max(int(self._float_or_default(self.poll_interval_input.text(), default=30.0)), 1),
+            symbol=self.symbol_combo.currentText().strip() or "EURUSD",
+            timeframe=self.timeframe_combo.currentText().strip() or "M15",
+            trading_style=self.style_combo.currentText().strip() or "intraday",
+            stop_distance_points=self._current_stop_distance_value(),
+            capital_mode=self.capital_mode_combo.currentText(),
+            capital_value=self._capital_allocation().value,
+        )
+
+    def _persist_runtime_settings(self) -> None:
+        self.runtime_settings = self._collect_runtime_settings_from_form()
+        self.state_store.save_runtime_settings(self.runtime_settings)
+
+    def _apply_accessibility_defaults(self) -> None:
+        self.gate_primary_button.setAccessibleName("Mulai pemeriksaan dependency")
+        self.gate_retry_button.setAccessibleName("Coba lagi pemeriksaan dependency")
+        self.gate_dev_button.setAccessibleName("Masuk mode dev")
+        self.codex_command_input.setAccessibleName("Command AI runtime")
+        self.codex_cwd_input.setAccessibleName("Workspace AI")
+        self.ai_documents_input.setAccessibleName("Dokumen AI")
+        self.ai_context_input.setAccessibleName("Folder context AI")
+        self.timeout_input.setAccessibleName("Timeout AI runtime")
+        self.check_mt5_button.setAccessibleName("Cek MT5")
+        self.load_codex_button.setAccessibleName("Cek AI runtime")
+        self.refresh_button.setAccessibleName("Refresh data")
+        QWidget.setTabOrder(self.gate_primary_button, self.gate_retry_button)
+        QWidget.setTabOrder(self.gate_retry_button, self.gate_dev_button)
+        QWidget.setTabOrder(self.check_mt5_button, self.load_codex_button)
+        QWidget.setTabOrder(self.load_codex_button, self.refresh_button)
+
     def _make_text_card(self, title: str, caption: str) -> dict[str, QWidget | QPlainTextEdit]:
         frame = QFrame(self)
         frame.setObjectName("dataCard")
@@ -1465,13 +1626,13 @@ class BotEaQtWindow(QMainWindow):
         mt5_text = self.mt5_status.text().lower()
         if "ready" in mt5_text:
             self._set_chip_tone("mt5", "ok")
-        elif "unchecked" in mt5_text:
+        elif "unchecked" in mt5_text or "belum" in mt5_text:
             self._set_chip_tone("mt5", "idle")
         else:
             self._set_chip_tone("mt5", "warn")
 
         codex_text = self.codex_status.text().lower()
-        if "unchecked" in codex_text:
+        if "unchecked" in codex_text or "belum" in codex_text:
             self._set_chip_tone("codex", "idle")
         elif "error" in codex_text or "failed" in codex_text:
             self._set_chip_tone("codex", "warn")
@@ -1521,6 +1682,7 @@ class BotEaQtWindow(QMainWindow):
                     f"symbol={snapshot.get('symbol') or self.symbol_combo.currentText() or '-'}",
                     f"manual_lot={final_lot:.2f}" if final_lot > 0 else "manual_lot=--",
                     f"approval={self.approval_status.text()}",
+                    f"account={self._format_account_fingerprint(self._active_account_fingerprint)}",
                 ]
             )
         )
@@ -1575,10 +1737,15 @@ class BotEaQtWindow(QMainWindow):
                 [
                     f"service_url={self._service_url()}",
                     f"service_mode={'managed' if self._managed_service_owned else 'external'}",
-                    f"codex_command={self.codex_command_input.text().strip() or 'codex'}",
-                    f"codex_model={self._optional_str(self.model_combo.currentText()) or 'default'}",
-                    f"codex_cwd={self._optional_str(self.codex_cwd_input.text()) or Path.cwd()}",
+                    f"ai_runtime_command={self.codex_command_input.text().strip() or 'codex'}",
+                    f"default_model={self._optional_str(self.model_combo.currentText()) or 'default'}",
+                    f"ai_workspace={self._optional_str(self.codex_cwd_input.text()) or Path.cwd()}",
+                    f"ai_documents={self._optional_str(self.ai_documents_input.text()) or (Path.cwd() / 'ai_documents')}",
+                    f"ai_context_root={self._optional_str(self.ai_context_input.text()) or (Path.cwd() / 'ai_context')}",
+                    f"context_path={(self._active_context_binding or {}).get('context_path') or '-'}",
+                    f"active_account={self._format_account_fingerprint(self._active_account_fingerprint)}",
                     f"poll_interval_seconds={self.poll_interval_input.text().strip() or '30'}",
+                    f"timeout_seconds={self.timeout_input.text().strip() or '60'}",
                     f"runtime_db={self.db_input.text().strip()}",
                 ]
             )
@@ -1593,48 +1760,67 @@ class BotEaQtWindow(QMainWindow):
         for idx, button in enumerate(self.nav_buttons):
             button.setChecked(idx == index)
         page_titles = {
-            0: ("Runtime Dashboard", "Live readiness, market snapshot, and operator summary."),
-            1: ("Strategy Workspace", "Configure trade setup, capital management, and execution controls."),
-            2: ("History + Validation", "Inspect validation output and telemetry history."),
-            3: ("Runtime Console", "Read runtime feed and event logs without leaving the terminal."),
-            4: ("Settings + Transport", "Manage websocket transport and Codex defaults."),
+            0: ("Dasbor Bot", "Status sistem, ringkasan market, dan panduan operator."),
+            1: ("Strategi", "Atur parameter trading, modal, dan tombol eksekusi."),
+            2: ("Riwayat", "Tinjau validasi, telemetry, dan lifecycle trading."),
+            3: ("Log", "Baca feed runtime dan event sistem tanpa meninggalkan workspace."),
+            4: ("Pengaturan", "Kelola transport service dan default AI runtime."),
         }
-        title, subtitle = page_titles.get(index, ("Runtime Dashboard", self.hero_subtitle.text()))
+        title, subtitle = page_titles.get(index, ("Dasbor Bot", self.hero_subtitle.text()))
         self.hero_title.setText(title)
         self.hero_subtitle.setText(subtitle)
         self._refresh_page_summaries()
 
     def _start_startup_gate(self) -> None:
+        self._persist_runtime_settings()
         self._startup_gate_active = True
         self._startup_probe_inflight = False
-        self._startup_requirements = {"service": False, "mt5": False, "codex": False}
+        self._startup_requirements = {key: False for key in self.gate_step_labels}
+        self._startup_requirement_details = {key: "Belum diperiksa" for key in self.gate_step_labels}
+        self._startup_active_step = "service"
         self._mt5_ready = False
         self._codex_ready = False
+        self._mt5_overlay_active = False
+        self._account_review_active = False
+        self.reconnect_overlay.hide()
+        self.account_review_card.hide()
         self.shell_stack.setCurrentWidget(self.startup_gate_page)
+        for key, label in self.gate_step_labels.items():
+            self._set_startup_requirement(key, False, self._startup_requirement_details.get(key, "Belum diperiksa"))
         self._update_startup_gate_ui()
         QTimer.singleShot(0, self._run_startup_probe_sequence)
+
+    def _startup_probe_steps(self) -> list[tuple[str, str, Any]]:
+        return [
+            ("service", "Menyalakan service lokal", self._probe_service_ready),
+            ("mt5_process", "Menunggu MetaTrader 5", self._probe_mt5_process),
+            ("mt5_session", "Membaca sesi MT5", self._probe_mt5_session),
+            ("account", "Validasi akun aktif", self._probe_account_fingerprint),
+            ("symbol", "Memuat simbol dasar", self._probe_symbol_baseline),
+            ("ai_runtime", "Menemukan AI runtime", self._probe_ai_runtime),
+            ("ai_workspace", "Validasi workspace AI", self._probe_ai_workspace),
+            ("ai_documents", "Validasi dokumen AI", self._probe_ai_documents),
+            ("ai_context", "Validasi context/history", self._probe_ai_context),
+            ("storage", "Validasi storage", self._probe_storage),
+            ("resume_state", "Menyiapkan resume state", self._build_resume_state),
+        ]
 
     def _run_startup_probe_sequence(self) -> None:
         if self._startup_probe_inflight or self._dev_mode_enabled:
             return
         self._startup_probe_inflight = True
-        self.gate_message.setText("Memeriksa service lokal, MT5, dan AI runtime...")
         try:
-            if not self.connect_service(show_errors=False):
-                self._set_startup_requirement("service", False, self.service_status.text())
-                return
-            self._set_startup_requirement("service", True, self.service_status.text())
-
-            self.check_mt5()
-            self._set_startup_requirement("mt5", self._mt5_ready, self.mt5_status.text())
-            if not self._mt5_ready:
-                return
-
-            self.load_codex()
-            self._set_startup_requirement("codex", self._codex_ready, self.codex_status.text())
-            if not self._codex_ready:
-                return
-
+            for key, title, callback in self._startup_probe_steps():
+                self._startup_active_step = key
+                self.gate_message.setText(title)
+                self._update_startup_gate_ui()
+                try:
+                    detail = callback()
+                except Exception as exc:
+                    self._set_startup_requirement(key, False, self._format_exception_detail(exc))
+                    return
+                self._set_startup_requirement(key, True, detail)
+            self._set_startup_requirement("workspace", True, "Workspace utama siap dibuka.")
             self._unlock_workspace()
         finally:
             self._startup_probe_inflight = False
@@ -1642,41 +1828,41 @@ class BotEaQtWindow(QMainWindow):
 
     def _set_startup_requirement(self, name: str, ok: bool, detail: str) -> None:
         self._startup_requirements[name] = ok
-        label_map = {
-            "service": self.gate_service_status,
-            "mt5": self.gate_mt5_status,
-            "codex": self.gate_codex_status,
-        }
-        label = label_map[name]
-        label.setText(detail if detail else ("Siap" if ok else "Belum siap"))
-        tone = "ok" if ok else ("warn" if "Belum" not in detail else "idle")
+        self._startup_requirement_details[name] = detail if detail else ("Siap" if ok else "Belum siap")
+        label = self.gate_step_labels[name]
+        label.setText(self._startup_requirement_details[name])
+        tone = "ok" if ok else ("warn" if detail and "Belum" not in detail else "idle")
         label.setProperty("tone", tone)
         self._repolish(label)
 
     def _update_startup_gate_ui(self) -> None:
-        blocked = []
-        if not self._startup_requirements["service"]:
-            blocked.append("service lokal")
-        if not self._startup_requirements["mt5"]:
-            blocked.append("MT5")
-        if not self._startup_requirements["codex"]:
-            blocked.append("AI runtime")
         if self._dev_mode_enabled:
             self.gate_message.setText("Mode dev aktif. Workspace dibuka tanpa semua dependency operator.")
-        elif blocked:
-            self.gate_message.setText(f"Workspace masih terkunci. Lengkapi: {', '.join(blocked)}.")
+            self.gate_subtitle.setText("DEV / MOCK MODE aktif. MT5 dan AI runtime tidak wajib untuk membuka workspace.")
+            return
+        blocked = [key for key, passed in self._startup_requirements.items() if not passed]
+        if blocked:
+            first_blocked = blocked[0]
+            detail = self._startup_requirement_details.get(first_blocked, "Belum siap")
+            self.gate_subtitle.setText(
+                "Mode operator mengharuskan service, MT5, akun, AI runtime, dokumen, context, dan storage siap."
+            )
+            self.gate_message.setText(detail)
         else:
             self.gate_message.setText("Semua dependency inti siap. Membuka workspace...")
 
     def _unlock_workspace(self) -> None:
         self._startup_gate_active = False
+        self.mode_badge.setText("DEV / MOCK MODE" if self._dev_mode_enabled else "OPERATOR MODE")
         self.shell_stack.setCurrentWidget(self.workspace_page)
         self._sync_button_states()
 
     def _enter_dev_mode(self) -> None:
         self._dev_mode_enabled = True
         self._startup_gate_active = False
+        self._persist_runtime_settings()
         self.gate_message.setText("DEV / MOCK MODE aktif.")
+        self.mode_badge.setText("DEV / MOCK MODE")
         self.shell_stack.setCurrentWidget(self.workspace_page)
         self._sync_button_states()
 
@@ -1702,12 +1888,20 @@ class BotEaQtWindow(QMainWindow):
         self.gate_primary_button.clicked.connect(self._run_startup_probe_sequence)
         self.gate_retry_button.clicked.connect(self._run_startup_probe_sequence)
         self.gate_dev_button.clicked.connect(self._enter_dev_mode)
+        self.account_review_use_button.clicked.connect(self._use_pending_account_context)
+        self.account_review_select_button.clicked.connect(self._use_pending_account_context)
+        self.account_review_new_context_button.clicked.connect(self._create_pending_account_context)
+        self.account_review_cancel_button.clicked.connect(self._cancel_account_review)
 
         for widget in (
             self.symbol_combo.lineEdit(),
             self.stop_input,
             self.capital_input,
             self.manual_lot_input,
+            self.timeout_input,
+            self.ai_documents_input,
+            self.ai_context_input,
+            self.codex_cwd_input,
         ):
             if widget is not None:
                 widget.textChanged.connect(self._schedule_live_preview)
@@ -1725,8 +1919,193 @@ class BotEaQtWindow(QMainWindow):
         self.event_timer.stop()
         self.preview_timer.stop()
         self.preview_poll_timer.stop()
+        self._persist_runtime_settings()
         self.backend.close()
         super().closeEvent(event)
+
+    def _probe_service_ready(self) -> str:
+        if not self.connect_service(show_errors=False):
+            raise RuntimeError(self.service_status.text())
+        return self.service_status.text()
+
+    def _probe_mt5_process(self) -> str:
+        result = self._send_backend_command("probe_mt5_process", {})
+        return str(result.get("detail") or "MetaTrader 5 terdeteksi.")
+
+    def _probe_mt5_session(self) -> str:
+        result = self._send_backend_command("probe_mt5_session", {})
+        return str(result.get("detail") or "Sesi MT5 aktif.")
+
+    def _probe_account_fingerprint(self) -> str:
+        result = self._send_backend_command("probe_account_fingerprint", {})
+        fingerprint = {
+            "login": str(result.get("login") or ""),
+            "server": str(result.get("server") or ""),
+            "broker": str(result.get("broker") or ""),
+            "is_live": result.get("is_live"),
+        }
+        self._apply_account_fingerprint(fingerprint, runtime_was_running=False)
+        return str(result.get("detail") or "Akun aktif tervalidasi.")
+
+    def _probe_symbol_baseline(self) -> str:
+        result = self._send_backend_command("probe_symbol_baseline", self._probe_params())
+        snapshot = dict(result.get("snapshot") or {})
+        self.snapshot = {**(self.snapshot or {}), **snapshot}
+        self._set_symbol_choices(result.get("symbols") or [])
+        self._sync_stop_distance_from_probe(snapshot)
+        self._update_summary_cards()
+        return str(result.get("detail") or "Simbol dasar siap.")
+
+    def _probe_ai_runtime(self) -> str:
+        result = self._send_backend_command("probe_ai_runtime", self._ai_runtime_probe_params())
+        detail = str(result.get("detail") or result.get("version") or "AI runtime siap.")
+        self._codex_ready = True
+        self.codex_status.setText(str(result.get("version") or detail))
+        return detail
+
+    def _probe_ai_workspace(self) -> str:
+        result = self._send_backend_command("probe_ai_workspace", self._ai_runtime_probe_params())
+        return str(result.get("detail") or "Workspace AI siap.")
+
+    def _probe_ai_documents(self) -> str:
+        result = self._send_backend_command("probe_ai_documents", self._ai_runtime_probe_params())
+        return str(result.get("detail") or "Dokumen AI siap.")
+
+    def _probe_ai_context(self) -> str:
+        result = self._send_backend_command("probe_ai_context_store", self._ai_runtime_probe_params())
+        return str(result.get("detail") or "Context AI siap.")
+
+    def _probe_storage(self) -> str:
+        result = self._send_backend_command("validate_storage", self._ai_runtime_probe_params())
+        return str(result.get("detail") or "Storage siap.")
+
+    def _build_resume_state(self) -> str:
+        if self._active_account_fingerprint is None:
+            raise RuntimeError("Fingerprint akun belum tersedia.")
+        result = self._send_backend_command(
+            "build_resume_state",
+            {
+                **self._ai_runtime_probe_params(),
+                "fingerprint": self._active_account_fingerprint,
+                "create_new": False,
+            },
+        )
+        self._active_context_binding = dict(result.get("binding") or {})
+        return str(result.get("detail") or "Resume state siap.")
+
+    def _apply_account_fingerprint(self, fingerprint: dict[str, Any], *, runtime_was_running: bool) -> None:
+        if self._active_account_fingerprint is None:
+            self._active_account_fingerprint = dict(fingerprint)
+            return
+        if self._active_account_fingerprint == fingerprint:
+            return
+        self._pending_account_fingerprint = dict(fingerprint)
+        self._handle_account_changed(self._active_account_fingerprint, fingerprint, runtime_was_running=runtime_was_running)
+
+    def _handle_account_changed(
+        self,
+        old_fingerprint: dict[str, Any],
+        new_fingerprint: dict[str, Any],
+        *,
+        runtime_was_running: bool,
+    ) -> None:
+        self._account_review_active = True
+        self._mt5_overlay_active = False
+        self.reconnect_overlay.hide()
+        self.account_review_old.setText(f"Akun lama: {self._format_account_fingerprint(old_fingerprint)}")
+        self.account_review_new.setText(f"Akun baru: {self._format_account_fingerprint(new_fingerprint)}")
+        self.account_review_message.setText(
+            "Runtime dihentikan demi keamanan karena fingerprint akun MT5 berubah."
+            if runtime_was_running
+            else "Akun MT5 berubah. Review context akun sebelum trading dilanjutkan."
+        )
+        self.account_review_card.show()
+        self._runtime_running = False
+        self._live_enabled = False
+        self._pending_approval = None
+        self.runtime_status.setText("Hard safe halt: akun MT5 berubah")
+        self.approval_status.setText("Review akun baru dibutuhkan")
+        self._sync_button_states()
+
+    def _handle_mt5_disconnect(self, detail: str, *, runtime_was_running: bool) -> None:
+        self._mt5_ready = False
+        self._mt5_overlay_active = True
+        self._account_review_active = False
+        self.account_review_card.hide()
+        self.reconnect_message.setText(
+            "Runtime dihentikan demi keamanan. Nyalakan kembali MT5 lalu tunggu reconnect otomatis."
+            if runtime_was_running
+            else detail,
+        )
+        self.reconnect_overlay.show()
+        if runtime_was_running:
+            self._runtime_running = False
+            self._live_enabled = False
+            self._pending_approval = None
+            self.runtime_status.setText("Safe halt: koneksi MT5 hilang")
+            self.approval_status.setText("Tidak ada approval aktif")
+        self.mt5_status.setText(detail)
+        self._sync_button_states()
+
+    def _clear_mt5_disconnect_overlay(self) -> None:
+        self._mt5_overlay_active = False
+        self.reconnect_overlay.hide()
+        self._sync_button_states()
+
+    def _use_pending_account_context(self) -> None:
+        if self._pending_account_fingerprint is None:
+            return
+        result = self._send_backend_command(
+            "build_resume_state",
+            {
+                **self._ai_runtime_probe_params(),
+                "fingerprint": self._pending_account_fingerprint,
+                "create_new": False,
+            },
+        )
+        self._active_account_fingerprint = dict(self._pending_account_fingerprint)
+        self._active_context_binding = dict(result.get("binding") or {})
+        self._pending_account_fingerprint = None
+        self._account_review_active = False
+        self.account_review_card.hide()
+        self.runtime_status.setText("Akun baru diterima. Workspace siap dipakai.")
+        self.approval_status.setText("Tidak ada approval aktif")
+        self._sync_button_states()
+
+    def _create_pending_account_context(self) -> None:
+        if self._pending_account_fingerprint is None:
+            return
+        result = self._send_backend_command(
+            "build_resume_state",
+            {
+                **self._ai_runtime_probe_params(),
+                "fingerprint": self._pending_account_fingerprint,
+                "create_new": True,
+            },
+        )
+        self._active_account_fingerprint = dict(self._pending_account_fingerprint)
+        self._active_context_binding = dict(result.get("binding") or {})
+        self._pending_account_fingerprint = None
+        self._account_review_active = False
+        self.account_review_card.hide()
+        self.runtime_status.setText("Context akun baru dibuat.")
+        self.approval_status.setText("Tidak ada approval aktif")
+        self._sync_button_states()
+
+    def _cancel_account_review(self) -> None:
+        self._account_review_active = False
+        self.account_review_card.hide()
+        self._start_startup_gate()
+
+    @staticmethod
+    def _format_account_fingerprint(fingerprint: dict[str, Any] | None) -> str:
+        if not fingerprint:
+            return "tidak diketahui"
+        broker = str(fingerprint.get("broker") or "broker")
+        server = str(fingerprint.get("server") or "server")
+        login = str(fingerprint.get("login") or "akun")
+        mode = "live" if fingerprint.get("is_live") else "demo"
+        return f"{broker} / {server} / {login} ({mode})"
 
     def connect_service(self, checked: bool = False, *, show_errors: bool = True) -> bool:
         _ = checked
@@ -1773,31 +2152,55 @@ class BotEaQtWindow(QMainWindow):
         self._preview_refresh_inflight = True
         try:
             result = self._send_backend_command("refresh_manual", self._manual_preview_params(), timeout=10.0)
-        except Exception:
+        except Exception as exc:
+            detail = self._format_exception_detail(exc)
+            if self._workspace_unlocked():
+                self._handle_mt5_disconnect(detail, runtime_was_running=self._runtime_running)
             self._sync_button_states()
             return
         finally:
             self._preview_refresh_inflight = False
         self._apply_refresh_result(result)
+        self._clear_mt5_disconnect_overlay()
 
     def _refresh_preview_tick(self) -> None:
-        if self._startup_gate_active or not self._service_connected or not self.isVisible() or self._runtime_running:
+        if self._startup_gate_active or not self._service_connected or not self.isVisible():
             return
-        if self.snapshot is None:
+        if self._account_review_active:
             return
-        self._refresh_preview_state()
+        if self._mt5_overlay_active:
+            try:
+                self.check_mt5(silent=True)
+                self._clear_mt5_disconnect_overlay()
+            except Exception:
+                return
+        elif self.snapshot is not None and not self._runtime_running:
+            self._refresh_preview_state()
 
-    def check_mt5(self) -> None:
+    def check_mt5(self, *, silent: bool = False) -> None:
         try:
-            result = self._send_backend_command("probe_mt5", self._probe_params())
+            self._probe_mt5_process()
+            self._probe_mt5_session()
+            account_result = self._send_backend_command("probe_account_fingerprint", {})
+            result = self._send_backend_command("probe_symbol_baseline", self._probe_params())
         except Exception as exc:
             detail = self._format_exception_detail(exc)
             self._mt5_ready = False
             self.mt5_status.setText(detail)
             self._append_log([f"MT5 error: {detail}"])
+            if self._workspace_unlocked() and not silent:
+                self._handle_mt5_disconnect(detail, runtime_was_running=self._runtime_running)
+            if silent:
+                raise
             return
-        terminal = result["terminal"]
         snapshot = result["snapshot"]
+        fingerprint = {
+            "login": str(account_result.get("login") or ""),
+            "server": str(account_result.get("server") or ""),
+            "broker": str(account_result.get("broker") or ""),
+            "is_live": account_result.get("is_live"),
+        }
+        self._apply_account_fingerprint(fingerprint, runtime_was_running=self._runtime_running)
         self._mt5_ready = True
         self.mt5_status.setText("MT5 ready")
         self._set_symbol_choices(result.get("symbols") or [])
@@ -1805,12 +2208,11 @@ class BotEaQtWindow(QMainWindow):
         self.snapshot = {**(self.snapshot or {}), **dict(snapshot)}
         self._update_summary_cards()
         self._schedule_live_preview()
+        self._clear_mt5_disconnect_overlay()
         self._append_log(
             [
                 "mt5_probe:",
-                f"- connected={terminal.get('connected')}",
-                f"- terminal_trade_allowed={terminal.get('trade_allowed')}",
-                f"- account_trade_allowed={terminal.get('account_trade_allowed')}",
+                f"- account={self._format_account_fingerprint(fingerprint)}",
                 f"- symbol_trade_allowed={snapshot.get('symbol_trade_allowed')}",
                 f"- broker_stop_min_points={snapshot.get('stops_level_points')}",
                 f"- available_symbols={len(result.get('symbols') or [])}",
@@ -1819,14 +2221,24 @@ class BotEaQtWindow(QMainWindow):
 
     def load_codex(self) -> None:
         try:
-            result = self._send_backend_command("probe_codex", self._codex_params())
+            self._persist_runtime_settings()
+            result = self._send_backend_command("probe_ai_runtime", self._ai_runtime_probe_params())
+            self._send_backend_command("probe_ai_workspace", self._ai_runtime_probe_params())
+            self._send_backend_command("probe_ai_documents", self._ai_runtime_probe_params())
+            self._send_backend_command("probe_ai_context_store", self._ai_runtime_probe_params())
+            if self._active_account_fingerprint is not None:
+                resume = self._send_backend_command(
+                    "build_resume_state",
+                    {**self._ai_runtime_probe_params(), "fingerprint": self._active_account_fingerprint, "create_new": False},
+                )
+                self._active_context_binding = dict(resume.get("binding") or {})
         except Exception as exc:
             detail = self._format_exception_detail(exc)
             self._codex_ready = False
             self.codex_status.setText(detail)
             self._append_log([f"Codex error: {detail}"])
             return
-        version = str(result)
+        version = str(result.get("version") or result.get("detail") or "")
         self._codex_ready = True
         self.codex_status.setText(version)
         self._append_log(
@@ -1835,7 +2247,9 @@ class BotEaQtWindow(QMainWindow):
                 f"- command={self.codex_command_input.text().strip()}",
                 f"- version={version}",
                 f"- model={self._optional_str(self.model_combo.currentText()) or 'default'}",
-                f"- work_folder={self._optional_str(self.codex_cwd_input.text()) or Path.cwd()}",
+                f"- workspace={self._optional_str(self.codex_cwd_input.text()) or Path.cwd()}",
+                f"- documents={self._optional_str(self.ai_documents_input.text()) or (Path.cwd() / 'ai_documents')}",
+                f"- context_root={self._optional_str(self.ai_context_input.text()) or (Path.cwd() / 'ai_context')}",
             ]
         )
 
@@ -1926,8 +2340,8 @@ class BotEaQtWindow(QMainWindow):
             return
         self._runtime_running = True
         self.run_id_status.setText(run_id)
-        self.runtime_status.setText(f"Starting run {run_id}")
-        self.approval_status.setText("No pending live approval")
+        self.runtime_status.setText(f"Memulai bot {run_id}")
+        self.approval_status.setText("Tidak ada approval aktif")
         self._append_log([f"runtime_starting run_id={run_id}", f"db_path={self._runtime_params().get('db_path')}"])
         self._sync_button_states()
 
@@ -1938,7 +2352,7 @@ class BotEaQtWindow(QMainWindow):
             self._append_log([f"Runtime stop error: {self._format_exception_detail(exc)}"])
             return
         self._runtime_running = False
-        self.runtime_status.setText("Runtime stopped")
+        self.runtime_status.setText("Bot berhenti")
         self._sync_button_states()
 
     def toggle_live(self) -> None:
@@ -1949,8 +2363,8 @@ class BotEaQtWindow(QMainWindow):
             self._append_log([f"Live toggle error: {self._format_exception_detail(exc)}"])
             return
         self._live_enabled = bool(result.get("live_enabled"))
-        self.live_button.setText("Disable Live" if self._live_enabled else "Enable Live")
-        self.runtime_status.setText("Live orders enabled" if self._live_enabled else "Live orders disabled")
+        self.live_button.setText("Nonaktifkan Live" if self._live_enabled else "Aktifkan Live")
+        self.runtime_status.setText("Live aktif" if self._live_enabled else "Live nonaktif")
         self._sync_button_states()
 
     def approve_pending(self) -> None:
@@ -2072,7 +2486,22 @@ class BotEaQtWindow(QMainWindow):
             "codex_command": self.codex_command_input.text().strip() or "codex",
             "model": self._optional_str(self.model_combo.currentText()),
             "codex_cwd": self._optional_str(self.codex_cwd_input.text()),
-            "timeout_seconds": 60,
+            "timeout_seconds": max(int(self._float_or_default(self.timeout_input.text(), default=60.0)), 1),
+        }
+
+    def _ai_runtime_probe_params(self) -> dict[str, Any]:
+        settings = self._collect_runtime_settings_from_form()
+        return {
+            **settings.to_dict(),
+            "codex_command": settings.ai_runtime_command,
+            "model": settings.default_model,
+            "codex_cwd": settings.ai_workspace_path,
+            "ai_workspace_path": settings.ai_workspace_path,
+            "ai_documents_path": settings.ai_documents_path,
+            "ai_context_root": settings.ai_context_root,
+            "db_path": settings.db_path,
+            "poll_interval_seconds": settings.poll_interval_seconds,
+            "timeout_seconds": settings.timeout_seconds,
         }
 
     def _runtime_params(self) -> dict[str, Any]:
@@ -2093,6 +2522,13 @@ class BotEaQtWindow(QMainWindow):
             "session_state": config.session_state,
             "news_state": config.news_state,
             "run_id": config.run_id,
+            "ai_workspace_path": self.codex_cwd_input.text().strip(),
+            "ai_documents_path": self.ai_documents_input.text().strip(),
+            "ai_context_root": self.ai_context_input.text().strip(),
+            "ai_context_path": (self._active_context_binding or {}).get("context_path"),
+            "resume_prompt_path": (self._active_context_binding or {}).get("resume_prompt_path"),
+            "behavior_profile_path": (self._active_context_binding or {}).get("profile_path"),
+            "account_fingerprint": self._active_account_fingerprint,
         }
 
     def _telemetry_params(self) -> dict[str, Any]:
@@ -2120,6 +2556,7 @@ class BotEaQtWindow(QMainWindow):
             codex_executable=self.codex_command_input.text().strip() or "codex",
             codex_model=self._optional_str(self.model_combo.currentText()),
             codex_cwd=self._optional_str(self.codex_cwd_input.text()),
+            codex_timeout_seconds=max(int(self._float_or_default(self.timeout_input.text(), default=60.0)), 1),
             poll_interval_seconds=poll_interval,
         )
 
@@ -2145,14 +2582,22 @@ class BotEaQtWindow(QMainWindow):
                 runtime_snapshot = payload.get("snapshot")
                 if isinstance(runtime_snapshot, dict) and runtime_snapshot:
                     self.snapshot = dict(runtime_snapshot)
+                    fingerprint = runtime_snapshot.get("account_fingerprint")
+                    if isinstance(fingerprint, dict):
+                        self._apply_account_fingerprint(fingerprint, runtime_was_running=True)
                     self._update_summary_cards()
+                self._clear_mt5_disconnect_overlay()
+            elif name == "runtime_recovering":
+                self._handle_mt5_disconnect(self._short(message), runtime_was_running=True)
             elif name in {"runtime_error", "runtime_halted", "runtime_stopped"}:
                 self._runtime_running = False
                 self.runtime_status.setText(self._short(message))
                 self._append_log([f"{name}: {message}"])
+                if "ipc" in message.lower() or "mt5" in message.lower():
+                    self._handle_mt5_disconnect(self._short(message), runtime_was_running=True)
             elif name == "approval_pending":
                 self._pending_approval = payload
-                self.approval_status.setText("Pending approval")
+                self.approval_status.setText("Menunggu approval")
                 self._append_log([f"approval_pending: {payload}"])
             elif name in {"approval_armed", "approval_status"}:
                 self.approval_status.setText(self._short(message))
@@ -2165,7 +2610,7 @@ class BotEaQtWindow(QMainWindow):
                 self.codex_status.setText(str(payload.get("version") or message))
             elif name == "live_toggle":
                 self._live_enabled = bool(payload.get("enabled"))
-                self.live_button.setText("Disable Live" if self._live_enabled else "Enable Live")
+                self.live_button.setText("Nonaktifkan Live" if self._live_enabled else "Aktifkan Live")
         self._sync_button_states()
 
     def _apply_refresh_result(self, result: dict[str, Any]) -> None:
@@ -2173,6 +2618,9 @@ class BotEaQtWindow(QMainWindow):
         if isinstance(snapshot, dict):
             self.snapshot = snapshot
             self._apply_stop_distance_floor(self._float_value(snapshot.get("stops_level_points")))
+            fingerprint = snapshot.get("account_fingerprint")
+            if isinstance(fingerprint, dict):
+                self._apply_account_fingerprint(fingerprint, runtime_was_running=self._runtime_running)
         manual_snapshot = result.get("manual_order_snapshot")
         if isinstance(manual_snapshot, dict):
             self.manual_order_snapshot = manual_snapshot
@@ -2310,6 +2758,7 @@ class BotEaQtWindow(QMainWindow):
 
     def _sync_button_states(self) -> None:
         connected = self._service_connected
+        trading_blocked = self._mt5_overlay_active or self._account_review_active
         manual_execute_allowed = bool(
             self.manual_order_snapshot
             and bool(self.manual_order_snapshot.get("accepted"))
@@ -2348,6 +2797,9 @@ class BotEaQtWindow(QMainWindow):
                 self.codex_command_input,
                 self.model_combo,
                 self.codex_cwd_input,
+                self.ai_documents_input,
+                self.ai_context_input,
+                self.timeout_input,
                 self.poll_interval_input,
             ):
                 widget.setEnabled(False)
@@ -2356,6 +2808,40 @@ class BotEaQtWindow(QMainWindow):
             self.gate_primary_button.setEnabled(not self._startup_probe_inflight)
             self.gate_retry_button.setEnabled(not self._startup_probe_inflight)
             self.gate_dev_button.setEnabled(True)
+            self._refresh_status_presentation()
+            return
+        if trading_blocked:
+            for button in (
+                self.check_mt5_button,
+                self.load_codex_button,
+                self.refresh_button,
+                self.preflight_button,
+                self.execute_button,
+                self.play_button,
+                self.stop_button,
+                self.live_button,
+                self.approve_button,
+                self.reject_button,
+            ):
+                button.setEnabled(False)
+            self.load_telemetry_button.setEnabled(connected)
+            self.connect_service_button.setEnabled(not self._runtime_running)
+            for widget in (
+                self.symbol_combo,
+                self.timeframe_combo,
+                self.style_combo,
+                self.stop_input,
+                self.capital_mode_combo,
+                self.capital_input,
+                self.lot_mode_combo,
+                self.manual_lot_input,
+                self.side_combo,
+                self.db_input,
+            ):
+                widget.setEnabled(False)
+            for button in self.nav_buttons:
+                button.setEnabled(True)
+            self.live_button.setText("Nonaktifkan Live" if self._live_enabled else "Aktifkan Live")
             self._refresh_status_presentation()
             return
         for button in (
@@ -2375,7 +2861,7 @@ class BotEaQtWindow(QMainWindow):
         self.execute_button.setEnabled(connected and not self._runtime_running and manual_execute_allowed)
         self.approve_button.setEnabled(connected and pending)
         self.reject_button.setEnabled(connected and pending)
-        self.live_button.setText("Disable Live" if self._live_enabled else "Enable Live")
+        self.live_button.setText("Nonaktifkan Live" if self._live_enabled else "Aktifkan Live")
         trade_setup_enabled = not self._runtime_running
         for widget in (
             self.symbol_combo,
@@ -2386,7 +2872,11 @@ class BotEaQtWindow(QMainWindow):
             self.capital_input,
             self.lot_mode_combo,
             self.side_combo,
-            self.db_input,
+                self.db_input,
+                self.codex_cwd_input,
+                self.ai_documents_input,
+                self.ai_context_input,
+                self.timeout_input,
         ):
             widget.setEnabled(trade_setup_enabled)
         self.manual_lot_input.setEnabled(trade_setup_enabled and self.lot_mode_combo.currentText().strip() == "manual")

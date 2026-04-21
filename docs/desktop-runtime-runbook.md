@@ -2,51 +2,50 @@
 
 ## Purpose
 
-This runbook describes the current Windows Qt desktop runtime for `bot-ea`.
+This runbook describes the current Qt desktop runtime for `bot-ea`.
 
-It is for:
+It is intended for:
 
-- developers working on the desktop/runtime stack
-- operators running supervised MT5 demo or dry-run tests
+- developers maintaining the desktop/runtime stack
+- operators running supervised MT5 demo or dry-run sessions
 
-This document only describes behavior that exists now. It does not claim the master brief is fully implemented.
+## Operating Posture
 
-## Current operating posture
+Supported now:
 
-- supervised dev and demo testing: supported
-- broker preflight and dry-run: supported
-- live trading: operator-gated
-- unattended autonomy: not ready
+- supervised desktop operation
+- operator-gated live flow
+- MT5 reconnect protection
+- account-change review
+- account-scoped AI context preparation
 
-## Current architecture
+Not supported now:
 
-The current desktop stack is:
+- unattended autonomy
+- installer-grade packaging
+- full close/modify lifecycle automation
 
-1. `qt_app.py` as the primary desktop entrypoint
-2. local websocket transport between GUI and backend
-3. `websocket_service.py` as the backend command/event service
-4. `desktop_runtime.py` coordinating probes, runtime start/stop, approvals, and telemetry
-5. `mt5_adapter.py` for MT5 bridge access
-6. `codex_cli_engine.py` for Codex CLI probing and decision parsing
-7. `runtime_store.py` for SQLite persistence
+## Desktop Architecture
 
-Important current product decision:
+Primary components:
 
-- the Qt app can manage the local websocket service on behalf of the operator
-- `run-websocket-service.ps1` still exists, but it is mainly for debugging and isolated backend work
+1. `src/bot_ea/qt_app.py`
+2. `src/bot_ea/websocket_service.py`
+3. `src/bot_ea/desktop_runtime.py`
+4. `src/bot_ea/operator_state.py`
+5. `src/bot_ea/mt5_adapter.py`
+6. `src/bot_ea/runtime_store.py`
 
-## Core files
+Runtime model:
 
-- [qt_app.py](D:/luthfi/project/bot-ea/src/bot_ea/qt_app.py)
-- [websocket_service.py](D:/luthfi/project/bot-ea/src/bot_ea/websocket_service.py)
-- [desktop_runtime.py](D:/luthfi/project/bot-ea/src/bot_ea/desktop_runtime.py)
-- [codex_cli_engine.py](D:/luthfi/project/bot-ea/src/bot_ea/codex_cli_engine.py)
-- [mt5_adapter.py](D:/luthfi/project/bot-ea/src/bot_ea/mt5_adapter.py)
-- [runtime_store.py](D:/luthfi/project/bot-ea/src/bot_ea/runtime_store.py)
+- the Qt app is the main desktop surface
+- the app may start the local websocket backend itself
+- backend commands expose readiness probes, manual execution helpers, runtime control, and telemetry
+- operator state is persisted under `runtime_data/`
 
-## Launch model
+## Launch Model
 
-Preferred Windows launch:
+Preferred launch:
 
 ```powershell
 cd D:\luthfi\project\bot-ea
@@ -60,126 +59,47 @@ cd D:\luthfi\project\bot-ea
 powershell -ExecutionPolicy Bypass -File .\scripts\run-websocket-service.ps1
 ```
 
-Current expectation:
+## Startup Gate Contract
 
-- operator flow should start from the Qt app
-- backend script should not be required in normal use
-- a first-pass startup gate now runs before the main workspace unlocks
+Operator mode currently checks:
 
-## Host prerequisites
+1. `probe_service_ready`
+2. `probe_mt5_process`
+3. `probe_mt5_session`
+4. `probe_account_fingerprint`
+5. `probe_symbol_baseline`
+6. `probe_ai_runtime`
+7. `probe_ai_workspace`
+8. `probe_ai_documents`
+9. `probe_ai_context_store`
+10. `validate_storage`
+11. `build_resume_state`
 
-Before launching:
+Only after those pass does the app unlock the main workspace.
 
-- Python `>= 3.11`
-- `MetaTrader5` package available
-- MT5 terminal installed and open
-- broker account logged in
-- `codex` available on `PATH`
+Dev mode:
 
-Recommended checks:
+- bypasses the operator gate
+- unlocks the workspace directly
+- sets the UI badge to `DEV / MOCK MODE`
 
-```powershell
-python --version
-python -c "import MetaTrader5 as mt5; print(mt5.__version__)"
-codex --version
-```
+## Backend Command Surface
 
-## Operator flow
+Current command surface includes:
 
-Current recommended runtime sequence:
-
-1. launch Qt app
-2. startup gate checks:
-   - service
-   - MT5
-   - Codex
-3. workspace unlocks after those checks pass
-4. `Preview`
-5. `Preflight`
-6. `Play Runtime`
-7. optional `Enable Live`
-8. `Approve` or `Reject` if a proposal appears
-9. `Telemetry` or open `History` for review
-
-Important:
-
-- runtime does not auto-start just because the app opens
-- live mode does not auto-enable
-- a pending live proposal still needs operator action
-
-## Startup gate
-
-Current first-pass behavior:
-
-- the app opens a startup gate before the main workspace
-- the gate checks `service -> MT5 -> Codex`
-- the main workspace remains locked until those three checks succeed
-
-Current scope only:
-
-- service readiness
-- MT5 readiness
-- Codex readiness
-
-Not included yet:
-
-- reconnect overlay
-- account-change review
-- AI workspace/documents/context validation chain from the master brief
-
-## Current UI pages
-
-### Dashboard
-
-Purpose:
-
-- operator overview
-- readiness chips
-- market snapshot
-- manual order envelope
-- risk envelope
-- current run and status hints
-
-### Strategy
-
-Purpose:
-
-- trade setup
-- capital management
-- Codex inputs
-- action buttons
-
-### History
-
-Purpose:
-
-- telemetry reload
-- validation inspection
-- post-run review
-
-### Logs
-
-Purpose:
-
-- runtime feed
-- event log
-- endpoint/runtime/tick summary
-
-### Settings
-
-Purpose:
-
-- websocket endpoint summary
-- model summary
-- polling cadence
-- runtime DB summary
-
-## Command surface currently implemented
-
-Commands exposed through the websocket service include:
-
-- `probe_mt5`
-- `probe_codex`
+- `probe_service_ready`
+- `load_runtime_settings`
+- `save_runtime_settings`
+- `probe_mt5_process`
+- `probe_mt5_session`
+- `probe_account_fingerprint`
+- `probe_symbol_baseline`
+- `probe_ai_runtime`
+- `probe_ai_workspace`
+- `probe_ai_documents`
+- `probe_ai_context_store`
+- `validate_storage`
+- `build_resume_state`
 - `refresh_manual`
 - `preflight_manual`
 - `execute_manual`
@@ -190,189 +110,114 @@ Commands exposed through the websocket service include:
 - `reject_pending`
 - `load_telemetry`
 
-This is the current backend contract. The startup gate reuses the existing service, MT5, and Codex checks; broader startup-gate commands proposed in the master brief do not exist yet.
+## Operator State Persistence
 
-## Readiness semantics
+Files created under `runtime_data/`:
 
-### Service
+- `runtime_settings.json`
+- `app_settings.json`
+- `account_context_map.json`
+- `runtime_state.json`
 
-Healthy means:
+Account contexts are created under `ai_context/<broker>_<server>_<login>/`.
 
-- GUI is connected to the websocket backend
-- endpoint is reachable
+Generated files include:
+
+- `profile.yaml`
+- `memory/latest_summary.md`
+- `memory/open_issues.md`
+- `memory/last_session.json`
+- `resume/resume_prompt.md`
+- `documents/broker_notes.md`
+- `documents/operator_notes.md`
+
+## Runtime Lifecycle
+
+### Normal supervised start
+
+1. startup gate passes
+2. operator clicks `Mulai Bot`
+3. backend starts a runtime thread
+4. `run_id` is created
+5. runtime events stream back through websocket
+6. telemetry is written to SQLite
+
+### MT5 disconnect while idle
+
+- UI shows reconnect overlay
+- trade controls are disabled
+- logs/history/settings remain accessible
+- periodic MT5 checks continue
+
+### MT5 disconnect while runtime is active
+
+- runtime enters safe halt
+- live mode is disabled
+- pending approval is cleared
+- operator must reconnect MT5 and start the bot manually again
+
+### Account fingerprint change
+
+- UI opens the account review card
+- trade controls remain blocked
+- operator may reuse the mapped context or create a new one
+- runtime is not restarted automatically
+
+## Readiness Semantics
 
 ### MT5
 
-`Check MT5` should confirm:
+Healthy means:
 
-- terminal connection exists
-- account data can be read
-- symbol snapshot and tick are available
-- trade permissions are visible
+- terminal can be reached
+- session is readable
+- account fingerprint is stable
+- symbol baseline is readable
 
-Key probe fields:
+### AI Runtime
 
-- `connected`
-- `terminal_trade_allowed`
-- `account_trade_allowed`
-- `symbol_trade_allowed`
-- `broker_stop_min_points`
+Healthy means:
 
-### Codex
+- runtime command is callable
+- workspace path exists
+- documents path exists
+- context root exists and is writable
+- resume state can be bound for the active MT5 account
 
-`Load Codex` should confirm:
+### Storage
 
-- `codex --version` works
-- command is callable
-- selected model/work folder can be passed
+Healthy means:
 
-This proves readiness of the CLI path, not quality of future model responses.
+- runtime DB path can be created
+- runtime metadata can be written
 
-## Manual preview and preflight
+## SQLite Telemetry
 
-### Preview
-
-`Preview` uses `refresh_manual` to update:
-
-- latest market snapshot
-- normalized manual order envelope
-- risk envelope
-
-### Preflight
-
-`Preflight` uses `preflight_manual` to test whether the current setup passes broker/risk checks before a live send.
-
-Expected statuses:
-
-- `PRECHECK_OK`
-- `PRECHECK_REJECTED`
-- `GUARD_REJECTED`
-
-## Runtime lifecycle
-
-When `Play Runtime` is pressed:
-
-1. GUI sends `start_runtime`
-2. backend creates a `run_id`
-3. SQLite run metadata is initialized
-4. runtime begins polling
-5. market snapshot, AI decisions, risk events, and execution events are written
-6. GUI receives runtime events through websocket
-
-Expected runtime states:
-
-- `Runtime stopped`
-- `Runtime running`
-- `NO_TRADE: ...`
-- `runtime_error: ...`
-
-Important interpretation:
-
-- `NO_TRADE` means the runtime is still alive and the latest cycle chose not to enter
-- it does not mean the runtime necessarily stopped
-
-## Manual actions while runtime is active
-
-Current protective behavior:
-
-- while the runtime is active, some manual MT5 actions are restricted
-- this prevents the GUI manual path from colliding with the runtime MT5 path and breaking IPC stability
-
-This guard exists because earlier mixed access produced MT5 IPC failures such as `(-10004, 'No IPC connection')`.
-
-## Live gating and approvals
-
-Current live flow:
-
-1. operator enables live mode manually
-2. runtime still runs through guard and broker checks
-3. if approval is required, GUI shows pending approval state
-4. operator chooses `Approve` or `Reject`
-
-This is supervised. It is not unattended autonomy.
-
-## Current failure classes
-
-### MT5 IPC loss
-
-Example:
-
-- `MT5 account_info() failed: (-10004, 'No IPC connection')`
-
-Meaning:
-
-- backend lost its bridge to MT5
-
-Current handling:
-
-- runtime may halt or report runtime error
-- operator should re-validate MT5 and avoid mixed manual/runtime access
-
-### Codex timeout
-
-Example:
-
-- `codex exec timed out after 60 seconds`
-
-Meaning:
-
-- decision call exceeded the configured timeout
-
-Current behavior:
-
-- runtime falls back safely instead of turning that into a live trading action
-
-### Codex contract invalid
-
-Example:
-
-- response missing required keys
-- response is meta-text instead of the expected contract
-
-Current behavior:
-
-- parser marks the response invalid
-- runtime records an explicit fallback reason in telemetry/DB
-
-## SQLite telemetry
-
-The runtime DB records:
+Telemetry remains in `runtime_store.py` and covers:
 
 - runs
 - polling cycles
 - market snapshots
 - AI decisions
-- risk guard results
+- risk guard events
 - execution events
+- position events
+- stop events
 - runtime logs
 
-Review:
+## Remaining Gaps
 
-- [sqlite-runtime-schema.md](D:/luthfi/project/bot-ea/docs/sqlite-runtime-schema.md)
+Still pending after this implementation pass:
 
-## Current limitations
+- autonomous lifecycle management for close/modify
+- richer drift monitoring and unattended recovery policies
+- packaged desktop distribution
+- deeper AI prompt wiring beyond current readiness/context persistence
 
-The following are still not implemented even though the master brief proposes them:
-
-- operator/dev mode split with explicit `DEV / MOCK MODE` UI
-- reconnect overlay
-- account-changed review sheet
-- AI runtime workspace/documents/context readiness chain
-- account-scoped AI context storage
-- automatic close/modify lifecycle management for autonomous trading
-
-## Relationship to the master brief
-
-The master brief is now a roadmap, not a description of shipped behavior.
-
-Safe framing:
-
-- implemented now: Qt pages, websocket-managed desktop runtime, probes, preview, preflight, approvals, telemetry
-- roadmap later: startup gate, reconnect/account review UX, AI context ecosystem, stronger accessibility and responsiveness pass
-
-## Related docs
+## Related Files
 
 - [README.md](D:/luthfi/project/bot-ea/README.md)
-- [user-manual.md](D:/luthfi/project/bot-ea/docs/user-manual.md)
-- [project-handoff.md](D:/luthfi/project/bot-ea/docs/project-handoff.md)
-- [progress-summary.md](D:/luthfi/project/bot-ea/docs/progress-summary.md)
+- [docs/user-manual.md](D:/luthfi/project/bot-ea/docs/user-manual.md)
+- [docs/project-handoff.md](D:/luthfi/project/bot-ea/docs/project-handoff.md)
+- [src/bot_ea/qt_app.py](D:/luthfi/project/bot-ea/src/bot_ea/qt_app.py)
+- [src/bot_ea/operator_state.py](D:/luthfi/project/bot-ea/src/bot_ea/operator_state.py)

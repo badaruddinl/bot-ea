@@ -36,6 +36,12 @@ class DesktopRuntimeConfig:
     session_state: str = "desktop_runtime"
     news_state: str = "unknown"
     run_id: str | None = None
+    ai_workspace_path: str | None = None
+    ai_documents_path: str | None = None
+    ai_context_path: str | None = None
+    resume_prompt_path: str | None = None
+    behavior_profile_path: str | None = None
+    account_fingerprint: dict[str, Any] | None = None
 
 
 @dataclass(slots=True)
@@ -341,6 +347,91 @@ class DesktopRuntimeCoordinator:
         finally:
             self._shutdown_adapter(adapter)
 
+    def probe_mt5_process(self) -> dict[str, Any]:
+        adapter = self.adapter_factory()
+        try:
+            terminal = adapter.load_terminal_status()
+            return {
+                "running": bool(terminal.connected),
+                "detail": "MetaTrader 5 terdeteksi dan bisa diakses.",
+                "terminal": asdict(terminal),
+            }
+        finally:
+            self._shutdown_adapter(adapter)
+
+    def probe_mt5_session(self) -> dict[str, Any]:
+        adapter = self.adapter_factory()
+        try:
+            terminal = adapter.load_terminal_status()
+            if not terminal.connected:
+                raise RuntimeError("Terminal MT5 belum terhubung.")
+            detail = "Sesi MT5 aktif dan data terminal bisa dibaca."
+            return {
+                "connected": bool(terminal.connected),
+                "detail": detail,
+                "terminal": asdict(terminal),
+            }
+        finally:
+            self._shutdown_adapter(adapter)
+
+    def probe_account_fingerprint(self) -> dict[str, Any]:
+        adapter = self.adapter_factory()
+        try:
+            fingerprint = adapter.load_account_fingerprint()
+            if not fingerprint.login or not fingerprint.server:
+                raise RuntimeError("Akun MT5 belum login atau fingerprint belum lengkap.")
+            result = asdict(fingerprint)
+            result["detail"] = (
+                f"Akun aktif {fingerprint.login} pada server {fingerprint.server} "
+                f"({fingerprint.broker or 'broker tidak diketahui'})."
+            )
+            return result
+        finally:
+            self._shutdown_adapter(adapter)
+
+    def probe_symbol_baseline(
+        self,
+        *,
+        symbol: str,
+        timeframe: str,
+        trading_style: TradingStyle,
+        stop_distance_points: float,
+        capital_allocation: CapitalAllocation,
+    ) -> dict[str, Any]:
+        adapter = self.adapter_factory()
+        try:
+            provider = self._build_provider(
+                adapter=adapter,
+                symbol=symbol,
+                timeframe=timeframe,
+                trading_style=trading_style,
+                stop_distance_points=stop_distance_points,
+                capital_allocation=capital_allocation,
+            )
+            snapshot = provider.get_snapshot()
+            return {
+                "symbol": snapshot.symbol,
+                "detail": f"Simbol dasar {snapshot.symbol} siap dibaca.",
+                "snapshot": {
+                    "symbol": snapshot.symbol,
+                    "bid": snapshot.bid,
+                    "ask": snapshot.ask,
+                    "spread_points": snapshot.spread_points,
+                    "equity": snapshot.account.equity,
+                    "free_margin": snapshot.account.free_margin,
+                    "symbol_trade_allowed": snapshot.symbol_snapshot.trade_allowed,
+                    "stops_level_points": snapshot.symbol_snapshot.stops_level_points,
+                    "freeze_level_points": snapshot.symbol_snapshot.freeze_level_points,
+                    "trade_mode": snapshot.symbol_snapshot.trade_mode,
+                    "execution_mode": snapshot.symbol_snapshot.execution_mode,
+                    "filling_mode": snapshot.symbol_snapshot.filling_mode,
+                    "account_fingerprint": snapshot.context.get("account_fingerprint"),
+                },
+                "symbols": adapter.load_available_symbols(),
+            }
+        finally:
+            self._shutdown_adapter(adapter)
+
     def start(self, config: DesktopRuntimeConfig) -> str:
         if self.is_running:
             raise RuntimeError("desktop runtime already running")
@@ -409,6 +500,12 @@ class DesktopRuntimeCoordinator:
                     "codex_timeout_cooldown_seconds": config.codex_timeout_cooldown_seconds,
                     "poll_interval_seconds": config.poll_interval_seconds,
                     "stop_distance_points": config.stop_distance_points,
+                    "ai_workspace_path": config.ai_workspace_path,
+                    "ai_documents_path": config.ai_documents_path,
+                    "ai_context_path": config.ai_context_path,
+                    "resume_prompt_path": config.resume_prompt_path,
+                    "behavior_profile_path": config.behavior_profile_path,
+                    "account_fingerprint": config.account_fingerprint,
                 },
             )
             adapter, runtime = self._build_runtime(config, store)

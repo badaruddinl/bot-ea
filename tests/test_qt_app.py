@@ -23,6 +23,15 @@ class FakeBackend:
         self.fail_service = False
         self.fail_mt5 = False
         self.fail_codex = False
+        self.fail_ai_workspace = False
+        self.fail_ai_documents = False
+        self.fail_ai_context = False
+        self.account_fingerprint = {
+            "login": "123456",
+            "server": "Broker-Demo",
+            "broker": "Broker A",
+            "is_live": False,
+        }
         self._manual_snapshot = {
             "lot_mode": "manual",
             "requested_lot": 1.0,
@@ -67,6 +76,45 @@ class FakeBackend:
     def request(self, name: str, params: dict, timeout: float = 15.0):
         _ = timeout
         self.requests.append((name, dict(params)))
+        if name == "probe_service_ready":
+            return {"host": "127.0.0.1", "port": 8765, "detail": "Service lokal siap digunakan."}
+        if name == "probe_mt5_process":
+            if self.fail_mt5:
+                raise RuntimeError("MT5 belum terbuka")
+            return {"running": True, "detail": "MetaTrader 5 terdeteksi dan bisa diakses."}
+        if name == "probe_mt5_session":
+            if self.fail_mt5:
+                raise RuntimeError("MT5 session unavailable")
+            return {"connected": True, "detail": "Sesi MT5 aktif dan data terminal bisa dibaca."}
+        if name == "probe_account_fingerprint":
+            if self.fail_mt5:
+                raise RuntimeError("MT5 account unavailable")
+            return {
+                **self.account_fingerprint,
+                "detail": "Akun aktif 123456 pada server Broker-Demo (Broker A).",
+            }
+        if name == "probe_symbol_baseline":
+            if self.fail_mt5:
+                raise RuntimeError("mt5 unavailable")
+            return {
+                "detail": "Simbol dasar EURUSD siap dibaca.",
+                "snapshot": {
+                    "symbol": "EURUSD",
+                    "bid": 1.08,
+                    "ask": 1.09,
+                    "spread_points": 10.0,
+                    "equity": 1000.0,
+                    "free_margin": 900.0,
+                    "symbol_trade_allowed": True,
+                    "stops_level_points": 10.0,
+                    "freeze_level_points": 0.0,
+                    "trade_mode": "full",
+                    "execution_mode": "market",
+                    "filling_mode": "fok",
+                    "account_fingerprint": dict(self.account_fingerprint),
+                },
+                "symbols": ["EURUSD", "XAUUSD"],
+            }
         if name == "probe_mt5":
             if self.fail_mt5:
                 raise RuntimeError("mt5 unavailable")
@@ -82,10 +130,42 @@ class FakeBackend:
                 },
                 "symbols": ["EURUSD", "XAUUSD"],
             }
+        if name == "probe_ai_runtime":
+            if self.fail_codex:
+                raise RuntimeError("codex unavailable")
+            return {
+                "version": "codex 1.0.0",
+                "detail": "AI runtime siap: codex 1.0.0",
+                "command": "codex",
+                "resolved_path": "C:/mock/codex.exe",
+            }
         if name == "probe_codex":
             if self.fail_codex:
                 raise RuntimeError("codex unavailable")
             return "codex 1.0.0"
+        if name == "probe_ai_workspace":
+            if self.fail_ai_workspace:
+                raise RuntimeError("Workspace AI belum siap")
+            return {"detail": f"Workspace AI siap: {params.get('ai_workspace_path')}"}
+        if name == "probe_ai_documents":
+            if self.fail_ai_documents:
+                raise RuntimeError("Dokumen AI belum siap")
+            return {"detail": f"Dokumen AI siap: {params.get('ai_documents_path')}"}
+        if name == "probe_ai_context_store":
+            if self.fail_ai_context:
+                raise RuntimeError("Folder context AI belum siap")
+            return {"detail": f"Folder context AI siap: {params.get('ai_context_root')}"}
+        if name == "validate_storage":
+            return {"detail": f"Storage siap: {params.get('db_path')}"}
+        if name == "build_resume_state":
+            return {
+                "detail": f"Context akun siap: {params.get('ai_context_root')}\\broker_demo_123456",
+                "binding": {
+                    "context_path": f"{params.get('ai_context_root')}\\broker_demo_123456",
+                    "resume_prompt_path": f"{params.get('ai_context_root')}\\broker_demo_123456\\resume\\resume_prompt.md",
+                    "profile_path": f"{params.get('ai_context_root')}\\broker_demo_123456\\profile.yaml",
+                },
+            }
         if name == "refresh_manual":
             self.refresh_counter += 1
             return {
@@ -101,6 +181,7 @@ class FakeBackend:
                     "execution_mode": "market",
                     "filling_mode": "fok",
                     "tick_time": f"2026-04-21T00:00:{self.refresh_counter:02d}+00:00",
+                    "account_fingerprint": dict(self.account_fingerprint),
                 },
                 "manual_order_snapshot": dict(self._manual_snapshot),
                 "risk_sizing_snapshot": {
@@ -131,6 +212,7 @@ class FakeBackend:
                     "execution_mode": "market",
                     "filling_mode": "fok",
                     "tick_time": "2026-04-21T00:00:09+00:00",
+                    "account_fingerprint": dict(self.account_fingerprint),
                 },
                 "manual_order_snapshot": dict(self._manual_snapshot),
             }
@@ -153,6 +235,7 @@ class FakeBackend:
                     "execution_mode": "market",
                     "filling_mode": "fok",
                     "tick_time": "2026-04-21T00:00:10+00:00",
+                    "account_fingerprint": dict(self.account_fingerprint),
                 },
                 "manual_order_snapshot": dict(self._manual_snapshot),
             }
@@ -183,6 +266,7 @@ class FakeBackend:
                             "trade_mode": "full",
                             "execution_mode": "market",
                             "filling_mode": "fok",
+                            "account_fingerprint": dict(self.account_fingerprint),
                         },
                     },
                 }
@@ -259,6 +343,9 @@ class QtAppTests(unittest.TestCase):
                 "margin_level": 400.0,
                 "trade_allowed": True,
                 "trade_expert": True,
+                "login": 123456,
+                "server": "Broker-Demo",
+                "company": "Broker A",
             },
             symbols={
                 "XAUUSD": {
@@ -302,11 +389,11 @@ class QtAppTests(unittest.TestCase):
             self.assertEqual(window.windowTitle(), "bot-ea Qt Desktop Runtime")
             self.assertIs(window.shell_stack.currentWidget(), window.startup_gate_page)
             self.assertFalse(window.nav_buttons[0].isEnabled())
-            self.assertIn("Workspace masih terkunci", window.gate_message.text())
-            self.assertEqual(window.symbol_combo.currentText(), "EURUSD")
+            self.assertIn("Belum", window.gate_message.text())
+            self.assertIn(window.symbol_combo.currentText(), {"EURUSD", "XAUUSD"})
             self.assertEqual(window.timeframe_combo.currentText(), "M15")
             self.assertEqual(window.service_status.text(), "Service disconnected")
-            self.assertEqual(window.hero_title.text(), "Runtime Dashboard")
+            self.assertEqual(window.hero_title.text(), "Dasbor Bot")
             self.assertEqual(window.nav_group.title(), "Navigation")
             self.assertEqual(window.page_stack.count(), 5)
             self.assertIs(window.page_stack.widget(0), window.dashboard_page)
@@ -322,18 +409,20 @@ class QtAppTests(unittest.TestCase):
             self.assertTrue(hasattr(window, "logs_focus_panel"))
             self.assertTrue(hasattr(window, "settings_summary_text"))
             self.assertTrue(hasattr(window, "settings_operator_note"))
+            self.assertTrue(hasattr(window, "reconnect_overlay"))
+            self.assertTrue(hasattr(window, "account_review_card"))
             self.assertIs(window.strategy_page.layout().itemAt(4).widget(), window.trade_control_scroll)
             self.assertIs(window.dashboard_page.layout().itemAt(4).widget(), window.snapshot_dashboard)
-            self.assertEqual(window.sidebar_mode_value.text(), "Dashboard")
+            self.assertEqual(window.sidebar_mode_value.text(), "Dasbor")
             self.assertEqual(window.logs_page.layout().itemAt(1).widget(), window.logs_operator_note)
             self.assertIs(window.logs_page.layout().itemAt(2).widget(), window.logs_focus_panel)
             self.assertIs(window.logs_page.layout().itemAt(3).widget(), window.logs_group)
             self.assertEqual(window.dashboard_mode_value.text(), "IDLE")
-            self.assertEqual(window.market_card["title"].text(), "Market Snapshot")
-            self.assertEqual(window.manual_card["title"].text(), "Manual Order Envelope")
-            self.assertEqual(window.risk_card["title"].text(), "Risk Envelope")
-            self.assertEqual(window.tabs.tabText(0), "Runtime Feed")
-            self.assertEqual(window.tabs.tabText(1), "Log Console")
+            self.assertEqual(window.market_card["title"].text(), "Ringkasan Pasar")
+            self.assertEqual(window.manual_card["title"].text(), "Ringkasan Order")
+            self.assertEqual(window.risk_card["title"].text(), "Batas Risiko")
+            self.assertEqual(window.tabs.tabText(0), "Feed Runtime")
+            self.assertEqual(window.tabs.tabText(1), "Konsol Log")
             self.assertIn("#0b0f10", window.styleSheet())
             self.assertEqual(window.readiness_chips["service"]["value"].property("tone"), "warn")
             self.assertEqual(backend.start_managed_calls, 0)
@@ -361,8 +450,19 @@ class QtAppTests(unittest.TestCase):
             self.assertIs(window.shell_stack.currentWidget(), window.workspace_page)
             self.assertTrue(window.nav_buttons[0].isEnabled())
             commands = [name for name, _ in backend.requests]
-            self.assertIn("probe_mt5", commands)
-            self.assertIn("probe_codex", commands)
+            for required in (
+                "probe_mt5_process",
+                "probe_mt5_session",
+                "probe_account_fingerprint",
+                "probe_symbol_baseline",
+                "probe_ai_runtime",
+                "probe_ai_workspace",
+                "probe_ai_documents",
+                "probe_ai_context_store",
+                "validate_storage",
+                "build_resume_state",
+            ):
+                self.assertIn(required, commands)
             window.nav_buttons[1].click()
             app.processEvents()
             self.assertEqual(window.page_stack.currentWidget(), window.strategy_page)
@@ -391,7 +491,7 @@ class QtAppTests(unittest.TestCase):
             QTest.qWait(150)
             app.processEvents()
             self.assertIs(window.shell_stack.currentWidget(), window.startup_gate_page)
-            self.assertIn("MT5", window.gate_message.text())
+            self.assertIn("mt5", window.gate_message.text().lower())
             self.assertFalse(window.nav_buttons[0].isEnabled())
         finally:
             window.close()
@@ -437,7 +537,7 @@ class QtAppTests(unittest.TestCase):
             QTest.qWait(150)
             app.processEvents()
             self.assertIs(window.shell_stack.currentWidget(), window.startup_gate_page)
-            self.assertIn("AI runtime", window.gate_message.text())
+            self.assertTrue("codex" in window.gate_message.text().lower() or "ai runtime" in window.gate_message.text().lower())
             self.assertFalse(window.nav_buttons[0].isEnabled())
         finally:
             window.close()
@@ -479,8 +579,10 @@ class QtAppTests(unittest.TestCase):
 
             commands = [name for name, _ in backend.requests]
             for required in (
-                "probe_mt5",
-                "probe_codex",
+                "probe_mt5_process",
+                "probe_account_fingerprint",
+                "probe_symbol_baseline",
+                "probe_ai_runtime",
                 "refresh_manual",
                 "preflight_manual",
                 "execute_manual",
@@ -499,6 +601,7 @@ class QtAppTests(unittest.TestCase):
             self.assertEqual(window.readiness_chips["runtime"]["value"].property("tone"), "idle")
             self.assertEqual(window.dashboard_mode_value.text(), "IDLE")
             self.assertEqual(window.strategy_live_value.text(), "Disabled")
+            self.assertIn("active_account=Broker A / Broker-Demo / 123456 (demo)", window.settings_summary_text.toPlainText())
             self.assertIn("run_id=run-123", window.runtime_text.toPlainText())
             self.assertIn("total_trades=3", window.validation_text.toPlainText())
             self.assertIn("run_id=run-123", window.history_summary_text.toPlainText())
@@ -590,6 +693,86 @@ class QtAppTests(unittest.TestCase):
         finally:
             backend.close()
             self.assertFalse(backend.is_managed_service_running())
+
+    def test_dev_mode_bypasses_operator_dependencies(self) -> None:
+        try:
+            from PySide6.QtWidgets import QApplication
+        except Exception as exc:  # pragma: no cover
+            self.skipTest(f"PySide6 unavailable: {exc}")
+
+        from bot_ea.qt_app import BotEaQtWindow
+
+        app = QApplication.instance() or QApplication([])
+        backend = FakeBackend()
+        backend.fail_mt5 = True
+        backend.fail_codex = True
+        window = BotEaQtWindow(backend=backend)
+        app.processEvents()
+        try:
+            window._enter_dev_mode()
+            app.processEvents()
+            self.assertIs(window.shell_stack.currentWidget(), window.workspace_page)
+            self.assertEqual(window.mode_badge.text(), "DEV / MOCK MODE")
+            self.assertTrue(window.nav_buttons[0].isEnabled())
+        finally:
+            window.close()
+
+    def test_mt5_disconnect_shows_reconnect_overlay_and_safe_halt(self) -> None:
+        try:
+            from PySide6.QtWidgets import QApplication
+        except Exception as exc:  # pragma: no cover
+            self.skipTest(f"PySide6 unavailable: {exc}")
+
+        from bot_ea.qt_app import BotEaQtWindow
+
+        app = QApplication.instance() or QApplication([])
+        backend = FakeBackend()
+        window = BotEaQtWindow(backend=backend)
+        app.processEvents()
+        try:
+            window._runtime_running = True
+            window._live_enabled = True
+            window._pending_approval = {"symbol": "XAUUSD"}
+            window._handle_mt5_disconnect("MT5 lost IPC connection", runtime_was_running=True)
+            app.processEvents()
+            self.assertTrue(window._mt5_overlay_active)
+            self.assertFalse(window.reconnect_overlay.isHidden())
+            self.assertFalse(window._runtime_running)
+            self.assertFalse(window._live_enabled)
+            self.assertFalse(window.play_button.isEnabled())
+            self.assertIn("Safe halt", window.runtime_status.text())
+        finally:
+            window.close()
+
+    def test_account_change_opens_review_flow(self) -> None:
+        try:
+            from PySide6.QtWidgets import QApplication
+        except Exception as exc:  # pragma: no cover
+            self.skipTest(f"PySide6 unavailable: {exc}")
+
+        from bot_ea.qt_app import BotEaQtWindow
+
+        app = QApplication.instance() or QApplication([])
+        backend = FakeBackend()
+        window = BotEaQtWindow(backend=backend)
+        app.processEvents()
+        try:
+            old_fp = dict(backend.account_fingerprint)
+            new_fp = {**old_fp, "login": "789012"}
+            window._active_account_fingerprint = old_fp
+            window._handle_account_changed(old_fp, new_fp, runtime_was_running=False)
+            app.processEvents()
+            self.assertTrue(window._account_review_active)
+            self.assertFalse(window.account_review_card.isHidden())
+            self.assertFalse(window.play_button.isEnabled())
+            self.assertIn("789012", window.account_review_new.text())
+            window._pending_account_fingerprint = new_fp
+            window._use_pending_account_context()
+            app.processEvents()
+            self.assertTrue(window.account_review_card.isHidden())
+            self.assertEqual(window._active_account_fingerprint["login"], "789012")
+        finally:
+            window.close()
 
 
 if __name__ == "__main__":

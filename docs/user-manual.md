@@ -1,39 +1,17 @@
 # User Manual
 
-## Dokumen Ini Untuk Siapa
+## Untuk Siapa
 
-Dokumen ini ditujukan untuk operator non-teknis yang memakai aplikasi desktop Qt `bot-ea`.
+Dokumen ini untuk operator non-teknis yang memakai desktop app Qt `bot-ea`.
 
-Tujuannya:
+Tujuan utamanya:
 
-- tahu cara membuka aplikasi
-- tahu urutan tombol yang benar
-- tahu arti halaman dan status utama
-- tahu kapan aman lanjut
-- tahu kapan harus berhenti
+- memahami urutan kerja aplikasi
+- mengetahui arti status di startup gate
+- membedakan mode operator dan dev
+- tahu apa yang terjadi saat MT5 hilang atau akun berubah
 
-Dokumen ini hanya menjelaskan perilaku yang sudah ada di aplikasi sekarang. Aplikasi sekarang sudah punya startup gate first-pass sebelum workspace utama terbuka, tetapi ide master brief lain seperti mode dev/operator terpisah penuh dan halaman review akun masih belum ada.
-
-## Fungsi Aplikasi Saat Ini
-
-Aplikasi desktop membantu Anda untuk:
-
-- memeriksa koneksi MT5
-- memeriksa apakah `codex-cli` siap dipakai
-- melihat preview market, lot, dan risiko
-- menjalankan runtime polling secara supervised
-- mengaktifkan live mode secara eksplisit
-- menyetujui atau menolak proposal live
-- membaca telemetry dan validation summary setelah runtime berjalan
-
-Batas penting:
-
-- aplikasi ini belum siap untuk live trading tanpa pengawasan
-- mode paling aman tetap `dry-run` atau demo
-
-## Cara Menjalankan Aplikasi
-
-Jalankan Qt app sebagai entrypoint utama:
+## Cara Menjalankan
 
 ```powershell
 cd D:\luthfi\project\bot-ea
@@ -42,448 +20,296 @@ powershell -ExecutionPolicy Bypass -File .\scripts\run-qt-gui.ps1
 
 Dalam penggunaan normal:
 
-- Anda tidak perlu membuka websocket service manual di jendela lain
-- GUI akan mencoba mengelola service lokal sendiri
-- sebelum halaman utama terbuka penuh, aplikasi akan melewati startup gate
+- Anda tidak perlu menyalakan websocket service manual.
+- App akan mencoba mengelola service lokal sendiri.
+- Workspace utama akan tetap terkunci sampai dependency operator lolos.
 
-Script `run-websocket-service.ps1` masih ada, tetapi itu sekarang lebih cocok untuk debugging atau pengujian backend terpisah.
+## Dua Mode Aplikasi
 
-## Sebelum Mulai
+### Operator Mode
 
-Lakukan ini dulu:
+Dipakai untuk supervised trading.
 
-1. Buka `MetaTrader 5`.
-2. Login ke akun yang benar.
-3. Pastikan simbol yang ingin dipakai tersedia di broker, misalnya `EURUSD` atau `XAUUSD`.
-4. Pastikan `codex --version` berhasil di terminal Windows.
-5. Baru jalankan GUI Qt.
+Syarat:
 
-Checklist cepat:
+- MT5 aktif
+- akun MT5 bisa dibaca
+- AI runtime tersedia
+- workspace AI tersedia
+- dokumen AI tersedia
+- context AI tersedia
+- storage runtime tersedia
 
-- MT5 terbuka
-- akun sudah login
-- `codex-cli` terpasang
-- mulai dari akun demo
-- mulai dari `dry-run`
+### Dev / Mock Mode
 
-## Startup Gate First-Pass
+Dipakai untuk:
 
-Saat aplikasi dibuka sekarang, workspace utama tidak langsung terbuka.
+- tuning UI
+- styling
+- layout
+- mock backend
 
-Urutan pemeriksaan awal:
+Perilaku:
 
-1. service lokal
-2. MT5
-3. Codex
+- bisa membuka workspace tanpa MT5
+- bisa membuka workspace tanpa AI runtime
+- tampil badge `DEV / MOCK MODE`
 
-Kalau ketiganya lolos:
+## Startup Gate
 
-- workspace utama akan terbuka
+Saat mode operator dipakai, aplikasi memeriksa langkah berikut sebelum membuka workspace:
 
-Kalau salah satunya gagal:
+1. Service lokal
+2. MetaTrader 5
+3. Sesi MT5
+4. Akun aktif
+5. Simbol dasar
+6. AI runtime
+7. Workspace AI
+8. Dokumen AI
+9. Context / history
+10. Storage
+11. Resume state
+12. Workspace utama
 
-- Anda akan tetap berada di layar startup gate
-- perbaiki dependency yang gagal dulu
+Kalau satu langkah gagal:
 
-Yang belum termasuk di startup gate saat ini:
+- aplikasi tetap berada di layar `Persiapan Sistem`
+- status gagal tampil di panel status
+- Anda bisa memperbaiki setting lalu klik `Coba Lagi`
 
-- review akun berubah
-- reconnect overlay
-- validasi AI workspace/documents/context seperti di master brief
+## Arti Komponen AI Runtime
 
-## Kenali Halaman Aplikasi
+Di aplikasi ini, AI runtime bukan cuma command `codex`.
 
-Qt app sekarang memakai sidebar dengan 5 halaman.
+Yang dicek:
 
-### 1. `Dashboard`
+- `Command AI Runtime`
+- `Workspace AI`
+- `Dokumen AI`
+- `Context Root`
+- `Timeout`
+- `Runtime DB`
 
-Fungsi:
+Context disimpan per akun MT5, sehingga akun berbeda tidak mencampur memory kerja.
 
-- melihat ringkasan status operator
-- melihat readiness chips
-- melihat market snapshot, manual order envelope, dan risk envelope
-- melihat overview run, lot, spread, dan mode runtime
+## Halaman Utama
 
-Ini adalah halaman ringkas, bukan tempat utama untuk mengubah semua parameter.
+Setelah gate lolos, sidebar menampilkan:
 
-### 2. `Strategy`
+- `Dasbor`
+- `Strategi`
+- `Riwayat`
+- `Log`
+- `Pengaturan`
 
-Fungsi:
+### Dasbor
+
+Dipakai untuk melihat:
+
+- status sistem
+- ringkasan market
+- ringkasan order
+- batas risiko
+- mode runtime
+
+### Strategi
+
+Dipakai untuk:
 
 - mengatur parameter trading
-- mengatur parameter Codex
-- menjalankan tombol aksi utama
+- memilih model AI
+- mengatur workspace/dokumen/context AI
+- menjalankan tombol eksekusi
 
-Di halaman ini ada kelompok utama:
+### Riwayat
 
-- `Trade Setup`
-- `Codex`
-- `Actions`
+Dipakai untuk:
 
-### 3. `History`
-
-Fungsi:
-
-- memuat telemetry runtime
-- membaca validation summary
+- membaca telemetry run
+- melihat validation summary
 - meninjau hasil run sebelumnya
 
-Gunakan halaman ini sesudah runtime berjalan.
+### Log
 
-### 4. `Logs`
+Dipakai untuk:
 
-Fungsi:
+- membaca feed runtime
+- melihat event sistem
+- memantau tick terakhir dan status approval
 
-- membaca runtime feed
-- membaca event dan error
-- melihat endpoint dan tick terbaru yang sudah masuk ke UI
+### Pengaturan
 
-### 5. `Settings`
+Dipakai untuk melihat ringkasan:
 
-Fungsi:
+- endpoint service
+- command AI runtime
+- workspace AI
+- dokumen AI
+- context root
+- context akun aktif
+- runtime DB
 
-- melihat endpoint websocket
-- melihat model default
-- melihat poll interval
-- melihat ringkasan runtime DB
+## Tombol Utama
 
-Catatan:
+### `Cek MT5`
 
-- halaman ini bukan settings produk yang lengkap seperti di master brief
-- belum ada pengelolaan AI workspace, documents folder, atau account-scoped context di sini
+Memeriksa:
 
-## Arti Area Penting di Halaman `Strategy`
+- MT5 bisa diakses
+- sesi MT5 aktif
+- akun aktif terbaca
+- simbol dasar siap dibaca
 
-### `Trade Setup`
+### `Cek AI Runtime`
 
-Bidang utama:
+Memeriksa:
 
-- `Symbol (from MT5)`
-- `Timeframe`
-- `Strategy Style`
-- `Stop Loss Distance (points, min X)`
-- `Capital Mode`
-- `Capital To Use (USD)`
-- `Lot Mode`
-- `Manual Lot Request`
-- `Manual Side Only`
-- `Log File (Runtime DB)`
+- command AI runtime bisa dipanggil
+- workspace AI ada
+- dokumen AI ada
+- context AI ada
+- resume state akun siap
 
-Arti sederhananya:
+### `Refresh Data`
 
-- `Symbol`: instrumen broker yang dipilih
-- `Timeframe`: kerangka waktu analisis
-- `Strategy Style`: gaya strategi aktif
-- `Stop Loss Distance`: jarak stop loss untuk preview risiko
-- `Capital Mode`: cara modal dibaca oleh risk engine
-- `Capital To Use`: basis modal yang diizinkan
-- `Lot Mode`: apakah lot dihitung otomatis atau memakai request manual
-- `Manual Lot Request`: lot manual jika mode manual dipakai
-- `Manual Side Only`: arah order untuk aksi manual
-- `Log File (Runtime DB)`: file SQLite untuk runtime dan telemetry
+Memuat:
 
-### `Codex`
+- snapshot market terbaru
+- ringkasan order manual
+- batas risiko
 
-Bidang utama:
+### `Cek Safety`
 
-- `Codex Command`
-- `AI Model`
-- `Codex Work Folder`
-- `Check Market Every (s)`
+Menjalankan preflight broker dan guard internal sebelum order benar-benar dikirim.
 
-Arti sederhananya:
+### `Eksekusi Order`
 
-- `Codex Command`: command executable, biasanya `codex`
-- `AI Model`: model yang dipakai runtime
-- `Codex Work Folder`: folder kerja project untuk Codex
-- `Check Market Every (s)`: jarak polling market oleh runtime
+Menjalankan order manual dari setup saat ini.
 
-## Tombol Utama dan Fungsinya
+Kalau live belum aktif:
 
-Label tombol di Qt app sekarang masih berbahasa Inggris/operator.
+- hasilnya tetap bisa berupa dry-run
 
-### `Check MT5`
+### `Mulai Bot`
 
-Fungsi:
+Memulai runtime polling di backend.
 
-- memeriksa apakah terminal MT5 bisa dibaca
-- memeriksa akun, tick, dan simbol dasar
+Penting:
 
-### `Load Codex`
+- ini tidak otomatis mengaktifkan live
+- ini tidak otomatis membuka posisi
 
-Fungsi:
+### `Berhenti Bot`
 
-- memeriksa apakah `codex-cli` bisa dipanggil
-- membaca versi CLI dan model yang dipilih
+Menghentikan runtime aktif.
 
-### `Preview`
+### `Aktifkan Live`
 
-Fungsi:
+Mengubah runtime dari dry-run ke supervised live mode.
 
-- mengambil preview manual terbaru dari broker snapshot
-- memperbarui market snapshot, manual order envelope, dan risk envelope
+Tetap ada approval operator bila proposal live muncul.
 
-### `Preflight`
+### `Setujui Proposal` dan `Tolak Proposal`
 
-Fungsi:
+Dipakai hanya saat order live menunggu keputusan operator.
 
-- meminta broker/risk layer memeriksa apakah setup order lolos pemeriksaan sebelum submit
+### `Lihat Telemetri`
 
-### `Execute Manual`
+Memuat ulang telemetry, validation, dan lifecycle trading.
 
-Fungsi:
+## Urutan Pakai Yang Aman
 
-- mencoba menjalankan order manual dari setup saat ini
+1. Buka MT5.
+2. Login ke akun yang benar.
+3. Jalankan Qt app.
+4. Biarkan startup gate selesai.
+5. Buka `Strategi`.
+6. Review simbol, timeframe, modal, dan setting AI.
+7. Klik `Refresh Data`.
+8. Klik `Cek Safety`.
+9. Klik `Mulai Bot`.
+10. Biarkan beberapa cycle berjalan.
+11. Review `Riwayat` dan `Log`.
+12. Aktifkan live hanya kalau Anda siap melakukan approval manual.
 
-Catatan:
+## Saat MT5 Hilang
 
-- kalau live belum aktif, hasilnya bisa `DRY_RUN_OK`
-- kalau broker menolak parameter, hasilnya bisa `REJECTED`
+Jika MT5 hilang saat runtime tidak aktif:
 
-### `Play Runtime`
+- kontrol trading diblokir
+- reconnect overlay muncul
+- app akan mencoba cek MT5 lagi
 
-Fungsi:
+Jika MT5 hilang saat runtime aktif:
 
-- memulai polling runtime di backend
+- runtime masuk safe halt
+- live dinonaktifkan
+- approval pending dibersihkan
+- Anda harus menyalakan MT5 lalu memulai bot lagi secara manual
 
-Ini tidak sama dengan langsung membuka posisi.
+## Saat Akun Berubah
 
-### `Stop Runtime`
+Jika app mendeteksi fingerprint akun baru:
 
-Fungsi:
+- trading diblokir
+- kartu review akun muncul
+- Anda bisa:
+  - gunakan context akun yang sudah ada
+  - buat context baru
+  - batalkan dan kembali ke startup gate
 
-- menghentikan runtime aktif
+Setelah akun baru diterima:
 
-### `Enable Live` / `Disable Live`
-
-Fungsi:
-
-- mengubah runtime dari dry-run menjadi live-gated
-
-Ini tetap bukan izin trading otomatis tanpa review.
-
-### `Approve`
-
-Fungsi:
-
-- menyetujui proposal order live yang sedang pending
-
-### `Reject`
-
-Fungsi:
-
-- menolak proposal order live yang sedang pending
-
-### `Telemetry`
-
-Fungsi:
-
-- memuat ulang telemetry run, validation summary, dan review status
-
-## Urutan Pakai yang Disarankan
-
-Ikuti urutan ini:
-
-1. Buka MT5 dan login.
-2. Jalankan Qt app.
-3. Biarkan startup gate memeriksa service, MT5, lalu Codex.
-4. Setelah workspace terbuka, buka halaman `Strategy`.
-5. Atur `Symbol`, `Timeframe`, `Strategy Style`, dan modal.
-6. Klik `Preview`.
-7. Klik `Preflight`.
-8. Jika hasil aman, klik `Play Runtime`.
-9. Biarkan runtime berjalan beberapa cycle.
-10. Buka `History` atau klik `Telemetry`.
-11. Tetap di dry-run dulu.
-12. Hanya jika benar-benar perlu, gunakan `Enable Live`.
-13. Jika ada proposal live, pilih `Approve` atau `Reject`.
-
-## Aturan Penting Saat Runtime Aktif
-
-Saat runtime sudah berjalan:
-
-- beberapa aksi manual MT5 akan dibatasi
-- ini sengaja dilakukan agar jalur manual tidak merusak koneksi IPC MT5 yang sedang dipakai runtime
-
-Artinya:
-
-- jika ingin banyak mengubah setup manual, lebih aman `Stop Runtime` dulu
-- sesudah itu baru `Preview`, `Preflight`, atau `Execute Manual`
-
-## Arti Status Kesiapan
-
-Di bagian readiness, perhatikan:
-
-- `Service`
-- `MT5`
-- `Codex`
-- `Runtime`
-- `Run ID`
-- `Approval`
-
-Interpretasi umum:
-
-- `Service connected`
-  - GUI sudah terhubung ke websocket backend
-- `MT5 ready`
-  - probe MT5 berhasil
-- `codex-cli ...`
-  - probe Codex berhasil
-- `Runtime stopped`
-  - runtime tidak sedang berjalan
-- `NO_TRADE: ...`
-  - runtime masih hidup, tetapi cycle terakhir memutuskan tidak entry
-- `Approved ...`
-  - proposal live terakhir disetujui
-
-`NO_TRADE` bukan berarti runtime pasti berhenti.
-
-## Cara Membaca Snapshot Cards
-
-### `Market Snapshot`
-
-Menampilkan:
-
-- symbol
-- bid
-- ask
-- spread
-- equity
-- free margin
-- execution mode
-
-Saat runtime aktif, data market terbaru idealnya datang dari event runtime, bukan dari tombol manual.
-
-### `Manual Order Envelope`
-
-Menampilkan:
-
-- `lot_mode`
-- `requested_lot`
-- `final_lot`
-- `broker_min_lot`
-- `broker_max_lot`
-- `margin_for_min_lot_usd`
-- `margin_for_final_lot_usd`
-- `manual_order_result`
-- `why_blocked`
-
-Ini menjawab:
-
-- lot final yang akan dipakai berapa
-- apakah lot di-resize
-- apakah broker/modal masih mengizinkan order manual
-
-### `Risk Envelope`
-
-Menampilkan:
-
-- lot hasil risk sizing
-- risk budget
-- estimated loss
-- warning atau blocker
-
-Catatan:
-
-- kartu ini lebih dekat ke sudut pandang risk engine
-- jangan campurkan otomatis dengan `Manual Order Envelope`
-
-## Cara Membaca Telemetry
-
-Saat membuka `History` atau menekan `Telemetry`, fokus ke:
-
-- `status`
-- `last_action`
-- `reject_rate`
-- `recent_execution_events`
-- `recent_rejections`
-- `validation_summary`
-
-Kalau yang terlihat:
-
-- `DRY_RUN_OK`
-  - order hanya diuji, belum dikirim live
-- `PRECHECK_OK`
-  - broker/risk precheck lolos
-- `REJECTED`
-  - ada penolakan dari broker atau guard internal
-- `NO_TRADE`
-  - runtime memilih tidak membuka posisi pada cycle itu
+- context akun akan di-bind ulang
+- bot tidak auto-start
+- Anda harus memulai bot lagi manual
 
 ## Error Umum
 
-### 1. `NO IPC connection`
+### MT5 tidak tersedia
 
-Artinya:
+Arti:
 
-- Python kehilangan koneksi ke MT5
+- terminal belum dibuka
+- terminal login belum siap
+- koneksi IPC MT5 sedang putus
 
-Yang harus dilakukan:
+Tindakan:
 
-1. pastikan hanya satu MT5 yang dipakai
-2. jangan spam aksi manual saat runtime aktif
-3. cek apakah terminal MT5 masih terbuka dan login
-4. `Check MT5` lagi
+1. Buka atau fokuskan MT5.
+2. Pastikan akun sudah login.
+3. Klik `Coba Lagi` atau tunggu reconnect.
 
-### 2. `codex exec timed out after 60 seconds`
+### AI runtime tidak ditemukan
 
-Artinya:
+Arti:
 
-- `codex-cli` terlalu lama menjawab
+- command `codex` tidak ada di `PATH`
+- atau workspace/runtime path salah
 
-Yang harus dilakukan:
+Tindakan:
 
-1. ulang `Load Codex`
-2. cek model yang dipakai
-3. cek folder kerja dan beban prompt
+1. Periksa `Command AI Runtime`.
+2. Periksa `Workspace AI`.
+3. Pastikan `codex --version` berjalan di terminal.
 
-### 3. `codex contract invalid`
+### Context AI belum siap
 
-Artinya:
+Arti:
 
-- respons Codex tidak mengikuti kontrak output yang diminta runtime
+- folder context tidak ada
+- atau tidak bisa ditulis
 
-Sekarang runtime akan menandai ini dengan lebih jelas daripada sebelumnya.
+Tindakan:
 
-### 4. `address already in use` / `10048`
+1. Periksa `Context Root`.
+2. Pastikan folder bisa dibuat/ditulis.
+3. Jalankan ulang gate.
 
-Artinya:
+## Catatan Penting
 
-- port websocket sedang dipakai proses lain
-
-Biasanya terjadi jika service lama masih hidup.
-
-### 5. `Invalid stops`
-
-Artinya:
-
-- broker menolak jarak stop loss yang terlalu dekat untuk harga saat itu
-
-Solusi praktis:
-
-- naikkan `Stop Loss Distance`
-- lakukan `Preview` dan `Preflight` lagi
-
-## Batas Fitur Saat Ini
-
-Hal yang belum ada walaupun diusulkan di master brief:
-
-- mode `DEV / MOCK MODE` yang terlihat jelas di UI
-- reconnect overlay khusus saat MT5 hilang
-- review sheet khusus saat akun berubah
-- pengelolaan AI workspace, AI documents, dan AI context per akun
-- pelokalan penuh ke istilah Indonesia di seluruh UI
-
-Hal yang sudah ada sekarang:
-
-- startup gate first-pass untuk `service -> MT5 -> Codex`
-
-## Penutup
-
-Aturan paling aman untuk operator baru:
-
-- mulai dari demo
-- mulai dari dry-run
-- baca hasil `Preview`, `Preflight`, dan `Telemetry`
-- jangan aktifkan live jika Anda belum paham status yang tampil
-- hentikan runtime jika ada error berulang atau kondisi yang membingungkan
+- Bot tidak auto-start setelah aplikasi dibuka.
+- Live tidak auto-enable.
+- Context AI dipisah per akun.
+- Jika kondisi membingungkan, hentikan bot lebih dulu lalu review `Log` dan `Riwayat`.

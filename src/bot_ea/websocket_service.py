@@ -13,6 +13,7 @@ import websockets
 from .desktop_runtime import DesktopRuntimeConfig, DesktopRuntimeCoordinator
 from .models import CapitalAllocation, CapitalAllocationMode, OperatingMode, PositionSizeRequest, RiskPolicy, TradingStyle
 from .mt5_adapter import LiveMT5Adapter
+from .operator_state import OperatorRuntimeSettings, OperatorStateStore
 from .mt5_execution_runtime import MT5ExecutionRuntime
 from .polling_runtime import AIIntent, DecisionAction, MT5SnapshotProvider
 from .risk_engine import RiskEngine
@@ -30,6 +31,7 @@ class BotEaWebSocketService:
         runtime_coordinator: DesktopRuntimeCoordinator | None = None,
         risk_engine: RiskEngine | None = None,
         risk_policy: RiskPolicy | None = None,
+        project_root: str | Path | None = None,
     ) -> None:
         self.host = host
         self.port = port
@@ -44,6 +46,7 @@ class BotEaWebSocketService:
             adapter_factory=adapter_factory,
             risk_policy=self.risk_policy,
         )
+        self.state_store = OperatorStateStore(project_root or Path.cwd())
         self._clients: set[Any] = set()
         self._server = None
         self._drain_task: asyncio.Task | None = None
@@ -84,11 +87,70 @@ class BotEaWebSocketService:
         request_id = request.get("id")
         name = str(request.get("name") or "")
         params = request.get("params") or {}
-        if name == "probe_mt5":
+        if name == "probe_service_ready":
+            result = {"host": self.host, "port": self.port, "detail": "Service lokal siap digunakan."}
+        elif name == "load_runtime_settings":
+            result = self.state_store.load_runtime_settings().to_dict()
+        elif name == "save_runtime_settings":
+            result = self.state_store.save_runtime_settings(self._settings_from_params(params))
+        elif name == "probe_mt5_process":
+            result = await asyncio.to_thread(self.runtime_coordinator.probe_mt5_process)
+        elif name == "probe_mt5_session":
+            result = await asyncio.to_thread(self.runtime_coordinator.probe_mt5_session)
+        elif name == "probe_account_fingerprint":
+            result = await asyncio.to_thread(self.runtime_coordinator.probe_account_fingerprint)
+        elif name == "probe_symbol_baseline":
+            self._require_runtime_idle(name)
+            result = await asyncio.to_thread(self.runtime_coordinator.probe_symbol_baseline, **self._probe_kwargs(params))
+        elif name == "probe_mt5":
             self._require_runtime_idle(name)
             result = await asyncio.to_thread(self.runtime_coordinator.probe_mt5, **self._probe_kwargs(params))
-        elif name == "probe_codex":
+        elif name in {"probe_codex", "probe_ai_runtime"}:
+            runtime_ready = await asyncio.to_thread(
+                self.state_store.validate_runtime_command,
+                command=str(params.get("codex_command") or params.get("ai_runtime_command") or "codex"),
+                executable_path=str(params.get("ai_runtime_executable_path") or ""),
+            )
             result = await asyncio.to_thread(self.runtime_coordinator.probe_codex, **self._codex_kwargs(params))
+            if isinstance(result, str):
+                result = {
+                    "version": result,
+                    "detail": f"AI runtime siap: {result}",
+                    **runtime_ready,
+                }
+        elif name == "probe_ai_workspace":
+            result = await asyncio.to_thread(
+                self.state_store.validate_path,
+                path=str(params["ai_workspace_path"]),
+                label="Workspace AI",
+                create=True,
+                writable=True,
+            )
+        elif name == "probe_ai_documents":
+            result = await asyncio.to_thread(
+                self.state_store.validate_path,
+                path=str(params["ai_documents_path"]),
+                label="Dokumen AI",
+                create=True,
+                writable=False,
+            )
+        elif name == "probe_ai_context_store":
+            result = await asyncio.to_thread(
+                self.state_store.validate_path,
+                path=str(params["ai_context_root"]),
+                label="Folder context AI",
+                create=True,
+                writable=True,
+            )
+        elif name == "validate_storage":
+            result = await asyncio.to_thread(self.state_store.validate_storage, db_path=str(params["db_path"]))
+        elif name == "build_resume_state":
+            result = await asyncio.to_thread(
+                self.state_store.build_resume_state,
+                settings=self._settings_from_params(params),
+                fingerprint_payload=dict(params.get("fingerprint") or {}),
+                create_new=bool(params.get("create_new")),
+            )
         elif name == "refresh_manual":
             self._require_runtime_idle(name)
             result = await asyncio.to_thread(self._build_manual_preview, params)
@@ -267,6 +329,7 @@ class BotEaWebSocketService:
             "execution_mode": snapshot.symbol_snapshot.execution_mode,
             "filling_mode": snapshot.symbol_snapshot.filling_mode,
             "tick_time": snapshot.context.get("tick_time"),
+            "account_fingerprint": snapshot.context.get("account_fingerprint"),
         }
 
     def _intent(self, snapshot, params: dict[str, Any], reason: str) -> AIIntent:
@@ -451,6 +514,12 @@ class BotEaWebSocketService:
             session_state=str(params.get("session_state") or "desktop_runtime"),
             news_state=str(params.get("news_state") or "unknown"),
             run_id=str(params["run_id"]) if params.get("run_id") else None,
+            ai_workspace_path=self._optional_str(str(params.get("ai_workspace_path") or "")),
+            ai_documents_path=self._optional_str(str(params.get("ai_documents_path") or "")),
+            ai_context_path=self._optional_str(str(params.get("ai_context_path") or params.get("ai_context_root") or "")),
+            resume_prompt_path=self._optional_str(str(params.get("resume_prompt_path") or "")),
+            behavior_profile_path=self._optional_str(str(params.get("behavior_profile_path") or "")),
+            account_fingerprint=dict(params.get("account_fingerprint") or {}) or None,
         )
 
     def _require_runtime_idle(self, command_name: str) -> None:
@@ -461,10 +530,10 @@ class BotEaWebSocketService:
 
     def _codex_kwargs(self, params: dict[str, Any]) -> dict[str, Any]:
         return {
-            "executable": str(params["codex_command"]),
-            "model": params.get("model"),
-            "cwd": params.get("codex_cwd"),
-            "timeout_seconds": int(params.get("timeout_seconds") or 60),
+            "executable": str(params.get("codex_command") or params.get("ai_runtime_command") or "codex"),
+            "model": params.get("model") or params.get("default_model"),
+            "cwd": params.get("codex_cwd") or params.get("ai_workspace_path"),
+            "timeout_seconds": int(params.get("timeout_seconds") or params.get("codex_timeout_seconds") or 60),
         }
 
     @staticmethod
@@ -474,6 +543,25 @@ class BotEaWebSocketService:
         shutdown = getattr(adapter, "shutdown", None)
         if callable(shutdown):
             shutdown()
+
+    def _settings_from_params(self, params: dict[str, Any]) -> OperatorRuntimeSettings:
+        current = self.state_store.load_runtime_settings()
+        payload = current.to_dict()
+        for key in payload:
+            if key in params and params[key] is not None:
+                payload[key] = params[key]
+        if "model" in params and params.get("model") is not None:
+            payload["default_model"] = params["model"]
+        if "codex_command" in params and params.get("codex_command") is not None:
+            payload["ai_runtime_command"] = params["codex_command"]
+        if "codex_cwd" in params and params.get("codex_cwd") is not None:
+            payload["ai_workspace_path"] = params["codex_cwd"]
+        return OperatorRuntimeSettings(**payload)
+
+    @staticmethod
+    def _optional_str(value: str) -> str | None:
+        normalized = value.strip()
+        return normalized or None
 
 
 async def serve_forever() -> None:

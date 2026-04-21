@@ -76,6 +76,14 @@ class TerminalStatusSnapshot:
     account_trade_expert: bool = False
 
 
+@dataclass(slots=True)
+class AccountFingerprintSnapshot:
+    login: str
+    server: str
+    broker: str = ""
+    is_live: bool | None = None
+
+
 class MT5Adapter(Protocol):
     """Future integration seam for MetaTrader 5 terminal access."""
 
@@ -92,6 +100,9 @@ class MT5Adapter(Protocol):
         raise NotImplementedError
 
     def load_terminal_status(self) -> TerminalStatusSnapshot:
+        raise NotImplementedError
+
+    def load_account_fingerprint(self) -> AccountFingerprintSnapshot:
         raise NotImplementedError
 
     def load_available_symbols(self) -> list[str]:
@@ -183,6 +194,16 @@ class MockMT5Adapter:
             tradeapi_disabled=False,
             account_trade_allowed=bool(account.trade_allowed),
             account_trade_expert=bool(account.trade_expert),
+        )
+
+    def load_account_fingerprint(self) -> AccountFingerprintSnapshot:
+        server = str(self._account_info.get("server", "") or "")
+        broker = str(self._account_info.get("company", "") or self._account_info.get("broker", "") or "")
+        return AccountFingerprintSnapshot(
+            login=str(self._account_info.get("login", "") or ""),
+            server=server,
+            broker=broker,
+            is_live=LiveMT5Adapter._infer_is_live(server=server, broker=broker),
         )
 
     def load_available_symbols(self) -> list[str]:
@@ -366,6 +387,20 @@ class LiveMT5Adapter:
             company=str(getattr(account_info, "company", "") or ""),
             account_trade_allowed=bool(getattr(account_info, "trade_allowed", False)),
             account_trade_expert=bool(getattr(account_info, "trade_expert", False)),
+        )
+
+    def load_account_fingerprint(self) -> AccountFingerprintSnapshot:
+        mt5 = self._ensure_initialized()
+        account_info = self._call_mt5(lambda module: module.account_info(), retry_on_none=True)
+        if account_info is None:
+            raise RuntimeError(f"MT5 account_info() failed: {mt5.last_error()}")
+        server = str(getattr(account_info, "server", "") or "")
+        broker = str(getattr(account_info, "company", "") or "")
+        return AccountFingerprintSnapshot(
+            login=str(getattr(account_info, "login", "") or ""),
+            server=server,
+            broker=broker,
+            is_live=self._infer_is_live(server=server, broker=broker),
         )
 
     def load_available_symbols(self) -> list[str]:
@@ -645,3 +680,12 @@ class LiveMT5Adapter:
         if order_type == "sell":
             return float(getattr(tick, "bid", 0.0) or 0.0)
         return float(getattr(tick, "ask", 0.0) or 0.0)
+
+    @staticmethod
+    def _infer_is_live(*, server: str, broker: str) -> bool | None:
+        haystack = " ".join([server, broker]).lower()
+        if not haystack.strip():
+            return None
+        if any(keyword in haystack for keyword in ("demo", "test", "trial", "practice")):
+            return False
+        return True
