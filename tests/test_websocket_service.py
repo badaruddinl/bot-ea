@@ -429,6 +429,103 @@ class WebSocketServiceTests(unittest.TestCase):
 
         asyncio.run(run_test())
 
+    def test_load_runtime_state_command_recovers_binding_from_context_key_only(self) -> None:
+        async def run_test() -> None:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                service = BotEaWebSocketService(adapter_factory=FakeAdapter, project_root=tmpdir)
+                params = self._context_params(tmpdir)
+                built = await service._handle_command({"id": "6f", "name": "build_resume_state", "params": params})
+                binding = built["result"]["binding"]
+
+                service.state_store.update_runtime_state(
+                    {
+                        "active_account_fingerprint": params["fingerprint"],
+                        "context_key": binding["context_key"],
+                        "context_path": "",
+                    }
+                )
+
+                response = await service._handle_command({"id": "6g", "name": "load_runtime_state", "params": {}})
+                self.assertTrue(response["ok"])
+                result = response["result"]
+                self.assertTrue(result["exists"])
+                self.assertEqual(result["runtime_state"]["context_key"], binding["context_key"])
+                self.assertEqual(result["runtime_state"]["context_path"], "")
+                self.assertEqual(result["binding"]["mapping_source"], "runtime_state")
+                self.assertEqual(result["binding"]["context_key"], binding["context_key"])
+                self.assertEqual(result["binding"]["context_path"], binding["context_path"])
+                self.assertTrue(result["binding"]["existed"])
+                self.assertEqual(result["binding"]["resume_prompt_path"], binding["resume_prompt_path"])
+                self.assertEqual(result["binding"]["profile_path"], binding["profile_path"])
+
+        asyncio.run(run_test())
+
+    def test_load_runtime_state_command_recovers_binding_from_context_path_only(self) -> None:
+        async def run_test() -> None:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                service = BotEaWebSocketService(adapter_factory=FakeAdapter, project_root=tmpdir)
+                params = self._context_params(tmpdir)
+                built = await service._handle_command({"id": "6h", "name": "build_resume_state", "params": params})
+                binding = built["result"]["binding"]
+
+                service.state_store.update_runtime_state(
+                    {
+                        "active_account_fingerprint": params["fingerprint"],
+                        "context_key": "",
+                        "context_path": binding["context_path"],
+                    }
+                )
+
+                response = await service._handle_command({"id": "6i", "name": "load_runtime_state", "params": {}})
+                self.assertTrue(response["ok"])
+                result = response["result"]
+                self.assertTrue(result["exists"])
+                self.assertEqual(result["runtime_state"]["context_key"], "")
+                self.assertEqual(result["runtime_state"]["context_path"], binding["context_path"])
+                self.assertEqual(result["binding"]["mapping_source"], "runtime_state")
+                self.assertEqual(result["binding"]["context_key"], binding["context_key"])
+                self.assertEqual(result["binding"]["context_path"], binding["context_path"])
+                self.assertTrue(result["binding"]["existed"])
+                self.assertEqual(result["binding"]["fingerprint"], params["fingerprint"])
+
+        asyncio.run(run_test())
+
+    def test_load_runtime_state_command_keeps_stale_missing_context_path_binding(self) -> None:
+        async def run_test() -> None:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                service = BotEaWebSocketService(adapter_factory=FakeAdapter, project_root=tmpdir)
+                params = self._context_params(tmpdir)
+                fingerprint = AccountFingerprint.from_payload(dict(params["fingerprint"]))
+                stale_context_path = str((Path(tmpdir) / "ai_context" / f"{fingerprint.key}_stale").resolve())
+
+                service.state_store.update_runtime_state(
+                    {
+                        "active_account_fingerprint": params["fingerprint"],
+                        "context_key": "",
+                        "context_path": stale_context_path,
+                    }
+                )
+
+                response = await service._handle_command({"id": "6j", "name": "load_runtime_state", "params": {}})
+                self.assertTrue(response["ok"])
+                result = response["result"]
+                self.assertTrue(result["exists"])
+                self.assertEqual(result["runtime_state"]["context_path"], stale_context_path)
+                self.assertEqual(result["binding"]["mapping_source"], "runtime_state")
+                self.assertEqual(result["binding"]["context_key"], f"{fingerprint.key}_stale")
+                self.assertEqual(result["binding"]["context_path"], stale_context_path)
+                self.assertFalse(result["binding"]["existed"])
+                self.assertEqual(
+                    result["binding"]["resume_prompt_path"],
+                    str((Path(stale_context_path) / "resume" / "resume_prompt.md").resolve()),
+                )
+                self.assertEqual(
+                    result["binding"]["profile_path"],
+                    str((Path(stale_context_path) / "profile.yaml").resolve()),
+                )
+
+        asyncio.run(run_test())
+
     def test_list_account_contexts_command_lists_existing_variants(self) -> None:
         async def run_test() -> None:
             with tempfile.TemporaryDirectory() as tmpdir:
