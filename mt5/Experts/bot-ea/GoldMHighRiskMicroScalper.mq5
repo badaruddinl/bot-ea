@@ -33,7 +33,17 @@ enum TrendEntryMode
 enum SignalModel
 {
    SIGNAL_MODEL_SCORE_REVISED    = 0,
-   SIGNAL_MODEL_EMA_RSI_ATR_MOMO = 1
+   SIGNAL_MODEL_EMA_RSI_ATR_MOMO = 1,
+   SIGNAL_MODEL_MINED_RULES      = 2
+};
+
+enum MinedRuleMode
+{
+   MINED_RULE_RSI14_REVERT_LONG = 0,
+   MINED_RULE_CORE_EMA_LONG     = 1,
+   MINED_RULE_RAW_NINE_UP_LONG  = 2,
+   MINED_RULE_RAW_SEQUENCE_LONG = 3,
+   MINED_RULE_RAW_SEQUENCE_SHORT = 4
 };
 
 input string          InpExpectedSymbol                  = "GOLDm#";
@@ -81,6 +91,9 @@ input int             InpSession1StartHour               = 7;
 input int             InpSession1EndHour                 = 11;
 input int             InpSession2StartHour               = 13;
 input int             InpSession2EndHour                 = 17;
+input MinedRuleMode   InpMinedRuleMode                   = MINED_RULE_RSI14_REVERT_LONG;
+input int             InpMinedRawBars                    = 9;
+input string          InpMinedRawSequence                = "UUUUUUU";
 
 input double          InpTrendADXOn                      = 22.0;
 input double          InpRangeADXOn                      = 16.0;
@@ -492,6 +505,9 @@ MarketRegime DetectRegime(const IndicatorSnapshot &snap, const double bid, const
       return REGIME_NO_TRADE;
    }
 
+   if(InpSignalModel == SIGNAL_MODEL_MINED_RULES)
+      return REGIME_TREND;
+
    if(snap.adx1 > InpTrendADXOn && alignedTrend && adxTrendOk)
       return REGIME_TREND;
 
@@ -511,6 +527,8 @@ int ScoreTrendBuy(const IndicatorSnapshot &snap, const double ask, const double 
 {
    if(InpSignalModel == SIGNAL_MODEL_EMA_RSI_ATR_MOMO)
       return ScoreMomentumBuy(snap, ask, spread, tickUp);
+   if(InpSignalModel == SIGNAL_MODEL_MINED_RULES)
+      return ScoreMinedBuy(snap, spread, tickUp);
 
    int score = 0;
    if(snap.emaFast1 > snap.emaSlow1) score += 20;
@@ -531,6 +549,8 @@ int ScoreTrendSell(const IndicatorSnapshot &snap, const double bid, const double
 {
    if(InpSignalModel == SIGNAL_MODEL_EMA_RSI_ATR_MOMO)
       return ScoreMomentumSell(snap, bid, spread, tickDown);
+   if(InpSignalModel == SIGNAL_MODEL_MINED_RULES)
+      return ScoreMinedSell(snap, spread, tickDown);
 
    int score = 0;
    if(snap.emaFast1 < snap.emaSlow1) score += 20;
@@ -549,7 +569,7 @@ int ScoreTrendSell(const IndicatorSnapshot &snap, const double bid, const double
 
 int ScoreRangeBuy(const IndicatorSnapshot &snap, const double bid, const double spread, const bool tickUp)
 {
-   if(InpSignalModel == SIGNAL_MODEL_EMA_RSI_ATR_MOMO)
+   if(InpSignalModel == SIGNAL_MODEL_EMA_RSI_ATR_MOMO || InpSignalModel == SIGNAL_MODEL_MINED_RULES)
       return 0;
 
    int score = 0;
@@ -566,7 +586,7 @@ int ScoreRangeBuy(const IndicatorSnapshot &snap, const double bid, const double 
 
 int ScoreRangeSell(const IndicatorSnapshot &snap, const double ask, const double spread, const bool tickDown)
 {
-   if(InpSignalModel == SIGNAL_MODEL_EMA_RSI_ATR_MOMO)
+   if(InpSignalModel == SIGNAL_MODEL_EMA_RSI_ATR_MOMO || InpSignalModel == SIGNAL_MODEL_MINED_RULES)
       return 0;
 
    int score = 0;
@@ -610,6 +630,59 @@ int ScoreMomentumSell(const IndicatorSnapshot &snap, const double bid, const dou
    if(tickDown) score += 5;
    if(spread > InpMaxSpread) score -= 40;
    if(spread > InpHardMaxSpread) score -= 100;
+   return score;
+}
+
+int ScoreMinedBuy(const IndicatorSnapshot &snap, const double spread, const bool tickUp)
+{
+   if(spread > InpHardMaxSpread)
+      return 0;
+
+   bool signal = false;
+   if(InpMinedRuleMode == MINED_RULE_RSI14_REVERT_LONG)
+      signal = (snap.rsi1 <= InpRSIOversold && snap.close1 < snap.bbLower1);
+   else if(InpMinedRuleMode == MINED_RULE_CORE_EMA_LONG)
+      signal = (snap.emaFast1 > snap.emaSlow1 &&
+                snap.rsi1 >= InpRSIMomentumBuy &&
+                snap.close1 > snap.open1 &&
+                (!InpUseSessionFilter || IsConfiguredSessionWindow()));
+   else if(InpMinedRuleMode == MINED_RULE_RAW_NINE_UP_LONG)
+      signal = ClosedCandlesAllBullish(InpMinedRawBars);
+   else if(InpMinedRuleMode == MINED_RULE_RAW_SEQUENCE_LONG)
+      signal = ClosedCandleDirectionSequence(InpMinedRawSequence);
+
+   if(!signal)
+      return 0;
+
+   int score = 100;
+   if(spread > InpMaxSpread)
+      score -= 40;
+   if(InpUseSpreadAtrGate && spread > 0.0 && snap.atr1 / spread < InpMinAtrSpreadRatio)
+      score -= 40;
+   if(tickUp)
+      score += 5;
+   return score;
+}
+
+int ScoreMinedSell(const IndicatorSnapshot &snap, const double spread, const bool tickDown)
+{
+   if(spread > InpHardMaxSpread)
+      return 0;
+
+   bool signal = false;
+   if(InpMinedRuleMode == MINED_RULE_RAW_SEQUENCE_SHORT)
+      signal = ClosedCandleDirectionSequence(InpMinedRawSequence);
+
+   if(!signal)
+      return 0;
+
+   int score = 100;
+   if(spread > InpMaxSpread)
+      score -= 40;
+   if(InpUseSpreadAtrGate && spread > 0.0 && snap.atr1 / spread < InpMinAtrSpreadRatio)
+      score -= 40;
+   if(tickDown)
+      score += 5;
    return score;
 }
 
@@ -741,6 +814,56 @@ bool MomentumBreakoutSell(const IndicatorSnapshot &snap, const double price)
    for(int i = 2; i <= InpMicroStructureBars + 1; i++)
       lowest = MathMin(lowest, iLow(_Symbol, InpTimeframeEntry, i));
    return snap.close1 < lowest;
+}
+
+bool ClosedCandlesAllBullish(const int bars)
+{
+   if(bars <= 0)
+      return false;
+   for(int i = 1; i <= bars; i++)
+   {
+      const double open = iOpen(_Symbol, InpTimeframeEntry, i);
+      const double close = iClose(_Symbol, InpTimeframeEntry, i);
+      if(close <= open)
+         return false;
+   }
+   return true;
+}
+
+bool ClosedCandleDirectionSequence(const string sequence)
+{
+   const int bars = StringLen(sequence);
+   if(bars <= 0)
+      return false;
+
+   for(int index = 0; index < bars; index++)
+   {
+      const int shift = bars - index;
+      const ushort expected = StringGetCharacter(sequence, index);
+      const double open = iOpen(_Symbol, InpTimeframeEntry, shift);
+      const double close = iClose(_Symbol, InpTimeframeEntry, shift);
+
+      if(expected == 'U')
+      {
+         if(close <= open)
+            return false;
+      }
+      else if(expected == 'D')
+      {
+         if(close >= open)
+            return false;
+      }
+      else if(expected == 'N')
+      {
+         if(close != open)
+            return false;
+      }
+      else
+      {
+         return false;
+      }
+   }
+   return true;
 }
 
 void ManageOpenPositions(

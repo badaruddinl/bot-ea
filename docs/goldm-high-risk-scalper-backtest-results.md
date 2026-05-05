@@ -202,3 +202,62 @@ Selected active preset after this pass: `tight_spread_aggressive`, because it ha
 - `InpCooldownAfterCloseSeconds=2`
 
 The result is still not profitable. The selected preset is only the least-bad OOS variant from this batch, not a validated profitable EA.
+
+## Raw Candle Mining And Runner Pass
+
+The next pass mined `GOLDm#` M1 candles directly from MT5 history.
+
+- Data available from MT5: `99,780` M1 bars
+- Range: `2026-01-22 04:32 UTC` to `2026-05-05 15:35 UTC`
+- Train split: before `2026-04-01`
+- OOS split: `2026-04-01` to `2026-05-01`
+- Latest split: `2026-05-01` onward
+
+The important finding was that the previous micro exits were too small for the mined horizons. Earlier presets commonly had average wins around `0.03 USD` and average losses around `-0.07 USD` on a `0.10` lot. To grow a `5 USD` balance to `6 USD`, the EA needs about `+1.00 USD` net, but a `0.03 USD` average winner requires more than thirty net winners before losses. Losses were erasing two to three wins at a time.
+
+MFE/MAE from the mined data showed that useful 10-20 candle moves often travel several price dollars before completing:
+
+- `raw_seq9_up_long` H20 OOS: MFE median `8.77`, MFE 70th percentile `13.64`, MAE 30th percentile `-5.72`
+- `core_ema9_20_long` H20 OOS: MFE median `5.61`, MFE 70th percentile `9.50`, MAE 30th percentile `-8.76`
+- `rsi14_revert_long` H10 OOS: MFE median `4.17`, MFE 70th percentile `6.65`, MAE 30th percentile `-7.11`
+
+Because of that, new sequence modes were added to the EA:
+
+- `SIGNAL_MODEL_MINED_RULES`
+- `MINED_RULE_RAW_SEQUENCE_LONG`
+- `MINED_RULE_RAW_SEQUENCE_SHORT`
+- `InpMinedRawSequence`
+
+Runner candidates used longer exits:
+
+- `MaxHoldSeconds=1200`
+- `UseAtrTakeProfit=false`
+- `LockStartMin=1.50` to `2.00`
+- `TrailBackMin=0.70` to `0.80`
+- `EmergencySLMin=3.00`
+- single-position variants with `MaxPositions=1`, `MaxTotalOpenLot=0.10`
+
+Runner screen `2026.03.01` to `2026.04.01`, `Deposit=5`:
+
+- `mined_alt8_long_h20_runner`: final `8.55`, trades `31`, PF `2.2241`
+- `mined_seq7up_h20_runner_stack`: final `6.59`, trades `60`, PF `1.1506`
+- `mined_seq7up_h20_runner`: final `6.16`, trades `48`, PF `1.1358`
+- `mined_core_ema_h20_runner_wide`: final `1.65`, trades `114`, PF `0.8511`
+- `mined_alt8_short_h20_runner`: final `1.57`, trades `21`, PF `0.4117`
+
+Validation of the best screen candidate:
+
+- `mined_alt8_long_h20_runner` in-sample `2026.01.01` to `2026.04.01`: final `10.68`, trades `294`, PF `1.1322`
+- `mined_alt8_long_h20_runner` OOS `2026.04.01` to `2026.05.01`: final `2.94`, trades `57`, PF `0.7497`
+- `mined_alt8_long_h20_runner` latest `2026.05.01` to `2026.05.06`: final `4.47`, trades `4`, PF `0.2933`
+
+The active preset was changed to `mined_alt8_long_h20_runner` as a research baseline because it is the first tested configuration that clearly pushed a `5 USD` account above `6 USD`. It is not accepted as a robust final/live preset because it failed OOS and latest validation.
+
+Why the older runs usually fell to `1 USD` within a few days:
+
+- Broker minimum lot `0.10` prevents smooth risk scaling below `100 USD`; at `5 USD`, every trade is already high-risk.
+- Leverage lowers margin, but it does not reduce P/L per price move.
+- Previous profit locks and TP values captured very small wins while SL/emergency exits were materially larger.
+- Win rate was not high enough to compensate for the win/loss asymmetry.
+- Spread and slippage consumed a large part of each micro target.
+- The original 60-180 second exits often cut positions before the 10-20 candle move that appeared in the mining data.

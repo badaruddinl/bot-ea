@@ -1,0 +1,1262 @@
+[
+  {
+    "rule": "rsi14_revert_long",
+    "side": "long",
+    "horizon": 10,
+    "train": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 1281,
+      "mean": 0.952951,
+      "win_rate": 0.6042,
+      "profit_factor": 1.1813,
+      "total": 1220.73
+    },
+    "oos_april": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 493,
+      "mean": 0.97071,
+      "win_rate": 0.5842,
+      "profit_factor": 1.3945,
+      "total": 478.56
+    },
+    "latest": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 59,
+      "mean": -2.132542,
+      "win_rate": 0.4068,
+      "profit_factor": 0.5467,
+      "total": -125.82
+    }
+  },
+  {
+    "rule": "core_ema9_20_long",
+    "side": "long",
+    "horizon": 20,
+    "train": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 3196,
+      "mean": -0.119675,
+      "win_rate": 0.5194,
+      "profit_factor": 0.972,
+      "total": -382.48
+    },
+    "oos_april": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 1284,
+      "mean": 0.416254,
+      "win_rate": 0.4969,
+      "profit_factor": 1.1112,
+      "total": 534.47
+    },
+    "latest": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 57,
+      "mean": 2.931579,
+      "win_rate": 0.5789,
+      "profit_factor": 2.1108,
+      "total": 167.1
+    }
+  },
+  {
+    "rule": "rsi14_revert_long",
+    "side": "long",
+    "horizon": 20,
+    "train": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 1281,
+      "mean": 0.93178,
+      "win_rate": 0.5917,
+      "profit_factor": 1.1366,
+      "total": 1193.61
+    },
+    "oos_april": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 493,
+      "mean": 0.278316,
+      "win_rate": 0.5801,
+      "profit_factor": 1.0687,
+      "total": 137.21
+    },
+    "latest": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 59,
+      "mean": -3.727627,
+      "win_rate": 0.322,
+      "profit_factor": 0.3808,
+      "total": -219.93
+    }
+  },
+  {
+    "rule": "london_breakout5_long",
+    "side": "long",
+    "horizon": 10,
+    "train": {
+      "name": "london_breakout5_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 807,
+      "mean": -0.402156,
+      "win_rate": 0.5366,
+      "profit_factor": 0.8605,
+      "total": -324.54
+    },
+    "oos_april": {
+      "name": "london_breakout5_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 310,
+      "mean": 0.150871,
+      "win_rate": 0.4742,
+      "profit_factor": 1.0607,
+      "total": 46.77
+    },
+    "latest": {
+      "name": "london_breakout5_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 9,
+      "mean": -2.17,
+      "win_rate": 0.4444,
+      "profit_factor": 0.3291,
+      "total": -19.53
+    }
+  },
+  {
+    "rule": "core_ema9_20_long",
+    "side": "long",
+    "horizon": 10,
+    "train": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 3196,
+      "mean": -0.223842,
+      "win_rate": 0.5047,
+      "profit_factor": 0.9308,
+      "total": -715.4
+    },
+    "oos_april": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 1284,
+      "mean": 0.080864,
+      "win_rate": 0.4891,
+      "profit_factor": 1.0292,
+      "total": 103.83
+    },
+    "latest": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 57,
+      "mean": 1.530175,
+      "win_rate": 0.5614,
+      "profit_factor": 1.6151,
+      "total": 87.22
+    }
+  },
+  {
+    "rule": "ny_breakout5_long",
+    "side": "long",
+    "horizon": 20,
+    "train": {
+      "name": "ny_breakout5_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 961,
+      "mean": -0.502373,
+      "win_rate": 0.5109,
+      "profit_factor": 0.9076,
+      "total": -482.78
+    },
+    "oos_april": {
+      "name": "ny_breakout5_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 460,
+      "mean": -0.015022,
+      "win_rate": 0.4935,
+      "profit_factor": 0.9961,
+      "total": -6.91
+    },
+    "latest": {
+      "name": "ny_breakout5_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 25,
+      "mean": 6.0304,
+      "win_rate": 0.6,
+      "profit_factor": 2.9741,
+      "total": 150.76
+    }
+  },
+  {
+    "rule": "london_breakout5_long",
+    "side": "long",
+    "horizon": 20,
+    "train": {
+      "name": "london_breakout5_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 807,
+      "mean": -0.4514,
+      "win_rate": 0.5006,
+      "profit_factor": 0.8881,
+      "total": -364.28
+    },
+    "oos_april": {
+      "name": "london_breakout5_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 310,
+      "mean": -0.030871,
+      "win_rate": 0.4677,
+      "profit_factor": 0.992,
+      "total": -9.57
+    },
+    "latest": {
+      "name": "london_breakout5_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 9,
+      "mean": -0.801111,
+      "win_rate": 0.4444,
+      "profit_factor": 0.6746,
+      "total": -7.21
+    }
+  },
+  {
+    "rule": "rsi14_revert_short",
+    "side": "short",
+    "horizon": 10,
+    "train": {
+      "name": "rsi14_revert_short",
+      "side": "short",
+      "horizon": 10,
+      "count": 1062,
+      "mean": -0.585857,
+      "win_rate": 0.484,
+      "profit_factor": 0.8674,
+      "total": -622.18
+    },
+    "oos_april": {
+      "name": "rsi14_revert_short",
+      "side": "short",
+      "horizon": 10,
+      "count": 504,
+      "mean": -0.281746,
+      "win_rate": 0.4782,
+      "profit_factor": 0.9006,
+      "total": -142.0
+    },
+    "latest": {
+      "name": "rsi14_revert_short",
+      "side": "short",
+      "horizon": 10,
+      "count": 56,
+      "mean": -0.613036,
+      "win_rate": 0.5357,
+      "profit_factor": 0.8046,
+      "total": -34.33
+    }
+  },
+  {
+    "rule": "breakout10_long",
+    "side": "long",
+    "horizon": 20,
+    "train": {
+      "name": "breakout10_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 6466,
+      "mean": -0.20176,
+      "win_rate": 0.4824,
+      "profit_factor": 0.9606,
+      "total": -1304.58
+    },
+    "oos_april": {
+      "name": "breakout10_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 2643,
+      "mean": -0.360446,
+      "win_rate": 0.4677,
+      "profit_factor": 0.8959,
+      "total": -952.66
+    },
+    "latest": {
+      "name": "breakout10_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 312,
+      "mean": 0.347179,
+      "win_rate": 0.4872,
+      "profit_factor": 1.1238,
+      "total": 108.32
+    }
+  },
+  {
+    "rule": "ema50_200_momo_short",
+    "side": "short",
+    "horizon": 10,
+    "train": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 10,
+      "count": 14581,
+      "mean": 0.275689,
+      "win_rate": 0.4489,
+      "profit_factor": 1.0564,
+      "total": 4019.82
+    },
+    "oos_april": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 10,
+      "count": 7278,
+      "mean": -0.381143,
+      "win_rate": 0.4375,
+      "profit_factor": 0.8556,
+      "total": -2773.96
+    },
+    "latest": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 10,
+      "count": 1081,
+      "mean": 0.139547,
+      "win_rate": 0.4958,
+      "profit_factor": 1.0671,
+      "total": 150.85
+    }
+  },
+  {
+    "rule": "ema9_20_momo_long",
+    "side": "long",
+    "horizon": 10,
+    "train": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 16851,
+      "mean": -0.135139,
+      "win_rate": 0.4762,
+      "profit_factor": 0.9622,
+      "total": -2277.23
+    },
+    "oos_april": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 6919,
+      "mean": -0.386968,
+      "win_rate": 0.4467,
+      "profit_factor": 0.8441,
+      "total": -2677.43
+    },
+    "latest": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 805,
+      "mean": -0.175106,
+      "win_rate": 0.4621,
+      "profit_factor": 0.9133,
+      "total": -140.96
+    }
+  },
+  {
+    "rule": "ema5_13_rsi7_long",
+    "side": "long",
+    "horizon": 10,
+    "train": {
+      "name": "ema5_13_rsi7_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 18877,
+      "mean": -0.243367,
+      "win_rate": 0.4745,
+      "profit_factor": 0.934,
+      "total": -4594.03
+    },
+    "oos_april": {
+      "name": "ema5_13_rsi7_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 7770,
+      "mean": -0.393673,
+      "win_rate": 0.4472,
+      "profit_factor": 0.8415,
+      "total": -3058.84
+    },
+    "latest": {
+      "name": "ema5_13_rsi7_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 918,
+      "mean": -0.270218,
+      "win_rate": 0.4739,
+      "profit_factor": 0.8694,
+      "total": -248.06
+    }
+  },
+  {
+    "rule": "breakout10_long",
+    "side": "long",
+    "horizon": 10,
+    "train": {
+      "name": "breakout10_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 6466,
+      "mean": -0.35092,
+      "win_rate": 0.468,
+      "profit_factor": 0.9096,
+      "total": -2269.05
+    },
+    "oos_april": {
+      "name": "breakout10_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 2643,
+      "mean": -0.401025,
+      "win_rate": 0.4457,
+      "profit_factor": 0.8443,
+      "total": -1059.91
+    },
+    "latest": {
+      "name": "breakout10_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 312,
+      "mean": -0.090641,
+      "win_rate": 0.4808,
+      "profit_factor": 0.9554,
+      "total": -28.28
+    }
+  },
+  {
+    "rule": "ema5_13_rsi7_long",
+    "side": "long",
+    "horizon": 20,
+    "train": {
+      "name": "ema5_13_rsi7_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 18877,
+      "mean": -0.132024,
+      "win_rate": 0.4918,
+      "profit_factor": 0.9732,
+      "total": -2492.21
+    },
+    "oos_april": {
+      "name": "ema5_13_rsi7_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 7770,
+      "mean": -0.414673,
+      "win_rate": 0.4592,
+      "profit_factor": 0.8792,
+      "total": -3222.01
+    },
+    "latest": {
+      "name": "ema5_13_rsi7_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 918,
+      "mean": -0.245752,
+      "win_rate": 0.476,
+      "profit_factor": 0.9129,
+      "total": -225.6
+    }
+  },
+  {
+    "rule": "ema50_200_momo_long",
+    "side": "long",
+    "horizon": 10,
+    "train": {
+      "name": "ema50_200_momo_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 18640,
+      "mean": 0.007829,
+      "win_rate": 0.4745,
+      "profit_factor": 1.0024,
+      "total": 145.93
+    },
+    "oos_april": {
+      "name": "ema50_200_momo_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 7085,
+      "mean": -0.421824,
+      "win_rate": 0.4422,
+      "profit_factor": 0.829,
+      "total": -2988.62
+    },
+    "latest": {
+      "name": "ema50_200_momo_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 710,
+      "mean": -0.342465,
+      "win_rate": 0.4028,
+      "profit_factor": 0.8551,
+      "total": -243.15
+    }
+  },
+  {
+    "rule": "ema5_13_rsi7_short",
+    "side": "short",
+    "horizon": 10,
+    "train": {
+      "name": "ema5_13_rsi7_short",
+      "side": "short",
+      "horizon": 10,
+      "count": 17052,
+      "mean": -0.205945,
+      "win_rate": 0.4436,
+      "profit_factor": 0.9512,
+      "total": -3511.77
+    },
+    "oos_april": {
+      "name": "ema5_13_rsi7_short",
+      "side": "short",
+      "horizon": 10,
+      "count": 7726,
+      "mean": -0.428165,
+      "win_rate": 0.4522,
+      "profit_factor": 0.8327,
+      "total": -3308.0
+    },
+    "latest": {
+      "name": "ema5_13_rsi7_short",
+      "side": "short",
+      "horizon": 10,
+      "count": 1038,
+      "mean": 0.223728,
+      "win_rate": 0.5058,
+      "profit_factor": 1.1218,
+      "total": 232.23
+    }
+  },
+  {
+    "rule": "ema9_20_momo_short",
+    "side": "short",
+    "horizon": 10,
+    "train": {
+      "name": "ema9_20_momo_short",
+      "side": "short",
+      "horizon": 10,
+      "count": 15064,
+      "mean": -0.171082,
+      "win_rate": 0.4406,
+      "profit_factor": 0.9607,
+      "total": -2577.18
+    },
+    "oos_april": {
+      "name": "ema9_20_momo_short",
+      "side": "short",
+      "horizon": 10,
+      "count": 6796,
+      "mean": -0.43,
+      "win_rate": 0.4498,
+      "profit_factor": 0.8334,
+      "total": -2922.28
+    },
+    "latest": {
+      "name": "ema9_20_momo_short",
+      "side": "short",
+      "horizon": 10,
+      "count": 944,
+      "mean": 0.279947,
+      "win_rate": 0.5138,
+      "profit_factor": 1.1504,
+      "total": 264.27
+    }
+  },
+  {
+    "rule": "breakout5_long",
+    "side": "long",
+    "horizon": 20,
+    "train": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 9192,
+      "mean": -0.292359,
+      "win_rate": 0.4854,
+      "profit_factor": 0.9442,
+      "total": -2687.36
+    },
+    "oos_april": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 3797,
+      "mean": -0.431364,
+      "win_rate": 0.4688,
+      "profit_factor": 0.8758,
+      "total": -1637.89
+    },
+    "latest": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 450,
+      "mean": 0.196733,
+      "win_rate": 0.4822,
+      "profit_factor": 1.0715,
+      "total": 88.53
+    }
+  },
+  {
+    "rule": "breakout5_long",
+    "side": "long",
+    "horizon": 10,
+    "train": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 9192,
+      "mean": -0.40446,
+      "win_rate": 0.4723,
+      "profit_factor": 0.8965,
+      "total": -3717.8
+    },
+    "oos_april": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 3797,
+      "mean": -0.443432,
+      "win_rate": 0.4432,
+      "profit_factor": 0.8263,
+      "total": -1683.71
+    },
+    "latest": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 450,
+      "mean": -0.119444,
+      "win_rate": 0.4778,
+      "profit_factor": 0.9399,
+      "total": -53.75
+    }
+  },
+  {
+    "rule": "ema9_20_momo_long",
+    "side": "long",
+    "horizon": 20,
+    "train": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 16851,
+      "mean": -0.001962,
+      "win_rate": 0.496,
+      "profit_factor": 0.9996,
+      "total": -33.06
+    },
+    "oos_april": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 6919,
+      "mean": -0.443592,
+      "win_rate": 0.459,
+      "profit_factor": 0.8714,
+      "total": -3069.21
+    },
+    "latest": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 805,
+      "mean": -0.320845,
+      "win_rate": 0.4584,
+      "profit_factor": 0.8864,
+      "total": -258.28
+    }
+  },
+  {
+    "rule": "ema9_20_momo_short",
+    "side": "short",
+    "horizon": 20,
+    "train": {
+      "name": "ema9_20_momo_short",
+      "side": "short",
+      "horizon": 20,
+      "count": 15064,
+      "mean": 0.069623,
+      "win_rate": 0.463,
+      "profit_factor": 1.012,
+      "total": 1048.8
+    },
+    "oos_april": {
+      "name": "ema9_20_momo_short",
+      "side": "short",
+      "horizon": 20,
+      "count": 6796,
+      "mean": -0.449475,
+      "win_rate": 0.4637,
+      "profit_factor": 0.8676,
+      "total": -3054.63
+    },
+    "latest": {
+      "name": "ema9_20_momo_short",
+      "side": "short",
+      "horizon": 20,
+      "count": 944,
+      "mean": 0.444915,
+      "win_rate": 0.518,
+      "profit_factor": 1.1695,
+      "total": 420.0
+    }
+  },
+  {
+    "rule": "ema50_200_momo_long",
+    "side": "long",
+    "horizon": 20,
+    "train": {
+      "name": "ema50_200_momo_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 18640,
+      "mean": 0.337508,
+      "win_rate": 0.4877,
+      "profit_factor": 1.0767,
+      "total": 6291.14
+    },
+    "oos_april": {
+      "name": "ema50_200_momo_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 7085,
+      "mean": -0.45611,
+      "win_rate": 0.4495,
+      "profit_factor": 0.8624,
+      "total": -3231.54
+    },
+    "latest": {
+      "name": "ema50_200_momo_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 710,
+      "mean": -0.162,
+      "win_rate": 0.4211,
+      "profit_factor": 0.9483,
+      "total": -115.02
+    }
+  },
+  {
+    "rule": "ema5_13_rsi7_short",
+    "side": "short",
+    "horizon": 20,
+    "train": {
+      "name": "ema5_13_rsi7_short",
+      "side": "short",
+      "horizon": 20,
+      "count": 17052,
+      "mean": 0.003581,
+      "win_rate": 0.4631,
+      "profit_factor": 1.0006,
+      "total": 61.07
+    },
+    "oos_april": {
+      "name": "ema5_13_rsi7_short",
+      "side": "short",
+      "horizon": 20,
+      "count": 7726,
+      "mean": -0.462926,
+      "win_rate": 0.4644,
+      "profit_factor": 0.8635,
+      "total": -3576.57
+    },
+    "latest": {
+      "name": "ema5_13_rsi7_short",
+      "side": "short",
+      "horizon": 20,
+      "count": 1038,
+      "mean": 0.44605,
+      "win_rate": 0.5222,
+      "profit_factor": 1.1737,
+      "total": 463.0
+    }
+  },
+  {
+    "rule": "ema50_200_momo_short",
+    "side": "short",
+    "horizon": 20,
+    "train": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 20,
+      "count": 14581,
+      "mean": 0.735312,
+      "win_rate": 0.4657,
+      "profit_factor": 1.1122,
+      "total": 10721.58
+    },
+    "oos_april": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 20,
+      "count": 7278,
+      "mean": -0.487703,
+      "win_rate": 0.453,
+      "profit_factor": 0.8635,
+      "total": -3549.5
+    },
+    "latest": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 20,
+      "count": 1081,
+      "mean": 0.031693,
+      "win_rate": 0.4894,
+      "profit_factor": 1.0112,
+      "total": 34.26
+    }
+  },
+  {
+    "rule": "breakout5_short",
+    "side": "short",
+    "horizon": 10,
+    "train": {
+      "name": "breakout5_short",
+      "side": "short",
+      "horizon": 10,
+      "count": 8309,
+      "mean": -0.585729,
+      "win_rate": 0.4357,
+      "profit_factor": 0.8675,
+      "total": -4866.82
+    },
+    "oos_april": {
+      "name": "breakout5_short",
+      "side": "short",
+      "horizon": 10,
+      "count": 3743,
+      "mean": -0.547937,
+      "win_rate": 0.452,
+      "profit_factor": 0.789,
+      "total": -2050.93
+    },
+    "latest": {
+      "name": "breakout5_short",
+      "side": "short",
+      "horizon": 10,
+      "count": 488,
+      "mean": 0.278627,
+      "win_rate": 0.498,
+      "profit_factor": 1.1408,
+      "total": 135.97
+    }
+  },
+  {
+    "rule": "ny_breakout5_long",
+    "side": "long",
+    "horizon": 10,
+    "train": {
+      "name": "ny_breakout5_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 961,
+      "mean": -0.083247,
+      "win_rate": 0.4849,
+      "profit_factor": 0.9781,
+      "total": -80.0
+    },
+    "oos_april": {
+      "name": "ny_breakout5_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 460,
+      "mean": -0.566283,
+      "win_rate": 0.463,
+      "profit_factor": 0.815,
+      "total": -260.49
+    },
+    "latest": {
+      "name": "ny_breakout5_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 25,
+      "mean": 2.8348,
+      "win_rate": 0.48,
+      "profit_factor": 2.1697,
+      "total": 70.87
+    }
+  },
+  {
+    "rule": "london_breakout5_short",
+    "side": "short",
+    "horizon": 10,
+    "train": {
+      "name": "london_breakout5_short",
+      "side": "short",
+      "horizon": 10,
+      "count": 707,
+      "mean": -0.044993,
+      "win_rate": 0.4399,
+      "profit_factor": 0.9869,
+      "total": -31.81
+    },
+    "oos_april": {
+      "name": "london_breakout5_short",
+      "side": "short",
+      "horizon": 10,
+      "count": 297,
+      "mean": -0.619125,
+      "win_rate": 0.4343,
+      "profit_factor": 0.7809,
+      "total": -183.88
+    },
+    "latest": {
+      "name": "london_breakout5_short",
+      "side": "short",
+      "horizon": 10,
+      "count": 18,
+      "mean": 1.205556,
+      "win_rate": 0.6111,
+      "profit_factor": 2.0965,
+      "total": 21.7
+    }
+  },
+  {
+    "rule": "breakout5_short",
+    "side": "short",
+    "horizon": 20,
+    "train": {
+      "name": "breakout5_short",
+      "side": "short",
+      "horizon": 20,
+      "count": 8309,
+      "mean": -0.505371,
+      "win_rate": 0.4535,
+      "profit_factor": 0.9122,
+      "total": -4199.13
+    },
+    "oos_april": {
+      "name": "breakout5_short",
+      "side": "short",
+      "horizon": 20,
+      "count": 3743,
+      "mean": -0.639802,
+      "win_rate": 0.4502,
+      "profit_factor": 0.8137,
+      "total": -2394.78
+    },
+    "latest": {
+      "name": "breakout5_short",
+      "side": "short",
+      "horizon": 20,
+      "count": 488,
+      "mean": 1.086557,
+      "win_rate": 0.5594,
+      "profit_factor": 1.4469,
+      "total": 530.24
+    }
+  },
+  {
+    "rule": "breakout10_short",
+    "side": "short",
+    "horizon": 10,
+    "train": {
+      "name": "breakout10_short",
+      "side": "short",
+      "horizon": 10,
+      "count": 5689,
+      "mean": -0.772176,
+      "win_rate": 0.4263,
+      "profit_factor": 0.8357,
+      "total": -4392.91
+    },
+    "oos_april": {
+      "name": "breakout10_short",
+      "side": "short",
+      "horizon": 10,
+      "count": 2521,
+      "mean": -0.640032,
+      "win_rate": 0.4411,
+      "profit_factor": 0.7609,
+      "total": -1613.52
+    },
+    "latest": {
+      "name": "breakout10_short",
+      "side": "short",
+      "horizon": 10,
+      "count": 339,
+      "mean": 0.129823,
+      "win_rate": 0.469,
+      "profit_factor": 1.0597,
+      "total": 44.01
+    }
+  },
+  {
+    "rule": "rsi14_revert_short",
+    "side": "short",
+    "horizon": 20,
+    "train": {
+      "name": "rsi14_revert_short",
+      "side": "short",
+      "horizon": 20,
+      "count": 1062,
+      "mean": -1.077392,
+      "win_rate": 0.4727,
+      "profit_factor": 0.8227,
+      "total": -1144.19
+    },
+    "oos_april": {
+      "name": "rsi14_revert_short",
+      "side": "short",
+      "horizon": 20,
+      "count": 504,
+      "mean": -0.714048,
+      "win_rate": 0.5139,
+      "profit_factor": 0.8297,
+      "total": -359.88
+    },
+    "latest": {
+      "name": "rsi14_revert_short",
+      "side": "short",
+      "horizon": 20,
+      "count": 56,
+      "mean": -1.249464,
+      "win_rate": 0.5893,
+      "profit_factor": 0.7274,
+      "total": -69.97
+    }
+  },
+  {
+    "rule": "breakout10_short",
+    "side": "short",
+    "horizon": 20,
+    "train": {
+      "name": "breakout10_short",
+      "side": "short",
+      "horizon": 20,
+      "count": 5689,
+      "mean": -0.622129,
+      "win_rate": 0.4459,
+      "profit_factor": 0.8957,
+      "total": -3539.29
+    },
+    "oos_april": {
+      "name": "breakout10_short",
+      "side": "short",
+      "horizon": 20,
+      "count": 2521,
+      "mean": -0.883415,
+      "win_rate": 0.4332,
+      "profit_factor": 0.7552,
+      "total": -2227.09
+    },
+    "latest": {
+      "name": "breakout10_short",
+      "side": "short",
+      "horizon": 20,
+      "count": 339,
+      "mean": 0.91882,
+      "win_rate": 0.531,
+      "profit_factor": 1.338,
+      "total": 311.48
+    }
+  },
+  {
+    "rule": "london_breakout5_short",
+    "side": "short",
+    "horizon": 20,
+    "train": {
+      "name": "london_breakout5_short",
+      "side": "short",
+      "horizon": 20,
+      "count": 707,
+      "mean": 0.641414,
+      "win_rate": 0.4526,
+      "profit_factor": 1.1447,
+      "total": 453.48
+    },
+    "oos_april": {
+      "name": "london_breakout5_short",
+      "side": "short",
+      "horizon": 20,
+      "count": 297,
+      "mean": -1.210539,
+      "win_rate": 0.404,
+      "profit_factor": 0.6734,
+      "total": -359.53
+    },
+    "latest": {
+      "name": "london_breakout5_short",
+      "side": "short",
+      "horizon": 20,
+      "count": 18,
+      "mean": 1.207778,
+      "win_rate": 0.6111,
+      "profit_factor": 1.8682,
+      "total": 21.74
+    }
+  },
+  {
+    "rule": "core_ema9_20_short",
+    "side": "short",
+    "horizon": 10,
+    "train": {
+      "name": "core_ema9_20_short",
+      "side": "short",
+      "horizon": 10,
+      "count": 2622,
+      "mean": -0.259302,
+      "win_rate": 0.4359,
+      "profit_factor": 0.9378,
+      "total": -679.89
+    },
+    "oos_april": {
+      "name": "core_ema9_20_short",
+      "side": "short",
+      "horizon": 10,
+      "count": 1024,
+      "mean": -1.235801,
+      "win_rate": 0.416,
+      "profit_factor": 0.6275,
+      "total": -1265.46
+    },
+    "latest": {
+      "name": "core_ema9_20_short",
+      "side": "short",
+      "horizon": 10,
+      "count": 58,
+      "mean": -0.671379,
+      "win_rate": 0.431,
+      "profit_factor": 0.7849,
+      "total": -38.94
+    }
+  },
+  {
+    "rule": "ny_breakout5_short",
+    "side": "short",
+    "horizon": 10,
+    "train": {
+      "name": "ny_breakout5_short",
+      "side": "short",
+      "horizon": 10,
+      "count": 809,
+      "mean": -1.983164,
+      "win_rate": 0.3832,
+      "profit_factor": 0.6193,
+      "total": -1604.38
+    },
+    "oos_april": {
+      "name": "ny_breakout5_short",
+      "side": "short",
+      "horizon": 10,
+      "count": 394,
+      "mean": -1.37764,
+      "win_rate": 0.4721,
+      "profit_factor": 0.6374,
+      "total": -542.79
+    },
+    "latest": {
+      "name": "ny_breakout5_short",
+      "side": "short",
+      "horizon": 10,
+      "count": 26,
+      "mean": -3.248077,
+      "win_rate": 0.2308,
+      "profit_factor": 0.3808,
+      "total": -84.45
+    }
+  },
+  {
+    "rule": "ny_breakout5_short",
+    "side": "short",
+    "horizon": 20,
+    "train": {
+      "name": "ny_breakout5_short",
+      "side": "short",
+      "horizon": 20,
+      "count": 809,
+      "mean": -1.862138,
+      "win_rate": 0.4314,
+      "profit_factor": 0.7076,
+      "total": -1506.47
+    },
+    "oos_april": {
+      "name": "ny_breakout5_short",
+      "side": "short",
+      "horizon": 20,
+      "count": 394,
+      "mean": -1.646421,
+      "win_rate": 0.4213,
+      "profit_factor": 0.6433,
+      "total": -648.69
+    },
+    "latest": {
+      "name": "ny_breakout5_short",
+      "side": "short",
+      "horizon": 20,
+      "count": 26,
+      "mean": -2.941154,
+      "win_rate": 0.3846,
+      "profit_factor": 0.5287,
+      "total": -76.47
+    }
+  },
+  {
+    "rule": "core_ema9_20_short",
+    "side": "short",
+    "horizon": 20,
+    "train": {
+      "name": "core_ema9_20_short",
+      "side": "short",
+      "horizon": 20,
+      "count": 2622,
+      "mean": 0.574306,
+      "win_rate": 0.4741,
+      "profit_factor": 1.1059,
+      "total": 1505.83
+    },
+    "oos_april": {
+      "name": "core_ema9_20_short",
+      "side": "short",
+      "horizon": 20,
+      "count": 1024,
+      "mean": -1.808037,
+      "win_rate": 0.4014,
+      "profit_factor": 0.583,
+      "total": -1851.43
+    },
+    "latest": {
+      "name": "core_ema9_20_short",
+      "side": "short",
+      "horizon": 20,
+      "count": 58,
+      "mean": -1.483621,
+      "win_rate": 0.4828,
+      "profit_factor": 0.6543,
+      "total": -86.05
+    }
+  }
+]

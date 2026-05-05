@@ -1,0 +1,7106 @@
+[
+  {
+    "rule": "breakout5_long",
+    "side": "long",
+    "horizon": 20,
+    "tp": 0.3,
+    "sl": 0.8,
+    "train": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 9192,
+      "mean": -0.508964,
+      "win_rate": 0.2646,
+      "profit_factor": 0.1349,
+      "total": -4678.4
+    },
+    "oos_april": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 3797,
+      "mean": -0.417303,
+      "win_rate": 0.3479,
+      "profit_factor": 0.2001,
+      "total": -1584.5
+    },
+    "latest": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 447,
+      "mean": -0.411186,
+      "win_rate": 0.3535,
+      "profit_factor": 0.205,
+      "total": -183.8
+    }
+  },
+  {
+    "rule": "breakout5_long",
+    "side": "long",
+    "horizon": 10,
+    "tp": 0.3,
+    "sl": 0.8,
+    "train": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 9192,
+      "mean": -0.508964,
+      "win_rate": 0.2646,
+      "profit_factor": 0.1349,
+      "total": -4678.4
+    },
+    "oos_april": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 3797,
+      "mean": -0.417303,
+      "win_rate": 0.3479,
+      "profit_factor": 0.2001,
+      "total": -1584.5
+    },
+    "latest": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 450,
+      "mean": -0.411333,
+      "win_rate": 0.3533,
+      "profit_factor": 0.2049,
+      "total": -185.1
+    }
+  },
+  {
+    "rule": "core_ema9_20_long",
+    "side": "long",
+    "horizon": 20,
+    "tp": 0.3,
+    "sl": 0.8,
+    "train": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 3196,
+      "mean": -0.444118,
+      "win_rate": 0.3235,
+      "profit_factor": 0.1793,
+      "total": -1419.4
+    },
+    "oos_april": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 1284,
+      "mean": -0.428193,
+      "win_rate": 0.338,
+      "profit_factor": 0.1915,
+      "total": -549.8
+    },
+    "latest": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 56,
+      "mean": -0.367857,
+      "win_rate": 0.3929,
+      "profit_factor": 0.2426,
+      "total": -20.6
+    }
+  },
+  {
+    "rule": "core_ema9_20_long",
+    "side": "long",
+    "horizon": 10,
+    "tp": 0.3,
+    "sl": 0.8,
+    "train": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 3196,
+      "mean": -0.444118,
+      "win_rate": 0.3235,
+      "profit_factor": 0.1793,
+      "total": -1419.4
+    },
+    "oos_april": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 1284,
+      "mean": -0.428193,
+      "win_rate": 0.338,
+      "profit_factor": 0.1915,
+      "total": -549.8
+    },
+    "latest": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 57,
+      "mean": -0.375439,
+      "win_rate": 0.386,
+      "profit_factor": 0.2357,
+      "total": -21.4
+    }
+  },
+  {
+    "rule": "ema9_20_momo_long",
+    "side": "long",
+    "horizon": 20,
+    "tp": 0.3,
+    "sl": 0.8,
+    "train": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 16851,
+      "mean": -0.491692,
+      "win_rate": 0.2803,
+      "profit_factor": 0.146,
+      "total": -8285.5
+    },
+    "oos_april": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 6919,
+      "mean": -0.428776,
+      "win_rate": 0.3375,
+      "profit_factor": 0.191,
+      "total": -2966.7
+    },
+    "latest": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 797,
+      "mean": -0.423212,
+      "win_rate": 0.3425,
+      "profit_factor": 0.1954,
+      "total": -337.3
+    }
+  },
+  {
+    "rule": "ema9_20_momo_long",
+    "side": "long",
+    "horizon": 10,
+    "tp": 0.3,
+    "sl": 0.8,
+    "train": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 16851,
+      "mean": -0.491692,
+      "win_rate": 0.2803,
+      "profit_factor": 0.146,
+      "total": -8285.5
+    },
+    "oos_april": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 6919,
+      "mean": -0.428776,
+      "win_rate": 0.3375,
+      "profit_factor": 0.191,
+      "total": -2966.7
+    },
+    "latest": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 802,
+      "mean": -0.42419,
+      "win_rate": 0.3416,
+      "profit_factor": 0.1946,
+      "total": -340.2
+    }
+  },
+  {
+    "rule": "ema50_200_momo_short",
+    "side": "short",
+    "horizon": 10,
+    "tp": 0.3,
+    "sl": 0.8,
+    "train": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 10,
+      "count": 14581,
+      "mean": -0.543954,
+      "win_rate": 0.2328,
+      "profit_factor": 0.1138,
+      "total": -7931.4
+    },
+    "oos_april": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 10,
+      "count": 7278,
+      "mean": -0.456458,
+      "win_rate": 0.3123,
+      "profit_factor": 0.1703,
+      "total": -3322.1
+    },
+    "latest": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 10,
+      "count": 1081,
+      "mean": -0.410268,
+      "win_rate": 0.3543,
+      "profit_factor": 0.2058,
+      "total": -443.5
+    }
+  },
+  {
+    "rule": "ema50_200_momo_short",
+    "side": "short",
+    "horizon": 20,
+    "tp": 0.3,
+    "sl": 0.8,
+    "train": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 20,
+      "count": 14581,
+      "mean": -0.543954,
+      "win_rate": 0.2328,
+      "profit_factor": 0.1138,
+      "total": -7931.4
+    },
+    "oos_april": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 20,
+      "count": 7278,
+      "mean": -0.456458,
+      "win_rate": 0.3123,
+      "profit_factor": 0.1703,
+      "total": -3322.1
+    },
+    "latest": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 20,
+      "count": 1081,
+      "mean": -0.410268,
+      "win_rate": 0.3543,
+      "profit_factor": 0.2058,
+      "total": -443.5
+    }
+  },
+  {
+    "rule": "breakout5_long",
+    "side": "long",
+    "horizon": 20,
+    "tp": 0.3,
+    "sl": 0.5,
+    "train": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 9192,
+      "mean": -0.366232,
+      "win_rate": 0.1672,
+      "profit_factor": 0.1205,
+      "total": -3366.4
+    },
+    "oos_april": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 3797,
+      "mean": -0.331235,
+      "win_rate": 0.211,
+      "profit_factor": 0.1604,
+      "total": -1257.7
+    },
+    "latest": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 447,
+      "mean": -0.328188,
+      "win_rate": 0.2148,
+      "profit_factor": 0.1641,
+      "total": -146.7
+    }
+  },
+  {
+    "rule": "breakout5_long",
+    "side": "long",
+    "horizon": 10,
+    "tp": 0.3,
+    "sl": 0.5,
+    "train": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 9192,
+      "mean": -0.366232,
+      "win_rate": 0.1672,
+      "profit_factor": 0.1205,
+      "total": -3366.4
+    },
+    "oos_april": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 3797,
+      "mean": -0.331235,
+      "win_rate": 0.211,
+      "profit_factor": 0.1604,
+      "total": -1257.7
+    },
+    "latest": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 450,
+      "mean": -0.329333,
+      "win_rate": 0.2133,
+      "profit_factor": 0.1627,
+      "total": -148.2
+    }
+  },
+  {
+    "rule": "raw_seq9_up_long",
+    "side": "long",
+    "horizon": 10,
+    "tp": 0.3,
+    "sl": 0.8,
+    "train": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 141,
+      "mean": -0.511348,
+      "win_rate": 0.2624,
+      "profit_factor": 0.1334,
+      "total": -72.1
+    },
+    "oos_april": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 31,
+      "mean": -0.480645,
+      "win_rate": 0.2903,
+      "profit_factor": 0.1534,
+      "total": -14.9
+    },
+    "latest": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 4,
+      "mean": -0.25,
+      "win_rate": 0.5,
+      "profit_factor": 0.375,
+      "total": -1.0
+    }
+  },
+  {
+    "rule": "raw_seq9_up_long",
+    "side": "long",
+    "horizon": 20,
+    "tp": 0.3,
+    "sl": 0.8,
+    "train": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 141,
+      "mean": -0.511348,
+      "win_rate": 0.2624,
+      "profit_factor": 0.1334,
+      "total": -72.1
+    },
+    "oos_april": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 31,
+      "mean": -0.480645,
+      "win_rate": 0.2903,
+      "profit_factor": 0.1534,
+      "total": -14.9
+    },
+    "latest": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 4,
+      "mean": -0.25,
+      "win_rate": 0.5,
+      "profit_factor": 0.375,
+      "total": -1.0
+    }
+  },
+  {
+    "rule": "ema9_20_momo_long",
+    "side": "long",
+    "horizon": 20,
+    "tp": 0.3,
+    "sl": 0.5,
+    "train": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 16851,
+      "mean": -0.356341,
+      "win_rate": 0.1796,
+      "profit_factor": 0.1313,
+      "total": -6004.7
+    },
+    "oos_april": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 6919,
+      "mean": -0.342289,
+      "win_rate": 0.1971,
+      "profit_factor": 0.1473,
+      "total": -2368.3
+    },
+    "latest": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 797,
+      "mean": -0.338394,
+      "win_rate": 0.202,
+      "profit_factor": 0.1519,
+      "total": -269.7
+    }
+  },
+  {
+    "rule": "ema9_20_momo_long",
+    "side": "long",
+    "horizon": 10,
+    "tp": 0.3,
+    "sl": 0.5,
+    "train": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 16851,
+      "mean": -0.356341,
+      "win_rate": 0.1796,
+      "profit_factor": 0.1313,
+      "total": -6004.7
+    },
+    "oos_april": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 6919,
+      "mean": -0.342289,
+      "win_rate": 0.1971,
+      "profit_factor": 0.1473,
+      "total": -2368.3
+    },
+    "latest": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 802,
+      "mean": -0.339401,
+      "win_rate": 0.2007,
+      "profit_factor": 0.1507,
+      "total": -272.2
+    }
+  },
+  {
+    "rule": "core_ema9_20_long",
+    "side": "long",
+    "horizon": 20,
+    "tp": 0.3,
+    "sl": 0.5,
+    "train": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 3196,
+      "mean": -0.329537,
+      "win_rate": 0.2131,
+      "profit_factor": 0.1625,
+      "total": -1053.2
+    },
+    "oos_april": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 1284,
+      "mean": -0.342368,
+      "win_rate": 0.197,
+      "profit_factor": 0.1472,
+      "total": -439.6
+    },
+    "latest": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 56,
+      "mean": -0.342857,
+      "win_rate": 0.1964,
+      "profit_factor": 0.1467,
+      "total": -19.2
+    }
+  },
+  {
+    "rule": "core_ema9_20_long",
+    "side": "long",
+    "horizon": 10,
+    "tp": 0.3,
+    "sl": 0.5,
+    "train": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 3196,
+      "mean": -0.329537,
+      "win_rate": 0.2131,
+      "profit_factor": 0.1625,
+      "total": -1053.2
+    },
+    "oos_april": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 1284,
+      "mean": -0.342368,
+      "win_rate": 0.197,
+      "profit_factor": 0.1472,
+      "total": -439.6
+    },
+    "latest": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 57,
+      "mean": -0.345614,
+      "win_rate": 0.193,
+      "profit_factor": 0.1435,
+      "total": -19.7
+    }
+  },
+  {
+    "rule": "rsi14_revert_long",
+    "side": "long",
+    "horizon": 10,
+    "tp": 0.3,
+    "sl": 0.8,
+    "train": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 1281,
+      "mean": -0.523497,
+      "win_rate": 0.2514,
+      "profit_factor": 0.1259,
+      "total": -670.6
+    },
+    "oos_april": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 493,
+      "mean": -0.492089,
+      "win_rate": 0.2799,
+      "profit_factor": 0.1458,
+      "total": -242.6
+    },
+    "latest": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 59,
+      "mean": -0.408475,
+      "win_rate": 0.3559,
+      "profit_factor": 0.2072,
+      "total": -24.1
+    }
+  },
+  {
+    "rule": "rsi14_revert_long",
+    "side": "long",
+    "horizon": 20,
+    "tp": 0.3,
+    "sl": 0.8,
+    "train": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 1281,
+      "mean": -0.523497,
+      "win_rate": 0.2514,
+      "profit_factor": 0.1259,
+      "total": -670.6
+    },
+    "oos_april": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 493,
+      "mean": -0.492089,
+      "win_rate": 0.2799,
+      "profit_factor": 0.1458,
+      "total": -242.6
+    },
+    "latest": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 59,
+      "mean": -0.408475,
+      "win_rate": 0.3559,
+      "profit_factor": 0.2072,
+      "total": -24.1
+    }
+  },
+  {
+    "rule": "breakout5_long",
+    "side": "long",
+    "horizon": 20,
+    "tp": 0.2,
+    "sl": 0.8,
+    "train": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 9192,
+      "mean": -0.531179,
+      "win_rate": 0.2688,
+      "profit_factor": 0.0919,
+      "total": -4882.6
+    },
+    "oos_april": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 3797,
+      "mean": -0.44472,
+      "win_rate": 0.3553,
+      "profit_factor": 0.1378,
+      "total": -1688.6
+    },
+    "latest": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 447,
+      "mean": -0.435347,
+      "win_rate": 0.3647,
+      "profit_factor": 0.1435,
+      "total": -194.6
+    }
+  },
+  {
+    "rule": "breakout5_long",
+    "side": "long",
+    "horizon": 10,
+    "tp": 0.2,
+    "sl": 0.8,
+    "train": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 9192,
+      "mean": -0.531179,
+      "win_rate": 0.2688,
+      "profit_factor": 0.0919,
+      "total": -4882.6
+    },
+    "oos_april": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 3797,
+      "mean": -0.44472,
+      "win_rate": 0.3553,
+      "profit_factor": 0.1378,
+      "total": -1688.6
+    },
+    "latest": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 450,
+      "mean": -0.435556,
+      "win_rate": 0.3644,
+      "profit_factor": 0.1434,
+      "total": -196.0
+    }
+  },
+  {
+    "rule": "ema50_200_momo_short",
+    "side": "short",
+    "horizon": 10,
+    "tp": 0.3,
+    "sl": 0.5,
+    "train": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 10,
+      "count": 14581,
+      "mean": -0.381654,
+      "win_rate": 0.1479,
+      "profit_factor": 0.1042,
+      "total": -5564.9
+    },
+    "oos_april": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 10,
+      "count": 7278,
+      "mean": -0.353806,
+      "win_rate": 0.1827,
+      "profit_factor": 0.1342,
+      "total": -2575.0
+    },
+    "latest": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 10,
+      "count": 1081,
+      "mean": -0.337188,
+      "win_rate": 0.2035,
+      "profit_factor": 0.1533,
+      "total": -364.5
+    }
+  },
+  {
+    "rule": "ema50_200_momo_short",
+    "side": "short",
+    "horizon": 20,
+    "tp": 0.3,
+    "sl": 0.5,
+    "train": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 20,
+      "count": 14581,
+      "mean": -0.381654,
+      "win_rate": 0.1479,
+      "profit_factor": 0.1042,
+      "total": -5564.9
+    },
+    "oos_april": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 20,
+      "count": 7278,
+      "mean": -0.353806,
+      "win_rate": 0.1827,
+      "profit_factor": 0.1342,
+      "total": -2575.0
+    },
+    "latest": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 20,
+      "count": 1081,
+      "mean": -0.337188,
+      "win_rate": 0.2035,
+      "profit_factor": 0.1533,
+      "total": -364.5
+    }
+  },
+  {
+    "rule": "ema9_20_momo_long",
+    "side": "long",
+    "horizon": 20,
+    "tp": 0.2,
+    "sl": 0.8,
+    "train": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 16851,
+      "mean": -0.515032,
+      "win_rate": 0.285,
+      "profit_factor": 0.0996,
+      "total": -8678.8
+    },
+    "oos_april": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 6919,
+      "mean": -0.452695,
+      "win_rate": 0.3473,
+      "profit_factor": 0.133,
+      "total": -3132.2
+    },
+    "latest": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 797,
+      "mean": -0.444918,
+      "win_rate": 0.3551,
+      "profit_factor": 0.1376,
+      "total": -354.6
+    }
+  },
+  {
+    "rule": "ema9_20_momo_long",
+    "side": "long",
+    "horizon": 10,
+    "tp": 0.2,
+    "sl": 0.8,
+    "train": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 16851,
+      "mean": -0.515032,
+      "win_rate": 0.285,
+      "profit_factor": 0.0996,
+      "total": -8678.8
+    },
+    "oos_april": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 6919,
+      "mean": -0.452695,
+      "win_rate": 0.3473,
+      "profit_factor": 0.133,
+      "total": -3132.2
+    },
+    "latest": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 802,
+      "mean": -0.445885,
+      "win_rate": 0.3541,
+      "profit_factor": 0.1371,
+      "total": -357.6
+    }
+  },
+  {
+    "rule": "core_ema9_20_long",
+    "side": "long",
+    "horizon": 20,
+    "tp": 0.2,
+    "sl": 0.8,
+    "train": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 3196,
+      "mean": -0.47209,
+      "win_rate": 0.3279,
+      "profit_factor": 0.122,
+      "total": -1508.8
+    },
+    "oos_april": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 1284,
+      "mean": -0.457321,
+      "win_rate": 0.3427,
+      "profit_factor": 0.1303,
+      "total": -587.2
+    },
+    "latest": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 56,
+      "mean": -0.407143,
+      "win_rate": 0.3929,
+      "profit_factor": 0.1618,
+      "total": -22.8
+    }
+  },
+  {
+    "rule": "core_ema9_20_long",
+    "side": "long",
+    "horizon": 10,
+    "tp": 0.2,
+    "sl": 0.8,
+    "train": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 3196,
+      "mean": -0.47209,
+      "win_rate": 0.3279,
+      "profit_factor": 0.122,
+      "total": -1508.8
+    },
+    "oos_april": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 1284,
+      "mean": -0.457321,
+      "win_rate": 0.3427,
+      "profit_factor": 0.1303,
+      "total": -587.2
+    },
+    "latest": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 57,
+      "mean": -0.414035,
+      "win_rate": 0.386,
+      "profit_factor": 0.1571,
+      "total": -23.6
+    }
+  },
+  {
+    "rule": "rsi14_revert_long",
+    "side": "long",
+    "horizon": 10,
+    "tp": 0.3,
+    "sl": 0.5,
+    "train": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 1281,
+      "mean": -0.357611,
+      "win_rate": 0.178,
+      "profit_factor": 0.1299,
+      "total": -458.1
+    },
+    "oos_april": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 493,
+      "mean": -0.366937,
+      "win_rate": 0.1663,
+      "profit_factor": 0.1197,
+      "total": -180.9
+    },
+    "latest": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 59,
+      "mean": -0.29661,
+      "win_rate": 0.2542,
+      "profit_factor": 0.2045,
+      "total": -17.5
+    }
+  },
+  {
+    "rule": "rsi14_revert_long",
+    "side": "long",
+    "horizon": 20,
+    "tp": 0.3,
+    "sl": 0.5,
+    "train": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 1281,
+      "mean": -0.357611,
+      "win_rate": 0.178,
+      "profit_factor": 0.1299,
+      "total": -458.1
+    },
+    "oos_april": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 493,
+      "mean": -0.366937,
+      "win_rate": 0.1663,
+      "profit_factor": 0.1197,
+      "total": -180.9
+    },
+    "latest": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 59,
+      "mean": -0.29661,
+      "win_rate": 0.2542,
+      "profit_factor": 0.2045,
+      "total": -17.5
+    }
+  },
+  {
+    "rule": "raw_seq9_up_long",
+    "side": "long",
+    "horizon": 10,
+    "tp": 0.2,
+    "sl": 0.8,
+    "train": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 141,
+      "mean": -0.530496,
+      "win_rate": 0.2695,
+      "profit_factor": 0.0922,
+      "total": -74.8
+    },
+    "oos_april": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 31,
+      "mean": -0.477419,
+      "win_rate": 0.3226,
+      "profit_factor": 0.119,
+      "total": -14.8
+    },
+    "latest": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 4,
+      "mean": -0.3,
+      "win_rate": 0.5,
+      "profit_factor": 0.25,
+      "total": -1.2
+    }
+  },
+  {
+    "rule": "raw_seq9_up_long",
+    "side": "long",
+    "horizon": 20,
+    "tp": 0.2,
+    "sl": 0.8,
+    "train": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 141,
+      "mean": -0.530496,
+      "win_rate": 0.2695,
+      "profit_factor": 0.0922,
+      "total": -74.8
+    },
+    "oos_april": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 31,
+      "mean": -0.477419,
+      "win_rate": 0.3226,
+      "profit_factor": 0.119,
+      "total": -14.8
+    },
+    "latest": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 4,
+      "mean": -0.3,
+      "win_rate": 0.5,
+      "profit_factor": 0.25,
+      "total": -1.2
+    }
+  },
+  {
+    "rule": "ema50_200_momo_short",
+    "side": "short",
+    "horizon": 10,
+    "tp": 0.2,
+    "sl": 0.8,
+    "train": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 10,
+      "count": 14581,
+      "mean": -0.564214,
+      "win_rate": 0.2358,
+      "profit_factor": 0.0771,
+      "total": -8226.8
+    },
+    "oos_april": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 10,
+      "count": 7278,
+      "mean": -0.480544,
+      "win_rate": 0.3195,
+      "profit_factor": 0.1174,
+      "total": -3497.4
+    },
+    "latest": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 10,
+      "count": 1081,
+      "mean": -0.435523,
+      "win_rate": 0.3645,
+      "profit_factor": 0.1434,
+      "total": -470.8
+    }
+  },
+  {
+    "rule": "ema50_200_momo_short",
+    "side": "short",
+    "horizon": 20,
+    "tp": 0.2,
+    "sl": 0.8,
+    "train": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 20,
+      "count": 14581,
+      "mean": -0.564214,
+      "win_rate": 0.2358,
+      "profit_factor": 0.0771,
+      "total": -8226.8
+    },
+    "oos_april": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 20,
+      "count": 7278,
+      "mean": -0.480544,
+      "win_rate": 0.3195,
+      "profit_factor": 0.1174,
+      "total": -3497.4
+    },
+    "latest": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 20,
+      "count": 1081,
+      "mean": -0.435523,
+      "win_rate": 0.3645,
+      "profit_factor": 0.1434,
+      "total": -470.8
+    }
+  },
+  {
+    "rule": "breakout5_long",
+    "side": "long",
+    "horizon": 20,
+    "tp": 0.2,
+    "sl": 0.5,
+    "train": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 9192,
+      "mean": -0.381886,
+      "win_rate": 0.1687,
+      "profit_factor": 0.0812,
+      "total": -3510.3
+    },
+    "oos_april": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 3797,
+      "mean": -0.350487,
+      "win_rate": 0.2136,
+      "profit_factor": 0.1086,
+      "total": -1330.8
+    },
+    "latest": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 447,
+      "mean": -0.346532,
+      "win_rate": 0.2192,
+      "profit_factor": 0.1123,
+      "total": -154.9
+    }
+  },
+  {
+    "rule": "breakout5_long",
+    "side": "long",
+    "horizon": 10,
+    "tp": 0.2,
+    "sl": 0.5,
+    "train": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 9192,
+      "mean": -0.381886,
+      "win_rate": 0.1687,
+      "profit_factor": 0.0812,
+      "total": -3510.3
+    },
+    "oos_april": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 3797,
+      "mean": -0.350487,
+      "win_rate": 0.2136,
+      "profit_factor": 0.1086,
+      "total": -1330.8
+    },
+    "latest": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 450,
+      "mean": -0.347556,
+      "win_rate": 0.2178,
+      "profit_factor": 0.1114,
+      "total": -156.4
+    }
+  },
+  {
+    "rule": "rsi14_revert_long",
+    "side": "long",
+    "horizon": 10,
+    "tp": 0.3,
+    "sl": 0.3,
+    "train": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 1281,
+      "mean": -0.243794,
+      "win_rate": 0.0937,
+      "profit_factor": 0.1034,
+      "total": -312.3
+    },
+    "oos_april": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 493,
+      "mean": -0.241582,
+      "win_rate": 0.0974,
+      "profit_factor": 0.1079,
+      "total": -119.1
+    },
+    "latest": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 59,
+      "mean": -0.218644,
+      "win_rate": 0.1356,
+      "profit_factor": 0.1569,
+      "total": -12.9
+    }
+  },
+  {
+    "rule": "rsi14_revert_long",
+    "side": "long",
+    "horizon": 20,
+    "tp": 0.3,
+    "sl": 0.3,
+    "train": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 1281,
+      "mean": -0.243794,
+      "win_rate": 0.0937,
+      "profit_factor": 0.1034,
+      "total": -312.3
+    },
+    "oos_april": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 493,
+      "mean": -0.241582,
+      "win_rate": 0.0974,
+      "profit_factor": 0.1079,
+      "total": -119.1
+    },
+    "latest": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 59,
+      "mean": -0.218644,
+      "win_rate": 0.1356,
+      "profit_factor": 0.1569,
+      "total": -12.9
+    }
+  },
+  {
+    "rule": "breakout5_long",
+    "side": "long",
+    "horizon": 20,
+    "tp": 0.3,
+    "sl": 0.3,
+    "train": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 9192,
+      "mean": -0.249217,
+      "win_rate": 0.0846,
+      "profit_factor": 0.0925,
+      "total": -2290.8
+    },
+    "oos_april": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 3797,
+      "mean": -0.243745,
+      "win_rate": 0.0938,
+      "profit_factor": 0.1035,
+      "total": -925.5
+    },
+    "latest": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 447,
+      "mean": -0.232886,
+      "win_rate": 0.1119,
+      "profit_factor": 0.1259,
+      "total": -104.1
+    }
+  },
+  {
+    "rule": "breakout5_long",
+    "side": "long",
+    "horizon": 10,
+    "tp": 0.3,
+    "sl": 0.3,
+    "train": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 9192,
+      "mean": -0.249217,
+      "win_rate": 0.0846,
+      "profit_factor": 0.0925,
+      "total": -2290.8
+    },
+    "oos_april": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 3797,
+      "mean": -0.243745,
+      "win_rate": 0.0938,
+      "profit_factor": 0.1035,
+      "total": -925.5
+    },
+    "latest": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 450,
+      "mean": -0.233333,
+      "win_rate": 0.1111,
+      "profit_factor": 0.125,
+      "total": -105.0
+    }
+  },
+  {
+    "rule": "ema9_20_momo_long",
+    "side": "long",
+    "horizon": 20,
+    "tp": 0.2,
+    "sl": 0.5,
+    "train": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 16851,
+      "mean": -0.373218,
+      "win_rate": 0.1811,
+      "profit_factor": 0.0885,
+      "total": -6289.1
+    },
+    "oos_april": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 6919,
+      "mean": -0.359272,
+      "win_rate": 0.201,
+      "profit_factor": 0.1007,
+      "total": -2485.8
+    },
+    "latest": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 797,
+      "mean": -0.35596,
+      "win_rate": 0.2058,
+      "profit_factor": 0.1036,
+      "total": -283.7
+    }
+  },
+  {
+    "rule": "ema9_20_momo_long",
+    "side": "long",
+    "horizon": 10,
+    "tp": 0.2,
+    "sl": 0.5,
+    "train": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 16851,
+      "mean": -0.373218,
+      "win_rate": 0.1811,
+      "profit_factor": 0.0885,
+      "total": -6289.1
+    },
+    "oos_april": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 6919,
+      "mean": -0.359272,
+      "win_rate": 0.201,
+      "profit_factor": 0.1007,
+      "total": -2485.8
+    },
+    "latest": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 802,
+      "mean": -0.356858,
+      "win_rate": 0.2045,
+      "profit_factor": 0.1028,
+      "total": -286.2
+    }
+  },
+  {
+    "rule": "core_ema9_20_long",
+    "side": "long",
+    "horizon": 20,
+    "tp": 0.2,
+    "sl": 0.5,
+    "train": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 3196,
+      "mean": -0.348874,
+      "win_rate": 0.2159,
+      "profit_factor": 0.1101,
+      "total": -1115.0
+    },
+    "oos_april": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 1284,
+      "mean": -0.361526,
+      "win_rate": 0.1978,
+      "profit_factor": 0.0986,
+      "total": -464.2
+    },
+    "latest": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 56,
+      "mean": -0.3625,
+      "win_rate": 0.1964,
+      "profit_factor": 0.0978,
+      "total": -20.3
+    }
+  },
+  {
+    "rule": "core_ema9_20_long",
+    "side": "long",
+    "horizon": 10,
+    "tp": 0.2,
+    "sl": 0.5,
+    "train": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 3196,
+      "mean": -0.348874,
+      "win_rate": 0.2159,
+      "profit_factor": 0.1101,
+      "total": -1115.0
+    },
+    "oos_april": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 1284,
+      "mean": -0.361526,
+      "win_rate": 0.1978,
+      "profit_factor": 0.0986,
+      "total": -464.2
+    },
+    "latest": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 57,
+      "mean": -0.364912,
+      "win_rate": 0.193,
+      "profit_factor": 0.0957,
+      "total": -20.8
+    }
+  },
+  {
+    "rule": "rsi14_revert_long",
+    "side": "long",
+    "horizon": 10,
+    "tp": 0.2,
+    "sl": 0.8,
+    "train": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 1281,
+      "mean": -0.548634,
+      "win_rate": 0.2514,
+      "profit_factor": 0.0839,
+      "total": -702.8
+    },
+    "oos_april": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 493,
+      "mean": -0.518053,
+      "win_rate": 0.2819,
+      "profit_factor": 0.0982,
+      "total": -255.4
+    },
+    "latest": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 59,
+      "mean": -0.444068,
+      "win_rate": 0.3559,
+      "profit_factor": 0.1382,
+      "total": -26.2
+    }
+  },
+  {
+    "rule": "rsi14_revert_long",
+    "side": "long",
+    "horizon": 20,
+    "tp": 0.2,
+    "sl": 0.8,
+    "train": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 1281,
+      "mean": -0.548634,
+      "win_rate": 0.2514,
+      "profit_factor": 0.0839,
+      "total": -702.8
+    },
+    "oos_april": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 493,
+      "mean": -0.518053,
+      "win_rate": 0.2819,
+      "profit_factor": 0.0982,
+      "total": -255.4
+    },
+    "latest": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 59,
+      "mean": -0.444068,
+      "win_rate": 0.3559,
+      "profit_factor": 0.1382,
+      "total": -26.2
+    }
+  },
+  {
+    "rule": "core_ema9_20_long",
+    "side": "long",
+    "horizon": 20,
+    "tp": 0.3,
+    "sl": 0.3,
+    "train": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 3196,
+      "mean": -0.22209,
+      "win_rate": 0.1298,
+      "profit_factor": 0.1492,
+      "total": -709.8
+    },
+    "oos_april": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 1284,
+      "mean": -0.248131,
+      "win_rate": 0.0864,
+      "profit_factor": 0.0946,
+      "total": -318.6
+    },
+    "latest": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 56,
+      "mean": -0.214286,
+      "win_rate": 0.1429,
+      "profit_factor": 0.1667,
+      "total": -12.0
+    }
+  },
+  {
+    "rule": "core_ema9_20_long",
+    "side": "long",
+    "horizon": 10,
+    "tp": 0.3,
+    "sl": 0.3,
+    "train": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 3196,
+      "mean": -0.22209,
+      "win_rate": 0.1298,
+      "profit_factor": 0.1492,
+      "total": -709.8
+    },
+    "oos_april": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 1284,
+      "mean": -0.248131,
+      "win_rate": 0.0864,
+      "profit_factor": 0.0946,
+      "total": -318.6
+    },
+    "latest": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 57,
+      "mean": -0.215789,
+      "win_rate": 0.1404,
+      "profit_factor": 0.1633,
+      "total": -12.3
+    }
+  },
+  {
+    "rule": "ema9_20_momo_long",
+    "side": "long",
+    "horizon": 20,
+    "tp": 0.3,
+    "sl": 0.3,
+    "train": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 16851,
+      "mean": -0.244988,
+      "win_rate": 0.0917,
+      "profit_factor": 0.1009,
+      "total": -4128.3
+    },
+    "oos_april": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 6919,
+      "mean": -0.24823,
+      "win_rate": 0.0863,
+      "profit_factor": 0.0944,
+      "total": -1717.5
+    },
+    "latest": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 797,
+      "mean": -0.245044,
+      "win_rate": 0.0916,
+      "profit_factor": 0.1008,
+      "total": -195.3
+    }
+  },
+  {
+    "rule": "ema9_20_momo_long",
+    "side": "long",
+    "horizon": 10,
+    "tp": 0.3,
+    "sl": 0.3,
+    "train": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 16851,
+      "mean": -0.244988,
+      "win_rate": 0.0917,
+      "profit_factor": 0.1009,
+      "total": -4128.3
+    },
+    "oos_april": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 6919,
+      "mean": -0.24823,
+      "win_rate": 0.0863,
+      "profit_factor": 0.0944,
+      "total": -1717.5
+    },
+    "latest": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 802,
+      "mean": -0.245387,
+      "win_rate": 0.091,
+      "profit_factor": 0.1001,
+      "total": -196.8
+    }
+  },
+  {
+    "rule": "ema50_200_momo_short",
+    "side": "short",
+    "horizon": 10,
+    "tp": 0.3,
+    "sl": 0.3,
+    "train": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 10,
+      "count": 14581,
+      "mean": -0.255847,
+      "win_rate": 0.0736,
+      "profit_factor": 0.0794,
+      "total": -3730.5
+    },
+    "oos_april": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 10,
+      "count": 7278,
+      "mean": -0.249299,
+      "win_rate": 0.0845,
+      "profit_factor": 0.0923,
+      "total": -1814.4
+    },
+    "latest": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 10,
+      "count": 1081,
+      "mean": -0.249491,
+      "win_rate": 0.0842,
+      "profit_factor": 0.0919,
+      "total": -269.7
+    }
+  },
+  {
+    "rule": "ema50_200_momo_short",
+    "side": "short",
+    "horizon": 20,
+    "tp": 0.3,
+    "sl": 0.3,
+    "train": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 20,
+      "count": 14581,
+      "mean": -0.255847,
+      "win_rate": 0.0736,
+      "profit_factor": 0.0794,
+      "total": -3730.5
+    },
+    "oos_april": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 20,
+      "count": 7278,
+      "mean": -0.249299,
+      "win_rate": 0.0845,
+      "profit_factor": 0.0923,
+      "total": -1814.4
+    },
+    "latest": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 20,
+      "count": 1081,
+      "mean": -0.249491,
+      "win_rate": 0.0842,
+      "profit_factor": 0.0919,
+      "total": -269.7
+    }
+  },
+  {
+    "rule": "ema50_200_momo_short",
+    "side": "short",
+    "horizon": 10,
+    "tp": 0.2,
+    "sl": 0.5,
+    "train": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 10,
+      "count": 14581,
+      "mean": -0.395727,
+      "win_rate": 0.149,
+      "profit_factor": 0.07,
+      "total": -5770.1
+    },
+    "oos_april": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 10,
+      "count": 7278,
+      "mean": -0.369868,
+      "win_rate": 0.1859,
+      "profit_factor": 0.0913,
+      "total": -2691.9
+    },
+    "latest": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 10,
+      "count": 1081,
+      "mean": -0.355597,
+      "win_rate": 0.2063,
+      "profit_factor": 0.104,
+      "total": -384.4
+    }
+  },
+  {
+    "rule": "ema50_200_momo_short",
+    "side": "short",
+    "horizon": 20,
+    "tp": 0.2,
+    "sl": 0.5,
+    "train": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 20,
+      "count": 14581,
+      "mean": -0.395727,
+      "win_rate": 0.149,
+      "profit_factor": 0.07,
+      "total": -5770.1
+    },
+    "oos_april": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 20,
+      "count": 7278,
+      "mean": -0.369868,
+      "win_rate": 0.1859,
+      "profit_factor": 0.0913,
+      "total": -2691.9
+    },
+    "latest": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 20,
+      "count": 1081,
+      "mean": -0.355597,
+      "win_rate": 0.2063,
+      "profit_factor": 0.104,
+      "total": -384.4
+    }
+  },
+  {
+    "rule": "raw_seq9_up_long",
+    "side": "long",
+    "horizon": 10,
+    "tp": 0.3,
+    "sl": 0.5,
+    "train": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 141,
+      "mean": -0.386525,
+      "win_rate": 0.1418,
+      "profit_factor": 0.0992,
+      "total": -54.5
+    },
+    "oos_april": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 31,
+      "mean": -0.396774,
+      "win_rate": 0.129,
+      "profit_factor": 0.0889,
+      "total": -12.3
+    },
+    "latest": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 4,
+      "mean": -0.3,
+      "win_rate": 0.25,
+      "profit_factor": 0.2,
+      "total": -1.2
+    }
+  },
+  {
+    "rule": "raw_seq9_up_long",
+    "side": "long",
+    "horizon": 20,
+    "tp": 0.3,
+    "sl": 0.5,
+    "train": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 141,
+      "mean": -0.386525,
+      "win_rate": 0.1418,
+      "profit_factor": 0.0992,
+      "total": -54.5
+    },
+    "oos_april": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 31,
+      "mean": -0.396774,
+      "win_rate": 0.129,
+      "profit_factor": 0.0889,
+      "total": -12.3
+    },
+    "latest": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 4,
+      "mean": -0.3,
+      "win_rate": 0.25,
+      "profit_factor": 0.2,
+      "total": -1.2
+    }
+  },
+  {
+    "rule": "breakout5_long",
+    "side": "long",
+    "horizon": 20,
+    "tp": 0.12,
+    "sl": 0.8,
+    "train": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 9192,
+      "mean": -0.550783,
+      "win_rate": 0.2709,
+      "profit_factor": 0.0557,
+      "total": -5062.8
+    },
+    "oos_april": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 3797,
+      "mean": -0.469023,
+      "win_rate": 0.3598,
+      "profit_factor": 0.0843,
+      "total": -1780.88
+    },
+    "latest": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 447,
+      "mean": -0.456286,
+      "win_rate": 0.3736,
+      "profit_factor": 0.0895,
+      "total": -203.96
+    }
+  },
+  {
+    "rule": "breakout5_long",
+    "side": "long",
+    "horizon": 10,
+    "tp": 0.12,
+    "sl": 0.8,
+    "train": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 9192,
+      "mean": -0.550783,
+      "win_rate": 0.2709,
+      "profit_factor": 0.0557,
+      "total": -5062.8
+    },
+    "oos_april": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 3797,
+      "mean": -0.469023,
+      "win_rate": 0.3598,
+      "profit_factor": 0.0843,
+      "total": -1780.88
+    },
+    "latest": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 450,
+      "mean": -0.456533,
+      "win_rate": 0.3733,
+      "profit_factor": 0.0894,
+      "total": -205.44
+    }
+  },
+  {
+    "rule": "raw_seq9_up_long",
+    "side": "long",
+    "horizon": 10,
+    "tp": 0.12,
+    "sl": 0.8,
+    "train": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 141,
+      "mean": -0.552057,
+      "win_rate": 0.2695,
+      "profit_factor": 0.0553,
+      "total": -77.84
+    },
+    "oos_april": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 31,
+      "mean": -0.473548,
+      "win_rate": 0.3548,
+      "profit_factor": 0.0825,
+      "total": -14.68
+    },
+    "latest": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 4,
+      "mean": -0.34,
+      "win_rate": 0.5,
+      "profit_factor": 0.15,
+      "total": -1.36
+    }
+  },
+  {
+    "rule": "raw_seq9_up_long",
+    "side": "long",
+    "horizon": 20,
+    "tp": 0.12,
+    "sl": 0.8,
+    "train": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 141,
+      "mean": -0.552057,
+      "win_rate": 0.2695,
+      "profit_factor": 0.0553,
+      "total": -77.84
+    },
+    "oos_april": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 31,
+      "mean": -0.473548,
+      "win_rate": 0.3548,
+      "profit_factor": 0.0825,
+      "total": -14.68
+    },
+    "latest": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 4,
+      "mean": -0.34,
+      "win_rate": 0.5,
+      "profit_factor": 0.15,
+      "total": -1.36
+    }
+  },
+  {
+    "rule": "ema9_20_momo_long",
+    "side": "long",
+    "horizon": 20,
+    "tp": 0.12,
+    "sl": 0.8,
+    "train": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 16851,
+      "mean": -0.535154,
+      "win_rate": 0.2879,
+      "profit_factor": 0.0606,
+      "total": -9017.88
+    },
+    "oos_april": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 6919,
+      "mean": -0.474895,
+      "win_rate": 0.3534,
+      "profit_factor": 0.082,
+      "total": -3285.8
+    },
+    "latest": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 797,
+      "mean": -0.462936,
+      "win_rate": 0.3664,
+      "profit_factor": 0.0867,
+      "total": -368.96
+    }
+  },
+  {
+    "rule": "ema9_20_momo_long",
+    "side": "long",
+    "horizon": 10,
+    "tp": 0.12,
+    "sl": 0.8,
+    "train": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 16851,
+      "mean": -0.535154,
+      "win_rate": 0.2879,
+      "profit_factor": 0.0606,
+      "total": -9017.88
+    },
+    "oos_april": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 6919,
+      "mean": -0.474895,
+      "win_rate": 0.3534,
+      "profit_factor": 0.082,
+      "total": -3285.8
+    },
+    "latest": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 802,
+      "mean": -0.46389,
+      "win_rate": 0.3653,
+      "profit_factor": 0.0863,
+      "total": -372.04
+    }
+  },
+  {
+    "rule": "core_ema9_20_long",
+    "side": "long",
+    "horizon": 20,
+    "tp": 0.12,
+    "sl": 0.8,
+    "train": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 3196,
+      "mean": -0.495732,
+      "win_rate": 0.3307,
+      "profit_factor": 0.0741,
+      "total": -1584.36
+    },
+    "oos_april": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 1284,
+      "mean": -0.47972,
+      "win_rate": 0.3481,
+      "profit_factor": 0.0801,
+      "total": -615.96
+    },
+    "latest": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 56,
+      "mean": -0.438571,
+      "win_rate": 0.3929,
+      "profit_factor": 0.0971,
+      "total": -24.56
+    }
+  },
+  {
+    "rule": "core_ema9_20_long",
+    "side": "long",
+    "horizon": 10,
+    "tp": 0.12,
+    "sl": 0.8,
+    "train": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 3196,
+      "mean": -0.495732,
+      "win_rate": 0.3307,
+      "profit_factor": 0.0741,
+      "total": -1584.36
+    },
+    "oos_april": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 1284,
+      "mean": -0.47972,
+      "win_rate": 0.3481,
+      "profit_factor": 0.0801,
+      "total": -615.96
+    },
+    "latest": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 57,
+      "mean": -0.444912,
+      "win_rate": 0.386,
+      "profit_factor": 0.0943,
+      "total": -25.36
+    }
+  },
+  {
+    "rule": "rsi14_revert_long",
+    "side": "long",
+    "horizon": 10,
+    "tp": 0.2,
+    "sl": 0.5,
+    "train": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 1281,
+      "mean": -0.37541,
+      "win_rate": 0.178,
+      "profit_factor": 0.0866,
+      "total": -480.9
+    },
+    "oos_april": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 493,
+      "mean": -0.38357,
+      "win_rate": 0.1663,
+      "profit_factor": 0.0798,
+      "total": -189.1
+    },
+    "latest": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 59,
+      "mean": -0.322034,
+      "win_rate": 0.2542,
+      "profit_factor": 0.1364,
+      "total": -19.0
+    }
+  },
+  {
+    "rule": "rsi14_revert_long",
+    "side": "long",
+    "horizon": 20,
+    "tp": 0.2,
+    "sl": 0.5,
+    "train": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 1281,
+      "mean": -0.37541,
+      "win_rate": 0.178,
+      "profit_factor": 0.0866,
+      "total": -480.9
+    },
+    "oos_april": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 493,
+      "mean": -0.38357,
+      "win_rate": 0.1663,
+      "profit_factor": 0.0798,
+      "total": -189.1
+    },
+    "latest": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 59,
+      "mean": -0.322034,
+      "win_rate": 0.2542,
+      "profit_factor": 0.1364,
+      "total": -19.0
+    }
+  },
+  {
+    "rule": "ema50_200_momo_short",
+    "side": "short",
+    "horizon": 10,
+    "tp": 0.12,
+    "sl": 0.8,
+    "train": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 10,
+      "count": 14581,
+      "mean": -0.582319,
+      "win_rate": 0.2366,
+      "profit_factor": 0.0465,
+      "total": -8490.8
+    },
+    "oos_april": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 10,
+      "count": 7278,
+      "mean": -0.501297,
+      "win_rate": 0.3247,
+      "profit_factor": 0.0721,
+      "total": -3648.44
+    },
+    "latest": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 10,
+      "count": 1081,
+      "mean": -0.461277,
+      "win_rate": 0.3682,
+      "profit_factor": 0.0874,
+      "total": -498.64
+    }
+  },
+  {
+    "rule": "ema50_200_momo_short",
+    "side": "short",
+    "horizon": 20,
+    "tp": 0.12,
+    "sl": 0.8,
+    "train": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 20,
+      "count": 14581,
+      "mean": -0.582319,
+      "win_rate": 0.2366,
+      "profit_factor": 0.0465,
+      "total": -8490.8
+    },
+    "oos_april": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 20,
+      "count": 7278,
+      "mean": -0.501297,
+      "win_rate": 0.3247,
+      "profit_factor": 0.0721,
+      "total": -3648.44
+    },
+    "latest": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 20,
+      "count": 1081,
+      "mean": -0.461277,
+      "win_rate": 0.3682,
+      "profit_factor": 0.0874,
+      "total": -498.64
+    }
+  },
+  {
+    "rule": "rsi14_revert_long",
+    "side": "long",
+    "horizon": 10,
+    "tp": 0.2,
+    "sl": 0.3,
+    "train": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 1281,
+      "mean": -0.253162,
+      "win_rate": 0.0937,
+      "profit_factor": 0.0689,
+      "total": -324.3
+    },
+    "oos_april": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 493,
+      "mean": -0.251318,
+      "win_rate": 0.0974,
+      "profit_factor": 0.0719,
+      "total": -123.9
+    },
+    "latest": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 59,
+      "mean": -0.232203,
+      "win_rate": 0.1356,
+      "profit_factor": 0.1046,
+      "total": -13.7
+    }
+  },
+  {
+    "rule": "rsi14_revert_long",
+    "side": "long",
+    "horizon": 20,
+    "tp": 0.2,
+    "sl": 0.3,
+    "train": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 1281,
+      "mean": -0.253162,
+      "win_rate": 0.0937,
+      "profit_factor": 0.0689,
+      "total": -324.3
+    },
+    "oos_april": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 493,
+      "mean": -0.251318,
+      "win_rate": 0.0974,
+      "profit_factor": 0.0719,
+      "total": -123.9
+    },
+    "latest": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 59,
+      "mean": -0.232203,
+      "win_rate": 0.1356,
+      "profit_factor": 0.1046,
+      "total": -13.7
+    }
+  },
+  {
+    "rule": "breakout5_long",
+    "side": "long",
+    "horizon": 20,
+    "tp": 0.2,
+    "sl": 0.3,
+    "train": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 9192,
+      "mean": -0.257463,
+      "win_rate": 0.0851,
+      "profit_factor": 0.062,
+      "total": -2366.6
+    },
+    "oos_april": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 3797,
+      "mean": -0.252594,
+      "win_rate": 0.0948,
+      "profit_factor": 0.0698,
+      "total": -959.1
+    },
+    "latest": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 447,
+      "mean": -0.244072,
+      "win_rate": 0.1119,
+      "profit_factor": 0.084,
+      "total": -109.1
+    }
+  },
+  {
+    "rule": "breakout5_long",
+    "side": "long",
+    "horizon": 10,
+    "tp": 0.2,
+    "sl": 0.3,
+    "train": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 9192,
+      "mean": -0.257463,
+      "win_rate": 0.0851,
+      "profit_factor": 0.062,
+      "total": -2366.6
+    },
+    "oos_april": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 3797,
+      "mean": -0.252594,
+      "win_rate": 0.0948,
+      "profit_factor": 0.0698,
+      "total": -959.1
+    },
+    "latest": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 450,
+      "mean": -0.244444,
+      "win_rate": 0.1111,
+      "profit_factor": 0.0833,
+      "total": -110.0
+    }
+  },
+  {
+    "rule": "raw_seq9_up_long",
+    "side": "long",
+    "horizon": 10,
+    "tp": 0.3,
+    "sl": 0.3,
+    "train": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 141,
+      "mean": -0.253191,
+      "win_rate": 0.078,
+      "profit_factor": 0.0846,
+      "total": -35.7
+    },
+    "oos_april": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 31,
+      "mean": -0.26129,
+      "win_rate": 0.0645,
+      "profit_factor": 0.069,
+      "total": -8.1
+    },
+    "latest": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 4,
+      "mean": -0.15,
+      "win_rate": 0.25,
+      "profit_factor": 0.3333,
+      "total": -0.6
+    }
+  },
+  {
+    "rule": "raw_seq9_up_long",
+    "side": "long",
+    "horizon": 20,
+    "tp": 0.3,
+    "sl": 0.3,
+    "train": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 141,
+      "mean": -0.253191,
+      "win_rate": 0.078,
+      "profit_factor": 0.0846,
+      "total": -35.7
+    },
+    "oos_april": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 31,
+      "mean": -0.26129,
+      "win_rate": 0.0645,
+      "profit_factor": 0.069,
+      "total": -8.1
+    },
+    "latest": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 4,
+      "mean": -0.15,
+      "win_rate": 0.25,
+      "profit_factor": 0.3333,
+      "total": -0.6
+    }
+  },
+  {
+    "rule": "breakout5_long",
+    "side": "long",
+    "horizon": 20,
+    "tp": 0.12,
+    "sl": 0.5,
+    "train": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 9192,
+      "mean": -0.394846,
+      "win_rate": 0.1696,
+      "profit_factor": 0.049,
+      "total": -3629.42
+    },
+    "oos_april": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 3797,
+      "mean": -0.366105,
+      "win_rate": 0.216,
+      "profit_factor": 0.0661,
+      "total": -1390.1
+    },
+    "latest": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 447,
+      "mean": -0.361298,
+      "win_rate": 0.2237,
+      "profit_factor": 0.0692,
+      "total": -161.5
+    }
+  },
+  {
+    "rule": "breakout5_long",
+    "side": "long",
+    "horizon": 10,
+    "tp": 0.12,
+    "sl": 0.5,
+    "train": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 9192,
+      "mean": -0.394846,
+      "win_rate": 0.1696,
+      "profit_factor": 0.049,
+      "total": -3629.42
+    },
+    "oos_april": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 3797,
+      "mean": -0.366105,
+      "win_rate": 0.216,
+      "profit_factor": 0.0661,
+      "total": -1390.1
+    },
+    "latest": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 450,
+      "mean": -0.362222,
+      "win_rate": 0.2222,
+      "profit_factor": 0.0686,
+      "total": -163.0
+    }
+  },
+  {
+    "rule": "ema9_20_momo_long",
+    "side": "long",
+    "horizon": 20,
+    "tp": 0.2,
+    "sl": 0.3,
+    "train": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 16851,
+      "mean": -0.25389,
+      "win_rate": 0.0922,
+      "profit_factor": 0.0677,
+      "total": -4278.3
+    },
+    "oos_april": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 6919,
+      "mean": -0.25628,
+      "win_rate": 0.0874,
+      "profit_factor": 0.0639,
+      "total": -1773.2
+    },
+    "latest": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 797,
+      "mean": -0.254203,
+      "win_rate": 0.0916,
+      "profit_factor": 0.0672,
+      "total": -202.6
+    }
+  },
+  {
+    "rule": "ema9_20_momo_long",
+    "side": "long",
+    "horizon": 10,
+    "tp": 0.2,
+    "sl": 0.3,
+    "train": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 16851,
+      "mean": -0.25389,
+      "win_rate": 0.0922,
+      "profit_factor": 0.0677,
+      "total": -4278.3
+    },
+    "oos_april": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 6919,
+      "mean": -0.25628,
+      "win_rate": 0.0874,
+      "profit_factor": 0.0639,
+      "total": -1773.2
+    },
+    "latest": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 802,
+      "mean": -0.254489,
+      "win_rate": 0.091,
+      "profit_factor": 0.0668,
+      "total": -204.1
+    }
+  },
+  {
+    "rule": "core_ema9_20_long",
+    "side": "long",
+    "horizon": 20,
+    "tp": 0.2,
+    "sl": 0.3,
+    "train": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 3196,
+      "mean": -0.234762,
+      "win_rate": 0.1305,
+      "profit_factor": 0.1,
+      "total": -750.3
+    },
+    "oos_april": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 1284,
+      "mean": -0.256776,
+      "win_rate": 0.0864,
+      "profit_factor": 0.0631,
+      "total": -329.7
+    },
+    "latest": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 56,
+      "mean": -0.228571,
+      "win_rate": 0.1429,
+      "profit_factor": 0.1111,
+      "total": -12.8
+    }
+  },
+  {
+    "rule": "core_ema9_20_long",
+    "side": "long",
+    "horizon": 10,
+    "tp": 0.2,
+    "sl": 0.3,
+    "train": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 3196,
+      "mean": -0.234762,
+      "win_rate": 0.1305,
+      "profit_factor": 0.1,
+      "total": -750.3
+    },
+    "oos_april": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 1284,
+      "mean": -0.256776,
+      "win_rate": 0.0864,
+      "profit_factor": 0.0631,
+      "total": -329.7
+    },
+    "latest": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 57,
+      "mean": -0.229825,
+      "win_rate": 0.1404,
+      "profit_factor": 0.1088,
+      "total": -13.1
+    }
+  },
+  {
+    "rule": "ema50_200_momo_short",
+    "side": "short",
+    "horizon": 10,
+    "tp": 0.2,
+    "sl": 0.3,
+    "train": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 10,
+      "count": 14581,
+      "mean": -0.263068,
+      "win_rate": 0.0739,
+      "profit_factor": 0.0532,
+      "total": -3835.8
+    },
+    "oos_april": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 10,
+      "count": 7278,
+      "mean": -0.257268,
+      "win_rate": 0.0855,
+      "profit_factor": 0.0623,
+      "total": -1872.4
+    },
+    "latest": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 10,
+      "count": 1081,
+      "mean": -0.257447,
+      "win_rate": 0.0851,
+      "profit_factor": 0.062,
+      "total": -278.3
+    }
+  },
+  {
+    "rule": "ema50_200_momo_short",
+    "side": "short",
+    "horizon": 20,
+    "tp": 0.2,
+    "sl": 0.3,
+    "train": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 20,
+      "count": 14581,
+      "mean": -0.263068,
+      "win_rate": 0.0739,
+      "profit_factor": 0.0532,
+      "total": -3835.8
+    },
+    "oos_april": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 20,
+      "count": 7278,
+      "mean": -0.257268,
+      "win_rate": 0.0855,
+      "profit_factor": 0.0623,
+      "total": -1872.4
+    },
+    "latest": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 20,
+      "count": 1081,
+      "mean": -0.257447,
+      "win_rate": 0.0851,
+      "profit_factor": 0.062,
+      "total": -278.3
+    }
+  },
+  {
+    "rule": "ema9_20_momo_long",
+    "side": "long",
+    "horizon": 20,
+    "tp": 0.12,
+    "sl": 0.5,
+    "train": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 16851,
+      "mean": -0.386972,
+      "win_rate": 0.1823,
+      "profit_factor": 0.0535,
+      "total": -6520.86
+    },
+    "oos_april": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 6919,
+      "mean": -0.373921,
+      "win_rate": 0.2034,
+      "profit_factor": 0.0613,
+      "total": -2587.16
+    },
+    "latest": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 797,
+      "mean": -0.368532,
+      "win_rate": 0.212,
+      "profit_factor": 0.0646,
+      "total": -293.72
+    }
+  },
+  {
+    "rule": "ema9_20_momo_long",
+    "side": "long",
+    "horizon": 10,
+    "tp": 0.12,
+    "sl": 0.5,
+    "train": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 16851,
+      "mean": -0.386972,
+      "win_rate": 0.1823,
+      "profit_factor": 0.0535,
+      "total": -6520.86
+    },
+    "oos_april": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 6919,
+      "mean": -0.373921,
+      "win_rate": 0.2034,
+      "profit_factor": 0.0613,
+      "total": -2587.16
+    },
+    "latest": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 802,
+      "mean": -0.369352,
+      "win_rate": 0.2107,
+      "profit_factor": 0.0641,
+      "total": -296.22
+    }
+  },
+  {
+    "rule": "core_ema9_20_long",
+    "side": "long",
+    "horizon": 20,
+    "tp": 0.12,
+    "sl": 0.5,
+    "train": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 3196,
+      "mean": -0.365369,
+      "win_rate": 0.2171,
+      "profit_factor": 0.0666,
+      "total": -1167.72
+    },
+    "oos_april": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 1284,
+      "mean": -0.376386,
+      "win_rate": 0.1994,
+      "profit_factor": 0.0598,
+      "total": -483.28
+    },
+    "latest": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 56,
+      "mean": -0.378214,
+      "win_rate": 0.1964,
+      "profit_factor": 0.0587,
+      "total": -21.18
+    }
+  },
+  {
+    "rule": "core_ema9_20_long",
+    "side": "long",
+    "horizon": 10,
+    "tp": 0.12,
+    "sl": 0.5,
+    "train": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 3196,
+      "mean": -0.365369,
+      "win_rate": 0.2171,
+      "profit_factor": 0.0666,
+      "total": -1167.72
+    },
+    "oos_april": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 1284,
+      "mean": -0.376386,
+      "win_rate": 0.1994,
+      "profit_factor": 0.0598,
+      "total": -483.28
+    },
+    "latest": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 57,
+      "mean": -0.380351,
+      "win_rate": 0.193,
+      "profit_factor": 0.0574,
+      "total": -21.68
+    }
+  },
+  {
+    "rule": "rsi14_revert_long",
+    "side": "long",
+    "horizon": 10,
+    "tp": 0.12,
+    "sl": 0.8,
+    "train": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 1281,
+      "mean": -0.568743,
+      "win_rate": 0.2514,
+      "profit_factor": 0.0504,
+      "total": -728.56
+    },
+    "oos_april": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 493,
+      "mean": -0.538742,
+      "win_rate": 0.284,
+      "profit_factor": 0.0595,
+      "total": -265.6
+    },
+    "latest": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 59,
+      "mean": -0.472542,
+      "win_rate": 0.3559,
+      "profit_factor": 0.0829,
+      "total": -27.88
+    }
+  },
+  {
+    "rule": "rsi14_revert_long",
+    "side": "long",
+    "horizon": 20,
+    "tp": 0.12,
+    "sl": 0.8,
+    "train": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 1281,
+      "mean": -0.568743,
+      "win_rate": 0.2514,
+      "profit_factor": 0.0504,
+      "total": -728.56
+    },
+    "oos_april": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 493,
+      "mean": -0.538742,
+      "win_rate": 0.284,
+      "profit_factor": 0.0595,
+      "total": -265.6
+    },
+    "latest": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 59,
+      "mean": -0.472542,
+      "win_rate": 0.3559,
+      "profit_factor": 0.0829,
+      "total": -27.88
+    }
+  },
+  {
+    "rule": "raw_seq9_up_long",
+    "side": "long",
+    "horizon": 10,
+    "tp": 0.2,
+    "sl": 0.5,
+    "train": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 141,
+      "mean": -0.395745,
+      "win_rate": 0.1489,
+      "profit_factor": 0.07,
+      "total": -55.8
+    },
+    "oos_april": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 31,
+      "mean": -0.409677,
+      "win_rate": 0.129,
+      "profit_factor": 0.0593,
+      "total": -12.7
+    },
+    "latest": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 4,
+      "mean": -0.325,
+      "win_rate": 0.25,
+      "profit_factor": 0.1333,
+      "total": -1.3
+    }
+  },
+  {
+    "rule": "raw_seq9_up_long",
+    "side": "long",
+    "horizon": 20,
+    "tp": 0.2,
+    "sl": 0.5,
+    "train": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 141,
+      "mean": -0.395745,
+      "win_rate": 0.1489,
+      "profit_factor": 0.07,
+      "total": -55.8
+    },
+    "oos_april": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 31,
+      "mean": -0.409677,
+      "win_rate": 0.129,
+      "profit_factor": 0.0593,
+      "total": -12.7
+    },
+    "latest": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 4,
+      "mean": -0.325,
+      "win_rate": 0.25,
+      "profit_factor": 0.1333,
+      "total": -1.3
+    }
+  },
+  {
+    "rule": "breakout5_long",
+    "side": "long",
+    "horizon": 20,
+    "tp": 0.08,
+    "sl": 0.8,
+    "train": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 9192,
+      "mean": -0.56047,
+      "win_rate": 0.2722,
+      "profit_factor": 0.0374,
+      "total": -5151.84
+    },
+    "oos_april": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 3797,
+      "mean": -0.4804,
+      "win_rate": 0.3632,
+      "profit_factor": 0.057,
+      "total": -1824.08
+    },
+    "latest": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 447,
+      "mean": -0.469262,
+      "win_rate": 0.3758,
+      "profit_factor": 0.0602,
+      "total": -209.76
+    }
+  },
+  {
+    "rule": "breakout5_long",
+    "side": "long",
+    "horizon": 10,
+    "tp": 0.08,
+    "sl": 0.8,
+    "train": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 9192,
+      "mean": -0.56047,
+      "win_rate": 0.2722,
+      "profit_factor": 0.0374,
+      "total": -5151.84
+    },
+    "oos_april": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 3797,
+      "mean": -0.4804,
+      "win_rate": 0.3632,
+      "profit_factor": 0.057,
+      "total": -1824.08
+    },
+    "latest": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 450,
+      "mean": -0.469511,
+      "win_rate": 0.3756,
+      "profit_factor": 0.0601,
+      "total": -211.28
+    }
+  },
+  {
+    "rule": "ema50_200_momo_short",
+    "side": "short",
+    "horizon": 10,
+    "tp": 0.12,
+    "sl": 0.5,
+    "train": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 10,
+      "count": 14581,
+      "mean": -0.407432,
+      "win_rate": 0.1493,
+      "profit_factor": 0.0421,
+      "total": -5940.76
+    },
+    "oos_april": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 10,
+      "count": 7278,
+      "mean": -0.383803,
+      "win_rate": 0.1874,
+      "profit_factor": 0.0554,
+      "total": -2793.32
+    },
+    "latest": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 10,
+      "count": 1081,
+      "mean": -0.370953,
+      "win_rate": 0.2081,
+      "profit_factor": 0.0631,
+      "total": -401.0
+    }
+  },
+  {
+    "rule": "ema50_200_momo_short",
+    "side": "short",
+    "horizon": 20,
+    "tp": 0.12,
+    "sl": 0.5,
+    "train": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 20,
+      "count": 14581,
+      "mean": -0.407432,
+      "win_rate": 0.1493,
+      "profit_factor": 0.0421,
+      "total": -5940.76
+    },
+    "oos_april": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 20,
+      "count": 7278,
+      "mean": -0.383803,
+      "win_rate": 0.1874,
+      "profit_factor": 0.0554,
+      "total": -2793.32
+    },
+    "latest": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 20,
+      "count": 1081,
+      "mean": -0.370953,
+      "win_rate": 0.2081,
+      "profit_factor": 0.0631,
+      "total": -401.0
+    }
+  },
+  {
+    "rule": "ema9_20_momo_long",
+    "side": "long",
+    "horizon": 20,
+    "tp": 0.08,
+    "sl": 0.8,
+    "train": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 16851,
+      "mean": -0.54552,
+      "win_rate": 0.2892,
+      "profit_factor": 0.0407,
+      "total": -9192.56
+    },
+    "oos_april": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 6919,
+      "mean": -0.486741,
+      "win_rate": 0.356,
+      "profit_factor": 0.0553,
+      "total": -3367.76
+    },
+    "latest": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 797,
+      "mean": -0.475383,
+      "win_rate": 0.3689,
+      "profit_factor": 0.0584,
+      "total": -378.88
+    }
+  },
+  {
+    "rule": "ema9_20_momo_long",
+    "side": "long",
+    "horizon": 10,
+    "tp": 0.08,
+    "sl": 0.8,
+    "train": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 16851,
+      "mean": -0.54552,
+      "win_rate": 0.2892,
+      "profit_factor": 0.0407,
+      "total": -9192.56
+    },
+    "oos_april": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 6919,
+      "mean": -0.486741,
+      "win_rate": 0.356,
+      "profit_factor": 0.0553,
+      "total": -3367.76
+    },
+    "latest": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 802,
+      "mean": -0.476309,
+      "win_rate": 0.3678,
+      "profit_factor": 0.0582,
+      "total": -382.0
+    }
+  },
+  {
+    "rule": "raw_seq9_up_long",
+    "side": "long",
+    "horizon": 10,
+    "tp": 0.08,
+    "sl": 0.8,
+    "train": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 141,
+      "mean": -0.562837,
+      "win_rate": 0.2695,
+      "profit_factor": 0.0369,
+      "total": -79.36
+    },
+    "oos_april": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 31,
+      "mean": -0.487742,
+      "win_rate": 0.3548,
+      "profit_factor": 0.055,
+      "total": -15.12
+    },
+    "latest": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 4,
+      "mean": -0.36,
+      "win_rate": 0.5,
+      "profit_factor": 0.1,
+      "total": -1.44
+    }
+  },
+  {
+    "rule": "raw_seq9_up_long",
+    "side": "long",
+    "horizon": 20,
+    "tp": 0.08,
+    "sl": 0.8,
+    "train": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 141,
+      "mean": -0.562837,
+      "win_rate": 0.2695,
+      "profit_factor": 0.0369,
+      "total": -79.36
+    },
+    "oos_april": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 31,
+      "mean": -0.487742,
+      "win_rate": 0.3548,
+      "profit_factor": 0.055,
+      "total": -15.12
+    },
+    "latest": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 4,
+      "mean": -0.36,
+      "win_rate": 0.5,
+      "profit_factor": 0.1,
+      "total": -1.44
+    }
+  },
+  {
+    "rule": "core_ema9_20_long",
+    "side": "long",
+    "horizon": 20,
+    "tp": 0.08,
+    "sl": 0.8,
+    "train": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 3196,
+      "mean": -0.508411,
+      "win_rate": 0.3314,
+      "profit_factor": 0.0496,
+      "total": -1624.88
+    },
+    "oos_april": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 1284,
+      "mean": -0.493645,
+      "win_rate": 0.3481,
+      "profit_factor": 0.0534,
+      "total": -633.84
+    },
+    "latest": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 56,
+      "mean": -0.454286,
+      "win_rate": 0.3929,
+      "profit_factor": 0.0647,
+      "total": -25.44
+    }
+  },
+  {
+    "rule": "core_ema9_20_long",
+    "side": "long",
+    "horizon": 10,
+    "tp": 0.08,
+    "sl": 0.8,
+    "train": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 3196,
+      "mean": -0.508411,
+      "win_rate": 0.3314,
+      "profit_factor": 0.0496,
+      "total": -1624.88
+    },
+    "oos_april": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 1284,
+      "mean": -0.493645,
+      "win_rate": 0.3481,
+      "profit_factor": 0.0534,
+      "total": -633.84
+    },
+    "latest": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 57,
+      "mean": -0.460351,
+      "win_rate": 0.386,
+      "profit_factor": 0.0629,
+      "total": -26.24
+    }
+  },
+  {
+    "rule": "ema50_200_momo_short",
+    "side": "short",
+    "horizon": 10,
+    "tp": 0.08,
+    "sl": 0.8,
+    "train": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 10,
+      "count": 14581,
+      "mean": -0.591482,
+      "win_rate": 0.237,
+      "profit_factor": 0.0311,
+      "total": -8624.4
+    },
+    "oos_april": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 10,
+      "count": 7278,
+      "mean": -0.512591,
+      "win_rate": 0.3266,
+      "profit_factor": 0.0485,
+      "total": -3730.64
+    },
+    "latest": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 10,
+      "count": 1081,
+      "mean": -0.473562,
+      "win_rate": 0.371,
+      "profit_factor": 0.059,
+      "total": -511.92
+    }
+  },
+  {
+    "rule": "ema50_200_momo_short",
+    "side": "short",
+    "horizon": 20,
+    "tp": 0.08,
+    "sl": 0.8,
+    "train": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 20,
+      "count": 14581,
+      "mean": -0.591482,
+      "win_rate": 0.237,
+      "profit_factor": 0.0311,
+      "total": -8624.4
+    },
+    "oos_april": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 20,
+      "count": 7278,
+      "mean": -0.512591,
+      "win_rate": 0.3266,
+      "profit_factor": 0.0485,
+      "total": -3730.64
+    },
+    "latest": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 20,
+      "count": 1081,
+      "mean": -0.473562,
+      "win_rate": 0.371,
+      "profit_factor": 0.059,
+      "total": -511.92
+    }
+  },
+  {
+    "rule": "rsi14_revert_long",
+    "side": "long",
+    "horizon": 10,
+    "tp": 0.12,
+    "sl": 0.5,
+    "train": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 1281,
+      "mean": -0.389649,
+      "win_rate": 0.178,
+      "profit_factor": 0.052,
+      "total": -499.14
+    },
+    "oos_april": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 493,
+      "mean": -0.396876,
+      "win_rate": 0.1663,
+      "profit_factor": 0.0479,
+      "total": -195.66
+    },
+    "latest": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 59,
+      "mean": -0.342373,
+      "win_rate": 0.2542,
+      "profit_factor": 0.0818,
+      "total": -20.2
+    }
+  },
+  {
+    "rule": "rsi14_revert_long",
+    "side": "long",
+    "horizon": 20,
+    "tp": 0.12,
+    "sl": 0.5,
+    "train": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 1281,
+      "mean": -0.389649,
+      "win_rate": 0.178,
+      "profit_factor": 0.052,
+      "total": -499.14
+    },
+    "oos_april": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 493,
+      "mean": -0.396876,
+      "win_rate": 0.1663,
+      "profit_factor": 0.0479,
+      "total": -195.66
+    },
+    "latest": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 59,
+      "mean": -0.342373,
+      "win_rate": 0.2542,
+      "profit_factor": 0.0818,
+      "total": -20.2
+    }
+  },
+  {
+    "rule": "raw_seq9_up_long",
+    "side": "long",
+    "horizon": 10,
+    "tp": 0.2,
+    "sl": 0.3,
+    "train": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 141,
+      "mean": -0.260993,
+      "win_rate": 0.078,
+      "profit_factor": 0.0564,
+      "total": -36.8
+    },
+    "oos_april": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 31,
+      "mean": -0.267742,
+      "win_rate": 0.0645,
+      "profit_factor": 0.046,
+      "total": -8.3
+    },
+    "latest": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 4,
+      "mean": -0.175,
+      "win_rate": 0.25,
+      "profit_factor": 0.2222,
+      "total": -0.7
+    }
+  },
+  {
+    "rule": "raw_seq9_up_long",
+    "side": "long",
+    "horizon": 20,
+    "tp": 0.2,
+    "sl": 0.3,
+    "train": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 141,
+      "mean": -0.260993,
+      "win_rate": 0.078,
+      "profit_factor": 0.0564,
+      "total": -36.8
+    },
+    "oos_april": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 31,
+      "mean": -0.267742,
+      "win_rate": 0.0645,
+      "profit_factor": 0.046,
+      "total": -8.3
+    },
+    "latest": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 4,
+      "mean": -0.175,
+      "win_rate": 0.25,
+      "profit_factor": 0.2222,
+      "total": -0.7
+    }
+  },
+  {
+    "rule": "breakout5_long",
+    "side": "long",
+    "horizon": 20,
+    "tp": 0.08,
+    "sl": 0.5,
+    "train": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 9192,
+      "mean": -0.401503,
+      "win_rate": 0.1698,
+      "profit_factor": 0.0327,
+      "total": -3690.62
+    },
+    "oos_april": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 3797,
+      "mean": -0.373979,
+      "win_rate": 0.2173,
+      "profit_factor": 0.0444,
+      "total": -1420.0
+    },
+    "latest": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 447,
+      "mean": -0.370246,
+      "win_rate": 0.2237,
+      "profit_factor": 0.0461,
+      "total": -165.5
+    }
+  },
+  {
+    "rule": "breakout5_long",
+    "side": "long",
+    "horizon": 10,
+    "tp": 0.08,
+    "sl": 0.5,
+    "train": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 9192,
+      "mean": -0.401503,
+      "win_rate": 0.1698,
+      "profit_factor": 0.0327,
+      "total": -3690.62
+    },
+    "oos_april": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 3797,
+      "mean": -0.373979,
+      "win_rate": 0.2173,
+      "profit_factor": 0.0444,
+      "total": -1420.0
+    },
+    "latest": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 450,
+      "mean": -0.371111,
+      "win_rate": 0.2222,
+      "profit_factor": 0.0457,
+      "total": -167.0
+    }
+  },
+  {
+    "rule": "rsi14_revert_long",
+    "side": "long",
+    "horizon": 10,
+    "tp": 0.12,
+    "sl": 0.3,
+    "train": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 1281,
+      "mean": -0.260656,
+      "win_rate": 0.0937,
+      "profit_factor": 0.0413,
+      "total": -333.9
+    },
+    "oos_april": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 493,
+      "mean": -0.259108,
+      "win_rate": 0.0974,
+      "profit_factor": 0.0431,
+      "total": -127.74
+    },
+    "latest": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 59,
+      "mean": -0.243051,
+      "win_rate": 0.1356,
+      "profit_factor": 0.0627,
+      "total": -14.34
+    }
+  },
+  {
+    "rule": "rsi14_revert_long",
+    "side": "long",
+    "horizon": 20,
+    "tp": 0.12,
+    "sl": 0.3,
+    "train": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 1281,
+      "mean": -0.260656,
+      "win_rate": 0.0937,
+      "profit_factor": 0.0413,
+      "total": -333.9
+    },
+    "oos_april": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 493,
+      "mean": -0.259108,
+      "win_rate": 0.0974,
+      "profit_factor": 0.0431,
+      "total": -127.74
+    },
+    "latest": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 59,
+      "mean": -0.243051,
+      "win_rate": 0.1356,
+      "profit_factor": 0.0627,
+      "total": -14.34
+    }
+  },
+  {
+    "rule": "breakout5_long",
+    "side": "long",
+    "horizon": 20,
+    "tp": 0.12,
+    "sl": 0.3,
+    "train": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 9192,
+      "mean": -0.264178,
+      "win_rate": 0.0853,
+      "profit_factor": 0.0373,
+      "total": -2428.32
+    },
+    "oos_april": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 3797,
+      "mean": -0.260068,
+      "win_rate": 0.0951,
+      "profit_factor": 0.042,
+      "total": -987.48
+    },
+    "latest": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 447,
+      "mean": -0.25302,
+      "win_rate": 0.1119,
+      "profit_factor": 0.0504,
+      "total": -113.1
+    }
+  },
+  {
+    "rule": "breakout5_long",
+    "side": "long",
+    "horizon": 10,
+    "tp": 0.12,
+    "sl": 0.3,
+    "train": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 9192,
+      "mean": -0.264178,
+      "win_rate": 0.0853,
+      "profit_factor": 0.0373,
+      "total": -2428.32
+    },
+    "oos_april": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 3797,
+      "mean": -0.260068,
+      "win_rate": 0.0951,
+      "profit_factor": 0.042,
+      "total": -987.48
+    },
+    "latest": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 450,
+      "mean": -0.253333,
+      "win_rate": 0.1111,
+      "profit_factor": 0.05,
+      "total": -114.0
+    }
+  },
+  {
+    "rule": "ema9_20_momo_long",
+    "side": "long",
+    "horizon": 20,
+    "tp": 0.08,
+    "sl": 0.5,
+    "train": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 16851,
+      "mean": -0.394057,
+      "win_rate": 0.1827,
+      "profit_factor": 0.0358,
+      "total": -6640.26
+    },
+    "oos_april": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 6919,
+      "mean": -0.381468,
+      "win_rate": 0.2044,
+      "profit_factor": 0.0411,
+      "total": -2639.38
+    },
+    "latest": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 797,
+      "mean": -0.377014,
+      "win_rate": 0.212,
+      "profit_factor": 0.0431,
+      "total": -300.48
+    }
+  },
+  {
+    "rule": "ema9_20_momo_long",
+    "side": "long",
+    "horizon": 10,
+    "tp": 0.08,
+    "sl": 0.5,
+    "train": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 16851,
+      "mean": -0.394057,
+      "win_rate": 0.1827,
+      "profit_factor": 0.0358,
+      "total": -6640.26
+    },
+    "oos_april": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 6919,
+      "mean": -0.381468,
+      "win_rate": 0.2044,
+      "profit_factor": 0.0411,
+      "total": -2639.38
+    },
+    "latest": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 802,
+      "mean": -0.377781,
+      "win_rate": 0.2107,
+      "profit_factor": 0.0427,
+      "total": -302.98
+    }
+  },
+  {
+    "rule": "core_ema9_20_long",
+    "side": "long",
+    "horizon": 20,
+    "tp": 0.08,
+    "sl": 0.5,
+    "train": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 3196,
+      "mean": -0.373874,
+      "win_rate": 0.2175,
+      "profit_factor": 0.0445,
+      "total": -1194.9
+    },
+    "oos_april": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 1284,
+      "mean": -0.384361,
+      "win_rate": 0.1994,
+      "profit_factor": 0.0398,
+      "total": -493.52
+    },
+    "latest": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 56,
+      "mean": -0.386071,
+      "win_rate": 0.1964,
+      "profit_factor": 0.0391,
+      "total": -21.62
+    }
+  },
+  {
+    "rule": "core_ema9_20_long",
+    "side": "long",
+    "horizon": 10,
+    "tp": 0.08,
+    "sl": 0.5,
+    "train": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 3196,
+      "mean": -0.373874,
+      "win_rate": 0.2175,
+      "profit_factor": 0.0445,
+      "total": -1194.9
+    },
+    "oos_april": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 1284,
+      "mean": -0.384361,
+      "win_rate": 0.1994,
+      "profit_factor": 0.0398,
+      "total": -493.52
+    },
+    "latest": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 57,
+      "mean": -0.38807,
+      "win_rate": 0.193,
+      "profit_factor": 0.0383,
+      "total": -22.12
+    }
+  },
+  {
+    "rule": "rsi14_revert_long",
+    "side": "long",
+    "horizon": 10,
+    "tp": 0.08,
+    "sl": 0.8,
+    "train": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 1281,
+      "mean": -0.578798,
+      "win_rate": 0.2514,
+      "profit_factor": 0.0336,
+      "total": -741.44
+    },
+    "oos_april": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 493,
+      "mean": -0.550101,
+      "win_rate": 0.284,
+      "profit_factor": 0.0397,
+      "total": -271.2
+    },
+    "latest": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 59,
+      "mean": -0.48678,
+      "win_rate": 0.3559,
+      "profit_factor": 0.0553,
+      "total": -28.72
+    }
+  },
+  {
+    "rule": "rsi14_revert_long",
+    "side": "long",
+    "horizon": 20,
+    "tp": 0.08,
+    "sl": 0.8,
+    "train": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 1281,
+      "mean": -0.578798,
+      "win_rate": 0.2514,
+      "profit_factor": 0.0336,
+      "total": -741.44
+    },
+    "oos_april": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 493,
+      "mean": -0.550101,
+      "win_rate": 0.284,
+      "profit_factor": 0.0397,
+      "total": -271.2
+    },
+    "latest": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 59,
+      "mean": -0.48678,
+      "win_rate": 0.3559,
+      "profit_factor": 0.0553,
+      "total": -28.72
+    }
+  },
+  {
+    "rule": "ema9_20_momo_long",
+    "side": "long",
+    "horizon": 20,
+    "tp": 0.12,
+    "sl": 0.3,
+    "train": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 16851,
+      "mean": -0.261168,
+      "win_rate": 0.0925,
+      "profit_factor": 0.0408,
+      "total": -4400.94
+    },
+    "oos_april": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 6919,
+      "mean": -0.263214,
+      "win_rate": 0.0876,
+      "profit_factor": 0.0384,
+      "total": -1821.18
+    },
+    "latest": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 797,
+      "mean": -0.261004,
+      "win_rate": 0.0928,
+      "profit_factor": 0.0409,
+      "total": -208.02
+    }
+  },
+  {
+    "rule": "ema9_20_momo_long",
+    "side": "long",
+    "horizon": 10,
+    "tp": 0.12,
+    "sl": 0.3,
+    "train": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 16851,
+      "mean": -0.261168,
+      "win_rate": 0.0925,
+      "profit_factor": 0.0408,
+      "total": -4400.94
+    },
+    "oos_april": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 6919,
+      "mean": -0.263214,
+      "win_rate": 0.0876,
+      "profit_factor": 0.0384,
+      "total": -1821.18
+    },
+    "latest": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 802,
+      "mean": -0.261247,
+      "win_rate": 0.0923,
+      "profit_factor": 0.0407,
+      "total": -209.52
+    }
+  },
+  {
+    "rule": "core_ema9_20_long",
+    "side": "long",
+    "horizon": 20,
+    "tp": 0.12,
+    "sl": 0.3,
+    "train": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 3196,
+      "mean": -0.244806,
+      "win_rate": 0.1314,
+      "profit_factor": 0.0605,
+      "total": -782.4
+    },
+    "oos_april": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 1284,
+      "mean": -0.263692,
+      "win_rate": 0.0864,
+      "profit_factor": 0.0379,
+      "total": -338.58
+    },
+    "latest": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 56,
+      "mean": -0.24,
+      "win_rate": 0.1429,
+      "profit_factor": 0.0667,
+      "total": -13.44
+    }
+  },
+  {
+    "rule": "core_ema9_20_long",
+    "side": "long",
+    "horizon": 10,
+    "tp": 0.12,
+    "sl": 0.3,
+    "train": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 3196,
+      "mean": -0.244806,
+      "win_rate": 0.1314,
+      "profit_factor": 0.0605,
+      "total": -782.4
+    },
+    "oos_april": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 1284,
+      "mean": -0.263692,
+      "win_rate": 0.0864,
+      "profit_factor": 0.0379,
+      "total": -338.58
+    },
+    "latest": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 57,
+      "mean": -0.241053,
+      "win_rate": 0.1404,
+      "profit_factor": 0.0653,
+      "total": -13.74
+    }
+  },
+  {
+    "rule": "ema50_200_momo_short",
+    "side": "short",
+    "horizon": 10,
+    "tp": 0.12,
+    "sl": 0.3,
+    "train": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 10,
+      "count": 14581,
+      "mean": -0.26892,
+      "win_rate": 0.074,
+      "profit_factor": 0.032,
+      "total": -3921.12
+    },
+    "oos_april": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 10,
+      "count": 7278,
+      "mean": -0.264048,
+      "win_rate": 0.0856,
+      "profit_factor": 0.0374,
+      "total": -1921.74
+    },
+    "latest": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 10,
+      "count": 1081,
+      "mean": -0.264255,
+      "win_rate": 0.0851,
+      "profit_factor": 0.0372,
+      "total": -285.66
+    }
+  },
+  {
+    "rule": "ema50_200_momo_short",
+    "side": "short",
+    "horizon": 20,
+    "tp": 0.12,
+    "sl": 0.3,
+    "train": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 20,
+      "count": 14581,
+      "mean": -0.26892,
+      "win_rate": 0.074,
+      "profit_factor": 0.032,
+      "total": -3921.12
+    },
+    "oos_april": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 20,
+      "count": 7278,
+      "mean": -0.264048,
+      "win_rate": 0.0856,
+      "profit_factor": 0.0374,
+      "total": -1921.74
+    },
+    "latest": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 20,
+      "count": 1081,
+      "mean": -0.264255,
+      "win_rate": 0.0851,
+      "profit_factor": 0.0372,
+      "total": -285.66
+    }
+  },
+  {
+    "rule": "ema50_200_momo_short",
+    "side": "short",
+    "horizon": 10,
+    "tp": 0.08,
+    "sl": 0.5,
+    "train": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 10,
+      "count": 14581,
+      "mean": -0.413284,
+      "win_rate": 0.1495,
+      "profit_factor": 0.0281,
+      "total": -6026.1
+    },
+    "oos_april": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 10,
+      "count": 7278,
+      "mean": -0.390822,
+      "win_rate": 0.1882,
+      "profit_factor": 0.0371,
+      "total": -2844.4
+    },
+    "latest": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 10,
+      "count": 1081,
+      "mean": -0.379278,
+      "win_rate": 0.2081,
+      "profit_factor": 0.0421,
+      "total": -410.0
+    }
+  },
+  {
+    "rule": "ema50_200_momo_short",
+    "side": "short",
+    "horizon": 20,
+    "tp": 0.08,
+    "sl": 0.5,
+    "train": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 20,
+      "count": 14581,
+      "mean": -0.413284,
+      "win_rate": 0.1495,
+      "profit_factor": 0.0281,
+      "total": -6026.1
+    },
+    "oos_april": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 20,
+      "count": 7278,
+      "mean": -0.390822,
+      "win_rate": 0.1882,
+      "profit_factor": 0.0371,
+      "total": -2844.4
+    },
+    "latest": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 20,
+      "count": 1081,
+      "mean": -0.379278,
+      "win_rate": 0.2081,
+      "profit_factor": 0.0421,
+      "total": -410.0
+    }
+  },
+  {
+    "rule": "raw_seq9_up_long",
+    "side": "long",
+    "horizon": 10,
+    "tp": 0.12,
+    "sl": 0.5,
+    "train": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 141,
+      "mean": -0.40766,
+      "win_rate": 0.1489,
+      "profit_factor": 0.042,
+      "total": -57.48
+    },
+    "oos_april": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 31,
+      "mean": -0.42,
+      "win_rate": 0.129,
+      "profit_factor": 0.0356,
+      "total": -13.02
+    },
+    "latest": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 4,
+      "mean": -0.345,
+      "win_rate": 0.25,
+      "profit_factor": 0.08,
+      "total": -1.38
+    }
+  },
+  {
+    "rule": "raw_seq9_up_long",
+    "side": "long",
+    "horizon": 20,
+    "tp": 0.12,
+    "sl": 0.5,
+    "train": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 141,
+      "mean": -0.40766,
+      "win_rate": 0.1489,
+      "profit_factor": 0.042,
+      "total": -57.48
+    },
+    "oos_april": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 31,
+      "mean": -0.42,
+      "win_rate": 0.129,
+      "profit_factor": 0.0356,
+      "total": -13.02
+    },
+    "latest": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 4,
+      "mean": -0.345,
+      "win_rate": 0.25,
+      "profit_factor": 0.08,
+      "total": -1.38
+    }
+  },
+  {
+    "rule": "rsi14_revert_long",
+    "side": "long",
+    "horizon": 10,
+    "tp": 0.08,
+    "sl": 0.5,
+    "train": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 1281,
+      "mean": -0.396768,
+      "win_rate": 0.178,
+      "profit_factor": 0.0346,
+      "total": -508.26
+    },
+    "oos_april": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 493,
+      "mean": -0.403529,
+      "win_rate": 0.1663,
+      "profit_factor": 0.0319,
+      "total": -198.94
+    },
+    "latest": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 59,
+      "mean": -0.352542,
+      "win_rate": 0.2542,
+      "profit_factor": 0.0545,
+      "total": -20.8
+    }
+  },
+  {
+    "rule": "rsi14_revert_long",
+    "side": "long",
+    "horizon": 20,
+    "tp": 0.08,
+    "sl": 0.5,
+    "train": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 1281,
+      "mean": -0.396768,
+      "win_rate": 0.178,
+      "profit_factor": 0.0346,
+      "total": -508.26
+    },
+    "oos_april": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 493,
+      "mean": -0.403529,
+      "win_rate": 0.1663,
+      "profit_factor": 0.0319,
+      "total": -198.94
+    },
+    "latest": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 59,
+      "mean": -0.352542,
+      "win_rate": 0.2542,
+      "profit_factor": 0.0545,
+      "total": -20.8
+    }
+  },
+  {
+    "rule": "rsi14_revert_long",
+    "side": "long",
+    "horizon": 10,
+    "tp": 0.08,
+    "sl": 0.3,
+    "train": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 1281,
+      "mean": -0.264403,
+      "win_rate": 0.0937,
+      "profit_factor": 0.0276,
+      "total": -338.7
+    },
+    "oos_april": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 493,
+      "mean": -0.263002,
+      "win_rate": 0.0974,
+      "profit_factor": 0.0288,
+      "total": -129.66
+    },
+    "latest": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 59,
+      "mean": -0.248475,
+      "win_rate": 0.1356,
+      "profit_factor": 0.0418,
+      "total": -14.66
+    }
+  },
+  {
+    "rule": "rsi14_revert_long",
+    "side": "long",
+    "horizon": 20,
+    "tp": 0.08,
+    "sl": 0.3,
+    "train": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 1281,
+      "mean": -0.264403,
+      "win_rate": 0.0937,
+      "profit_factor": 0.0276,
+      "total": -338.7
+    },
+    "oos_april": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 493,
+      "mean": -0.263002,
+      "win_rate": 0.0974,
+      "profit_factor": 0.0288,
+      "total": -129.66
+    },
+    "latest": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 59,
+      "mean": -0.248475,
+      "win_rate": 0.1356,
+      "profit_factor": 0.0418,
+      "total": -14.66
+    }
+  },
+  {
+    "rule": "breakout5_long",
+    "side": "long",
+    "horizon": 20,
+    "tp": 0.08,
+    "sl": 0.3,
+    "train": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 9192,
+      "mean": -0.267548,
+      "win_rate": 0.0854,
+      "profit_factor": 0.0249,
+      "total": -2459.3
+    },
+    "oos_april": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 3797,
+      "mean": -0.263771,
+      "win_rate": 0.0953,
+      "profit_factor": 0.0281,
+      "total": -1001.54
+    },
+    "latest": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 447,
+      "mean": -0.257494,
+      "win_rate": 0.1119,
+      "profit_factor": 0.0336,
+      "total": -115.1
+    }
+  },
+  {
+    "rule": "breakout5_long",
+    "side": "long",
+    "horizon": 10,
+    "tp": 0.08,
+    "sl": 0.3,
+    "train": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 9192,
+      "mean": -0.267548,
+      "win_rate": 0.0854,
+      "profit_factor": 0.0249,
+      "total": -2459.3
+    },
+    "oos_april": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 3797,
+      "mean": -0.263771,
+      "win_rate": 0.0953,
+      "profit_factor": 0.0281,
+      "total": -1001.54
+    },
+    "latest": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 450,
+      "mean": -0.257778,
+      "win_rate": 0.1111,
+      "profit_factor": 0.0333,
+      "total": -116.0
+    }
+  },
+  {
+    "rule": "raw_seq9_up_long",
+    "side": "long",
+    "horizon": 10,
+    "tp": 0.12,
+    "sl": 0.3,
+    "train": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 141,
+      "mean": -0.267234,
+      "win_rate": 0.078,
+      "profit_factor": 0.0338,
+      "total": -37.68
+    },
+    "oos_april": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 31,
+      "mean": -0.272903,
+      "win_rate": 0.0645,
+      "profit_factor": 0.0276,
+      "total": -8.46
+    },
+    "latest": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 4,
+      "mean": -0.195,
+      "win_rate": 0.25,
+      "profit_factor": 0.1333,
+      "total": -0.78
+    }
+  },
+  {
+    "rule": "raw_seq9_up_long",
+    "side": "long",
+    "horizon": 20,
+    "tp": 0.12,
+    "sl": 0.3,
+    "train": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 141,
+      "mean": -0.267234,
+      "win_rate": 0.078,
+      "profit_factor": 0.0338,
+      "total": -37.68
+    },
+    "oos_april": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 31,
+      "mean": -0.272903,
+      "win_rate": 0.0645,
+      "profit_factor": 0.0276,
+      "total": -8.46
+    },
+    "latest": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 4,
+      "mean": -0.195,
+      "win_rate": 0.25,
+      "profit_factor": 0.1333,
+      "total": -0.78
+    }
+  },
+  {
+    "rule": "ema9_20_momo_long",
+    "side": "long",
+    "horizon": 20,
+    "tp": 0.08,
+    "sl": 0.3,
+    "train": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 16851,
+      "mean": -0.264844,
+      "win_rate": 0.0925,
+      "profit_factor": 0.0272,
+      "total": -4462.88
+    },
+    "oos_april": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 6919,
+      "mean": -0.266663,
+      "win_rate": 0.0877,
+      "profit_factor": 0.0256,
+      "total": -1845.04
+    },
+    "latest": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 797,
+      "mean": -0.264718,
+      "win_rate": 0.0928,
+      "profit_factor": 0.0273,
+      "total": -210.98
+    }
+  },
+  {
+    "rule": "ema9_20_momo_long",
+    "side": "long",
+    "horizon": 10,
+    "tp": 0.08,
+    "sl": 0.3,
+    "train": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 16851,
+      "mean": -0.264844,
+      "win_rate": 0.0925,
+      "profit_factor": 0.0272,
+      "total": -4462.88
+    },
+    "oos_april": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 6919,
+      "mean": -0.266663,
+      "win_rate": 0.0877,
+      "profit_factor": 0.0256,
+      "total": -1845.04
+    },
+    "latest": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 802,
+      "mean": -0.264938,
+      "win_rate": 0.0923,
+      "profit_factor": 0.0271,
+      "total": -212.48
+    }
+  },
+  {
+    "rule": "core_ema9_20_long",
+    "side": "long",
+    "horizon": 20,
+    "tp": 0.08,
+    "sl": 0.3,
+    "train": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 3196,
+      "mean": -0.250063,
+      "win_rate": 0.1314,
+      "profit_factor": 0.0403,
+      "total": -799.2
+    },
+    "oos_april": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 1284,
+      "mean": -0.26715,
+      "win_rate": 0.0864,
+      "profit_factor": 0.0252,
+      "total": -343.02
+    },
+    "latest": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 56,
+      "mean": -0.245714,
+      "win_rate": 0.1429,
+      "profit_factor": 0.0444,
+      "total": -13.76
+    }
+  },
+  {
+    "rule": "core_ema9_20_long",
+    "side": "long",
+    "horizon": 10,
+    "tp": 0.08,
+    "sl": 0.3,
+    "train": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 3196,
+      "mean": -0.250063,
+      "win_rate": 0.1314,
+      "profit_factor": 0.0403,
+      "total": -799.2
+    },
+    "oos_april": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 1284,
+      "mean": -0.26715,
+      "win_rate": 0.0864,
+      "profit_factor": 0.0252,
+      "total": -343.02
+    },
+    "latest": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 57,
+      "mean": -0.246667,
+      "win_rate": 0.1404,
+      "profit_factor": 0.0435,
+      "total": -14.06
+    }
+  },
+  {
+    "rule": "ema50_200_momo_short",
+    "side": "short",
+    "horizon": 10,
+    "tp": 0.08,
+    "sl": 0.3,
+    "train": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 10,
+      "count": 14581,
+      "mean": -0.271828,
+      "win_rate": 0.0741,
+      "profit_factor": 0.0214,
+      "total": -3963.52
+    },
+    "oos_april": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 10,
+      "count": 7278,
+      "mean": -0.267472,
+      "win_rate": 0.0856,
+      "profit_factor": 0.025,
+      "total": -1946.66
+    },
+    "latest": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 10,
+      "count": 1081,
+      "mean": -0.26766,
+      "win_rate": 0.0851,
+      "profit_factor": 0.0248,
+      "total": -289.34
+    }
+  },
+  {
+    "rule": "ema50_200_momo_short",
+    "side": "short",
+    "horizon": 20,
+    "tp": 0.08,
+    "sl": 0.3,
+    "train": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 20,
+      "count": 14581,
+      "mean": -0.271828,
+      "win_rate": 0.0741,
+      "profit_factor": 0.0214,
+      "total": -3963.52
+    },
+    "oos_april": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 20,
+      "count": 7278,
+      "mean": -0.267472,
+      "win_rate": 0.0856,
+      "profit_factor": 0.025,
+      "total": -1946.66
+    },
+    "latest": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 20,
+      "count": 1081,
+      "mean": -0.26766,
+      "win_rate": 0.0851,
+      "profit_factor": 0.0248,
+      "total": -289.34
+    }
+  },
+  {
+    "rule": "raw_seq9_up_long",
+    "side": "long",
+    "horizon": 10,
+    "tp": 0.08,
+    "sl": 0.5,
+    "train": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 141,
+      "mean": -0.413617,
+      "win_rate": 0.1489,
+      "profit_factor": 0.028,
+      "total": -58.32
+    },
+    "oos_april": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 31,
+      "mean": -0.425161,
+      "win_rate": 0.129,
+      "profit_factor": 0.0237,
+      "total": -13.18
+    },
+    "latest": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 4,
+      "mean": -0.355,
+      "win_rate": 0.25,
+      "profit_factor": 0.0533,
+      "total": -1.42
+    }
+  },
+  {
+    "rule": "raw_seq9_up_long",
+    "side": "long",
+    "horizon": 20,
+    "tp": 0.08,
+    "sl": 0.5,
+    "train": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 141,
+      "mean": -0.413617,
+      "win_rate": 0.1489,
+      "profit_factor": 0.028,
+      "total": -58.32
+    },
+    "oos_april": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 31,
+      "mean": -0.425161,
+      "win_rate": 0.129,
+      "profit_factor": 0.0237,
+      "total": -13.18
+    },
+    "latest": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 4,
+      "mean": -0.355,
+      "win_rate": 0.25,
+      "profit_factor": 0.0533,
+      "total": -1.42
+    }
+  },
+  {
+    "rule": "raw_seq9_up_long",
+    "side": "long",
+    "horizon": 10,
+    "tp": 0.08,
+    "sl": 0.3,
+    "train": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 141,
+      "mean": -0.270355,
+      "win_rate": 0.078,
+      "profit_factor": 0.0226,
+      "total": -38.12
+    },
+    "oos_april": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 31,
+      "mean": -0.275484,
+      "win_rate": 0.0645,
+      "profit_factor": 0.0184,
+      "total": -8.54
+    },
+    "latest": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 4,
+      "mean": -0.205,
+      "win_rate": 0.25,
+      "profit_factor": 0.0889,
+      "total": -0.82
+    }
+  },
+  {
+    "rule": "raw_seq9_up_long",
+    "side": "long",
+    "horizon": 20,
+    "tp": 0.08,
+    "sl": 0.3,
+    "train": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 141,
+      "mean": -0.270355,
+      "win_rate": 0.078,
+      "profit_factor": 0.0226,
+      "total": -38.12
+    },
+    "oos_april": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 31,
+      "mean": -0.275484,
+      "win_rate": 0.0645,
+      "profit_factor": 0.0184,
+      "total": -8.54
+    },
+    "latest": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 4,
+      "mean": -0.205,
+      "win_rate": 0.25,
+      "profit_factor": 0.0889,
+      "total": -0.82
+    }
+  },
+  {
+    "rule": "core_ema9_20_long",
+    "side": "long",
+    "horizon": 10,
+    "tp": 0.3,
+    "sl": 0.2,
+    "train": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 3196,
+      "mean": -0.168711,
+      "win_rate": 0.0626,
+      "profit_factor": 0.1001,
+      "total": -539.2
+    },
+    "oos_april": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 1284,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -256.8
+    },
+    "latest": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 57,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -11.4
+    }
+  },
+  {
+    "rule": "core_ema9_20_long",
+    "side": "long",
+    "horizon": 20,
+    "tp": 0.3,
+    "sl": 0.2,
+    "train": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 3196,
+      "mean": -0.168711,
+      "win_rate": 0.0626,
+      "profit_factor": 0.1001,
+      "total": -539.2
+    },
+    "oos_april": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 1284,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -256.8
+    },
+    "latest": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 56,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -11.2
+    }
+  },
+  {
+    "rule": "core_ema9_20_long",
+    "side": "long",
+    "horizon": 10,
+    "tp": 0.2,
+    "sl": 0.2,
+    "train": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 3196,
+      "mean": -0.174844,
+      "win_rate": 0.0629,
+      "profit_factor": 0.0671,
+      "total": -558.8
+    },
+    "oos_april": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 1284,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -256.8
+    },
+    "latest": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 57,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -11.4
+    }
+  },
+  {
+    "rule": "core_ema9_20_long",
+    "side": "long",
+    "horizon": 20,
+    "tp": 0.2,
+    "sl": 0.2,
+    "train": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 3196,
+      "mean": -0.174844,
+      "win_rate": 0.0629,
+      "profit_factor": 0.0671,
+      "total": -558.8
+    },
+    "oos_april": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 1284,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -256.8
+    },
+    "latest": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 56,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -11.2
+    }
+  },
+  {
+    "rule": "rsi14_revert_long",
+    "side": "long",
+    "horizon": 10,
+    "tp": 0.3,
+    "sl": 0.2,
+    "train": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 1281,
+      "mean": -0.184778,
+      "win_rate": 0.0304,
+      "profit_factor": 0.0471,
+      "total": -236.7
+    },
+    "oos_april": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 493,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -98.6
+    },
+    "latest": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 59,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -11.8
+    }
+  },
+  {
+    "rule": "rsi14_revert_long",
+    "side": "long",
+    "horizon": 20,
+    "tp": 0.3,
+    "sl": 0.2,
+    "train": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 1281,
+      "mean": -0.184778,
+      "win_rate": 0.0304,
+      "profit_factor": 0.0471,
+      "total": -236.7
+    },
+    "oos_april": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 493,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -98.6
+    },
+    "latest": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 59,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -11.8
+    }
+  },
+  {
+    "rule": "ema9_20_momo_long",
+    "side": "long",
+    "horizon": 10,
+    "tp": 0.3,
+    "sl": 0.2,
+    "train": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 16851,
+      "mean": -0.185164,
+      "win_rate": 0.0297,
+      "profit_factor": 0.0459,
+      "total": -3120.2
+    },
+    "oos_april": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 6919,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -1383.8
+    },
+    "latest": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 802,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -160.4
+    }
+  },
+  {
+    "rule": "ema9_20_momo_long",
+    "side": "long",
+    "horizon": 20,
+    "tp": 0.3,
+    "sl": 0.2,
+    "train": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 16851,
+      "mean": -0.185164,
+      "win_rate": 0.0297,
+      "profit_factor": 0.0459,
+      "total": -3120.2
+    },
+    "oos_april": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 6919,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -1383.8
+    },
+    "latest": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 797,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -159.4
+    }
+  },
+  {
+    "rule": "core_ema9_20_long",
+    "side": "long",
+    "horizon": 10,
+    "tp": 0.12,
+    "sl": 0.2,
+    "train": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 3196,
+      "mean": -0.179875,
+      "win_rate": 0.0629,
+      "profit_factor": 0.0403,
+      "total": -574.88
+    },
+    "oos_april": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 1284,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -256.8
+    },
+    "latest": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 57,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -11.4
+    }
+  },
+  {
+    "rule": "core_ema9_20_long",
+    "side": "long",
+    "horizon": 20,
+    "tp": 0.12,
+    "sl": 0.2,
+    "train": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 3196,
+      "mean": -0.179875,
+      "win_rate": 0.0629,
+      "profit_factor": 0.0403,
+      "total": -574.88
+    },
+    "oos_april": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 1284,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -256.8
+    },
+    "latest": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 56,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -11.2
+    }
+  },
+  {
+    "rule": "breakout5_long",
+    "side": "long",
+    "horizon": 10,
+    "tp": 0.3,
+    "sl": 0.2,
+    "train": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 9192,
+      "mean": -0.187815,
+      "win_rate": 0.0244,
+      "profit_factor": 0.0375,
+      "total": -1726.4
+    },
+    "oos_april": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 3797,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -759.4
+    },
+    "latest": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 450,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -90.0
+    }
+  },
+  {
+    "rule": "breakout5_long",
+    "side": "long",
+    "horizon": 20,
+    "tp": 0.3,
+    "sl": 0.2,
+    "train": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 9192,
+      "mean": -0.187815,
+      "win_rate": 0.0244,
+      "profit_factor": 0.0375,
+      "total": -1726.4
+    },
+    "oos_april": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 3797,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -759.4
+    },
+    "latest": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 447,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -89.4
+    }
+  },
+  {
+    "rule": "raw_seq9_up_long",
+    "side": "long",
+    "horizon": 10,
+    "tp": 0.3,
+    "sl": 0.2,
+    "train": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 141,
+      "mean": -0.189362,
+      "win_rate": 0.0213,
+      "profit_factor": 0.0326,
+      "total": -26.7
+    },
+    "oos_april": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 31,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -6.2
+    },
+    "latest": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 4,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -0.8
+    }
+  },
+  {
+    "rule": "raw_seq9_up_long",
+    "side": "long",
+    "horizon": 20,
+    "tp": 0.3,
+    "sl": 0.2,
+    "train": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 141,
+      "mean": -0.189362,
+      "win_rate": 0.0213,
+      "profit_factor": 0.0326,
+      "total": -26.7
+    },
+    "oos_april": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 31,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -6.2
+    },
+    "latest": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 4,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -0.8
+    }
+  },
+  {
+    "rule": "ema50_200_momo_short",
+    "side": "short",
+    "horizon": 10,
+    "tp": 0.3,
+    "sl": 0.2,
+    "train": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 10,
+      "count": 14581,
+      "mean": -0.189438,
+      "win_rate": 0.0211,
+      "profit_factor": 0.0324,
+      "total": -2762.2
+    },
+    "oos_april": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 10,
+      "count": 7278,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -1455.6
+    },
+    "latest": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 10,
+      "count": 1081,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -216.2
+    }
+  },
+  {
+    "rule": "ema50_200_momo_short",
+    "side": "short",
+    "horizon": 20,
+    "tp": 0.3,
+    "sl": 0.2,
+    "train": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 20,
+      "count": 14581,
+      "mean": -0.189438,
+      "win_rate": 0.0211,
+      "profit_factor": 0.0324,
+      "total": -2762.2
+    },
+    "oos_april": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 20,
+      "count": 7278,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -1455.6
+    },
+    "latest": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 20,
+      "count": 1081,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -216.2
+    }
+  },
+  {
+    "rule": "rsi14_revert_long",
+    "side": "long",
+    "horizon": 10,
+    "tp": 0.2,
+    "sl": 0.2,
+    "train": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 1281,
+      "mean": -0.187822,
+      "win_rate": 0.0304,
+      "profit_factor": 0.0314,
+      "total": -240.6
+    },
+    "oos_april": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 493,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -98.6
+    },
+    "latest": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 59,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -11.8
+    }
+  },
+  {
+    "rule": "rsi14_revert_long",
+    "side": "long",
+    "horizon": 20,
+    "tp": 0.2,
+    "sl": 0.2,
+    "train": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 1281,
+      "mean": -0.187822,
+      "win_rate": 0.0304,
+      "profit_factor": 0.0314,
+      "total": -240.6
+    },
+    "oos_april": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 493,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -98.6
+    },
+    "latest": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 59,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -11.8
+    }
+  },
+  {
+    "rule": "ema9_20_momo_long",
+    "side": "long",
+    "horizon": 10,
+    "tp": 0.2,
+    "sl": 0.2,
+    "train": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 16851,
+      "mean": -0.18806,
+      "win_rate": 0.0298,
+      "profit_factor": 0.0308,
+      "total": -3169.0
+    },
+    "oos_april": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 6919,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -1383.8
+    },
+    "latest": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 802,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -160.4
+    }
+  },
+  {
+    "rule": "ema9_20_momo_long",
+    "side": "long",
+    "horizon": 20,
+    "tp": 0.2,
+    "sl": 0.2,
+    "train": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 16851,
+      "mean": -0.18806,
+      "win_rate": 0.0298,
+      "profit_factor": 0.0308,
+      "total": -3169.0
+    },
+    "oos_april": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 6919,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -1383.8
+    },
+    "latest": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 797,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -159.4
+    }
+  },
+  {
+    "rule": "core_ema9_20_long",
+    "side": "long",
+    "horizon": 10,
+    "tp": 0.08,
+    "sl": 0.2,
+    "train": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 3196,
+      "mean": -0.18239,
+      "win_rate": 0.0629,
+      "profit_factor": 0.0268,
+      "total": -582.92
+    },
+    "oos_april": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 1284,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -256.8
+    },
+    "latest": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 57,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -11.4
+    }
+  },
+  {
+    "rule": "core_ema9_20_long",
+    "side": "long",
+    "horizon": 20,
+    "tp": 0.08,
+    "sl": 0.2,
+    "train": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 3196,
+      "mean": -0.18239,
+      "win_rate": 0.0629,
+      "profit_factor": 0.0268,
+      "total": -582.92
+    },
+    "oos_april": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 1284,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -256.8
+    },
+    "latest": {
+      "name": "core_ema9_20_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 56,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -11.2
+    }
+  },
+  {
+    "rule": "breakout5_long",
+    "side": "long",
+    "horizon": 10,
+    "tp": 0.2,
+    "sl": 0.2,
+    "train": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 9192,
+      "mean": -0.190209,
+      "win_rate": 0.0245,
+      "profit_factor": 0.0251,
+      "total": -1748.4
+    },
+    "oos_april": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 3797,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -759.4
+    },
+    "latest": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 450,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -90.0
+    }
+  },
+  {
+    "rule": "breakout5_long",
+    "side": "long",
+    "horizon": 20,
+    "tp": 0.2,
+    "sl": 0.2,
+    "train": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 9192,
+      "mean": -0.190209,
+      "win_rate": 0.0245,
+      "profit_factor": 0.0251,
+      "total": -1748.4
+    },
+    "oos_april": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 3797,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -759.4
+    },
+    "latest": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 447,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -89.4
+    }
+  },
+  {
+    "rule": "ema50_200_momo_short",
+    "side": "short",
+    "horizon": 10,
+    "tp": 0.2,
+    "sl": 0.2,
+    "train": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 10,
+      "count": 14581,
+      "mean": -0.191496,
+      "win_rate": 0.0213,
+      "profit_factor": 0.0217,
+      "total": -2792.2
+    },
+    "oos_april": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 10,
+      "count": 7278,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -1455.6
+    },
+    "latest": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 10,
+      "count": 1081,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -216.2
+    }
+  },
+  {
+    "rule": "ema50_200_momo_short",
+    "side": "short",
+    "horizon": 20,
+    "tp": 0.2,
+    "sl": 0.2,
+    "train": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 20,
+      "count": 14581,
+      "mean": -0.191496,
+      "win_rate": 0.0213,
+      "profit_factor": 0.0217,
+      "total": -2792.2
+    },
+    "oos_april": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 20,
+      "count": 7278,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -1455.6
+    },
+    "latest": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 20,
+      "count": 1081,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -216.2
+    }
+  },
+  {
+    "rule": "raw_seq9_up_long",
+    "side": "long",
+    "horizon": 10,
+    "tp": 0.2,
+    "sl": 0.2,
+    "train": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 141,
+      "mean": -0.191489,
+      "win_rate": 0.0213,
+      "profit_factor": 0.0217,
+      "total": -27.0
+    },
+    "oos_april": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 31,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -6.2
+    },
+    "latest": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 4,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -0.8
+    }
+  },
+  {
+    "rule": "raw_seq9_up_long",
+    "side": "long",
+    "horizon": 20,
+    "tp": 0.2,
+    "sl": 0.2,
+    "train": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 141,
+      "mean": -0.191489,
+      "win_rate": 0.0213,
+      "profit_factor": 0.0217,
+      "total": -27.0
+    },
+    "oos_april": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 31,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -6.2
+    },
+    "latest": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 4,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -0.8
+    }
+  },
+  {
+    "rule": "rsi14_revert_long",
+    "side": "long",
+    "horizon": 10,
+    "tp": 0.12,
+    "sl": 0.2,
+    "train": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 1281,
+      "mean": -0.190258,
+      "win_rate": 0.0304,
+      "profit_factor": 0.0188,
+      "total": -243.72
+    },
+    "oos_april": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 493,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -98.6
+    },
+    "latest": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 59,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -11.8
+    }
+  },
+  {
+    "rule": "rsi14_revert_long",
+    "side": "long",
+    "horizon": 20,
+    "tp": 0.12,
+    "sl": 0.2,
+    "train": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 1281,
+      "mean": -0.190258,
+      "win_rate": 0.0304,
+      "profit_factor": 0.0188,
+      "total": -243.72
+    },
+    "oos_april": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 493,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -98.6
+    },
+    "latest": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 59,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -11.8
+    }
+  },
+  {
+    "rule": "ema9_20_momo_long",
+    "side": "long",
+    "horizon": 10,
+    "tp": 0.12,
+    "sl": 0.2,
+    "train": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 16851,
+      "mean": -0.190448,
+      "win_rate": 0.0298,
+      "profit_factor": 0.0185,
+      "total": -3209.24
+    },
+    "oos_april": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 6919,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -1383.8
+    },
+    "latest": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 802,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -160.4
+    }
+  },
+  {
+    "rule": "ema9_20_momo_long",
+    "side": "long",
+    "horizon": 20,
+    "tp": 0.12,
+    "sl": 0.2,
+    "train": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 16851,
+      "mean": -0.190448,
+      "win_rate": 0.0298,
+      "profit_factor": 0.0185,
+      "total": -3209.24
+    },
+    "oos_april": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 6919,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -1383.8
+    },
+    "latest": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 797,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -159.4
+    }
+  },
+  {
+    "rule": "breakout5_long",
+    "side": "long",
+    "horizon": 10,
+    "tp": 0.12,
+    "sl": 0.2,
+    "train": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 9192,
+      "mean": -0.192167,
+      "win_rate": 0.0245,
+      "profit_factor": 0.0151,
+      "total": -1766.4
+    },
+    "oos_april": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 3797,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -759.4
+    },
+    "latest": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 450,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -90.0
+    }
+  },
+  {
+    "rule": "breakout5_long",
+    "side": "long",
+    "horizon": 20,
+    "tp": 0.12,
+    "sl": 0.2,
+    "train": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 9192,
+      "mean": -0.192167,
+      "win_rate": 0.0245,
+      "profit_factor": 0.0151,
+      "total": -1766.4
+    },
+    "oos_april": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 3797,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -759.4
+    },
+    "latest": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 447,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -89.4
+    }
+  },
+  {
+    "rule": "ema50_200_momo_short",
+    "side": "short",
+    "horizon": 10,
+    "tp": 0.12,
+    "sl": 0.2,
+    "train": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 10,
+      "count": 14581,
+      "mean": -0.193175,
+      "win_rate": 0.0213,
+      "profit_factor": 0.0131,
+      "total": -2816.68
+    },
+    "oos_april": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 10,
+      "count": 7278,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -1455.6
+    },
+    "latest": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 10,
+      "count": 1081,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -216.2
+    }
+  },
+  {
+    "rule": "ema50_200_momo_short",
+    "side": "short",
+    "horizon": 20,
+    "tp": 0.12,
+    "sl": 0.2,
+    "train": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 20,
+      "count": 14581,
+      "mean": -0.193175,
+      "win_rate": 0.0213,
+      "profit_factor": 0.0131,
+      "total": -2816.68
+    },
+    "oos_april": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 20,
+      "count": 7278,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -1455.6
+    },
+    "latest": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 20,
+      "count": 1081,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -216.2
+    }
+  },
+  {
+    "rule": "raw_seq9_up_long",
+    "side": "long",
+    "horizon": 10,
+    "tp": 0.12,
+    "sl": 0.2,
+    "train": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 141,
+      "mean": -0.193191,
+      "win_rate": 0.0213,
+      "profit_factor": 0.013,
+      "total": -27.24
+    },
+    "oos_april": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 31,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -6.2
+    },
+    "latest": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 4,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -0.8
+    }
+  },
+  {
+    "rule": "raw_seq9_up_long",
+    "side": "long",
+    "horizon": 20,
+    "tp": 0.12,
+    "sl": 0.2,
+    "train": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 141,
+      "mean": -0.193191,
+      "win_rate": 0.0213,
+      "profit_factor": 0.013,
+      "total": -27.24
+    },
+    "oos_april": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 31,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -6.2
+    },
+    "latest": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 4,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -0.8
+    }
+  },
+  {
+    "rule": "rsi14_revert_long",
+    "side": "long",
+    "horizon": 10,
+    "tp": 0.08,
+    "sl": 0.2,
+    "train": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 1281,
+      "mean": -0.191475,
+      "win_rate": 0.0304,
+      "profit_factor": 0.0126,
+      "total": -245.28
+    },
+    "oos_april": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 493,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -98.6
+    },
+    "latest": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 59,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -11.8
+    }
+  },
+  {
+    "rule": "rsi14_revert_long",
+    "side": "long",
+    "horizon": 20,
+    "tp": 0.08,
+    "sl": 0.2,
+    "train": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 1281,
+      "mean": -0.191475,
+      "win_rate": 0.0304,
+      "profit_factor": 0.0126,
+      "total": -245.28
+    },
+    "oos_april": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 493,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -98.6
+    },
+    "latest": {
+      "name": "rsi14_revert_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 59,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -11.8
+    }
+  },
+  {
+    "rule": "ema9_20_momo_long",
+    "side": "long",
+    "horizon": 10,
+    "tp": 0.08,
+    "sl": 0.2,
+    "train": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 16851,
+      "mean": -0.191642,
+      "win_rate": 0.0298,
+      "profit_factor": 0.0123,
+      "total": -3229.36
+    },
+    "oos_april": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 6919,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -1383.8
+    },
+    "latest": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 802,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -160.4
+    }
+  },
+  {
+    "rule": "ema9_20_momo_long",
+    "side": "long",
+    "horizon": 20,
+    "tp": 0.08,
+    "sl": 0.2,
+    "train": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 16851,
+      "mean": -0.191642,
+      "win_rate": 0.0298,
+      "profit_factor": 0.0123,
+      "total": -3229.36
+    },
+    "oos_april": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 6919,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -1383.8
+    },
+    "latest": {
+      "name": "ema9_20_momo_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 797,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -159.4
+    }
+  },
+  {
+    "rule": "breakout5_long",
+    "side": "long",
+    "horizon": 10,
+    "tp": 0.08,
+    "sl": 0.2,
+    "train": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 9192,
+      "mean": -0.193146,
+      "win_rate": 0.0245,
+      "profit_factor": 0.01,
+      "total": -1775.4
+    },
+    "oos_april": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 3797,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -759.4
+    },
+    "latest": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 450,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -90.0
+    }
+  },
+  {
+    "rule": "breakout5_long",
+    "side": "long",
+    "horizon": 20,
+    "tp": 0.08,
+    "sl": 0.2,
+    "train": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 9192,
+      "mean": -0.193146,
+      "win_rate": 0.0245,
+      "profit_factor": 0.01,
+      "total": -1775.4
+    },
+    "oos_april": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 3797,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -759.4
+    },
+    "latest": {
+      "name": "breakout5_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 447,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -89.4
+    }
+  },
+  {
+    "rule": "ema50_200_momo_short",
+    "side": "short",
+    "horizon": 10,
+    "tp": 0.08,
+    "sl": 0.2,
+    "train": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 10,
+      "count": 14581,
+      "mean": -0.194028,
+      "win_rate": 0.0213,
+      "profit_factor": 0.0087,
+      "total": -2829.12
+    },
+    "oos_april": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 10,
+      "count": 7278,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -1455.6
+    },
+    "latest": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 10,
+      "count": 1081,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -216.2
+    }
+  },
+  {
+    "rule": "ema50_200_momo_short",
+    "side": "short",
+    "horizon": 20,
+    "tp": 0.08,
+    "sl": 0.2,
+    "train": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 20,
+      "count": 14581,
+      "mean": -0.194028,
+      "win_rate": 0.0213,
+      "profit_factor": 0.0087,
+      "total": -2829.12
+    },
+    "oos_april": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 20,
+      "count": 7278,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -1455.6
+    },
+    "latest": {
+      "name": "ema50_200_momo_short",
+      "side": "short",
+      "horizon": 20,
+      "count": 1081,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -216.2
+    }
+  },
+  {
+    "rule": "raw_seq9_up_long",
+    "side": "long",
+    "horizon": 10,
+    "tp": 0.08,
+    "sl": 0.2,
+    "train": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 141,
+      "mean": -0.194043,
+      "win_rate": 0.0213,
+      "profit_factor": 0.0087,
+      "total": -27.36
+    },
+    "oos_april": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 31,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -6.2
+    },
+    "latest": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 10,
+      "count": 4,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -0.8
+    }
+  },
+  {
+    "rule": "raw_seq9_up_long",
+    "side": "long",
+    "horizon": 20,
+    "tp": 0.08,
+    "sl": 0.2,
+    "train": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 141,
+      "mean": -0.194043,
+      "win_rate": 0.0213,
+      "profit_factor": 0.0087,
+      "total": -27.36
+    },
+    "oos_april": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 31,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -6.2
+    },
+    "latest": {
+      "name": "raw_seq9_up_long",
+      "side": "long",
+      "horizon": 20,
+      "count": 4,
+      "mean": -0.2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total": -0.8
+    }
+  }
+]

@@ -15,6 +15,7 @@ data/raw/
 data/backtests/
 data/walkforward/
 data/forward-demo/
+data/research/**/*.parquet
 
 # Logs
 *.log

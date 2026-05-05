@@ -70,7 +70,22 @@ Run tuning candidates without changing the EA logic:
 
 The current selected tuned preset is `dense_entries_aggressive`, installed into `GoldMHighRiskMicroScalper_GOLDm.set`.
 
-After the research-driven pass, the active preset was changed to `tight_spread_aggressive` because it had the least-bad OOS result among tested variants while preserving high trade count. It is still not profitable in the tested OOS window.
+After the research-driven pass, the active preset was changed to `tight_spread_aggressive` because it had the least-bad OOS result among tested variants while preserving high trade count. It was still not profitable in the tested OOS window.
+
+After raw candle mining, the active research preset was changed again to `mined_alt8_long_h20_runner`. It uses the mined sequence `UDUDUDUD` as a long-only trigger and much looser runner exits:
+
+- `InpSignalModel=2`
+- `InpMinedRuleMode=3`
+- `InpMinedRawSequence=UDUDUDUD`
+- `InpMaxPositions=1`
+- `InpAllowAveraging=false`
+- `InpMaxTotalOpenLot=0.10`
+- `InpLockStartMin=1.50`
+- `InpTrailBackMin=0.70`
+- `InpEmergencySLMin=3.00`
+- `InpMaxHoldSeconds=1200`
+
+This preset is the current aggressive research baseline because it reached `8.55 USD` from a `5 USD` deposit in the March screen and `10.68 USD` in the Jan-Mar in-sample run. It failed OOS April and latest May, so it must not be treated as validated live-ready settings.
 
 ## Review Metrics
 
