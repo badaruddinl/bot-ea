@@ -94,6 +94,13 @@ input int             InpSession2EndHour                 = 17;
 input MinedRuleMode   InpMinedRuleMode                   = MINED_RULE_RSI14_REVERT_LONG;
 input int             InpMinedRawBars                    = 9;
 input string          InpMinedRawSequence                = "UUUUUUU";
+input bool            InpUseMinedRSIFilter               = false;
+input double          InpMinedMinRSI                     = 0.0;
+input double          InpMinedMaxRSI                     = 100.0;
+input bool            InpUseMinedHourMask                = false;
+input string          InpMinedAllowedHours               = "";
+input double          InpMinedMinATR                     = 0.0;
+input double          InpMinedMaxATR                     = 0.0;
 
 input double          InpTrendADXOn                      = 22.0;
 input double          InpRangeADXOn                      = 16.0;
@@ -144,6 +151,9 @@ input double          InpMaxDailyLossPercent             = 5.0;
 input double          InpMaxEquityDrawdownStop           = 10.0;
 input int             InpMaxConsecutiveLoss              = 3;
 input int             InpPauseAfterLossMinutes           = 10;
+input bool            InpUseAdaptiveTradePause           = false;
+input int             InpAdaptiveLossStreak              = 3;
+input int             InpAdaptivePauseMinutes            = 30;
 input bool            InpNoTradeDuringRollover           = true;
 input int             InpRolloverStartHour               = 23;
 input int             InpRolloverStartMinute             = 55;
@@ -212,6 +222,9 @@ double   g_dayStartEquity = 0.0;
 int      g_currentDayOfYear = -1;
 int      g_consecutiveLosses = 0;
 datetime g_lastLossTime = 0;
+int      g_adaptiveLossStreak = 0;
+datetime g_adaptivePauseUntil = 0;
+ulong    g_lastAdaptiveDeal = 0;
 
 long g_diagTicks = 0;
 long g_diagIndicatorReady = 0;
@@ -653,6 +666,8 @@ int ScoreMinedBuy(const IndicatorSnapshot &snap, const double spread, const bool
 
    if(!signal)
       return 0;
+   if(!MinedAdaptiveContextOk(snap))
+      return 0;
 
    int score = 100;
    if(spread > InpMaxSpread)
@@ -675,6 +690,8 @@ int ScoreMinedSell(const IndicatorSnapshot &snap, const double spread, const boo
 
    if(!signal)
       return 0;
+   if(!MinedAdaptiveContextOk(snap))
+      return 0;
 
    int score = 100;
    if(spread > InpMaxSpread)
@@ -684,6 +701,47 @@ int ScoreMinedSell(const IndicatorSnapshot &snap, const double spread, const boo
    if(tickDown)
       score += 5;
    return score;
+}
+
+bool MinedAdaptiveContextOk(const IndicatorSnapshot &snap)
+{
+   if(InpUseMinedRSIFilter && (snap.rsi1 < InpMinedMinRSI || snap.rsi1 > InpMinedMaxRSI))
+      return false;
+   if(InpUseMinedHourMask && !HourIsAllowed(InpMinedAllowedHours))
+      return false;
+   if(InpMinedMinATR > 0.0 && snap.atr1 < InpMinedMinATR)
+      return false;
+   if(InpMinedMaxATR > 0.0 && snap.atr1 > InpMinedMaxATR)
+      return false;
+   if(InpUseAdaptiveTradePause && TimeCurrent() < g_adaptivePauseUntil)
+      return false;
+   return true;
+}
+
+bool HourIsAllowed(const string allowedHours)
+{
+   string trimmed = allowedHours;
+   StringTrimLeft(trimmed);
+   StringTrimRight(trimmed);
+   if(trimmed == "")
+      return true;
+
+   MqlDateTime dt;
+   TimeToStruct(TimeCurrent(), dt);
+
+   string parts[];
+   const int count = StringSplit(trimmed, ',', parts);
+   for(int i = 0; i < count; i++)
+   {
+      string part = parts[i];
+      StringTrimLeft(part);
+      StringTrimRight(part);
+      if(part == "")
+         continue;
+      if((int)StringToInteger(part) == dt.hour)
+         return true;
+   }
+   return false;
 }
 
 bool AtrActiveAndNormal(const IndicatorSnapshot &snap)
@@ -1406,6 +1464,7 @@ void UpdateClosedTradeStats()
 
    double lastProfit = 0.0;
    datetime lastTime = 0;
+   ulong lastDeal = 0;
    int consecutive = 0;
    for(int i = 0; i < HistoryDealsTotal(); i++)
    {
@@ -1427,6 +1486,7 @@ void UpdateClosedTradeStats()
       {
          lastTime = closeTime;
          lastProfit = profit;
+         lastDeal = deal;
       }
    }
 
@@ -1460,6 +1520,21 @@ void UpdateClosedTradeStats()
    g_consecutiveLosses = consecutive;
    if(lastProfit < 0.0)
       g_lastLossTime = lastTime;
+
+   if(InpUseAdaptiveTradePause && lastDeal != 0 && lastDeal != g_lastAdaptiveDeal)
+   {
+      g_lastAdaptiveDeal = lastDeal;
+      if(lastProfit < 0.0)
+         g_adaptiveLossStreak++;
+      else if(lastProfit > 0.0)
+         g_adaptiveLossStreak = 0;
+
+      if(g_adaptiveLossStreak >= InpAdaptiveLossStreak && InpAdaptiveLossStreak > 0)
+      {
+         g_adaptivePauseUntil = TimeCurrent() + InpAdaptivePauseMinutes * 60;
+         g_adaptiveLossStreak = 0;
+      }
+   }
 }
 
 double DailyLossPercent()

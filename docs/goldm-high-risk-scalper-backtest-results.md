@@ -261,3 +261,56 @@ Why the older runs usually fell to `1 USD` within a few days:
 - Win rate was not high enough to compensate for the win/loss asymmetry.
 - Spread and slippage consumed a large part of each micro target.
 - The original 60-180 second exits often cut positions before the 10-20 candle move that appeared in the mining data.
+
+## 2024 Stress And Deposit Matrix
+
+Run date: `2026-05-06`
+
+Command:
+
+```powershell
+.\scripts\run-mt5-goldm-deposit-matrix.ps1 -CloseRunningTerminal
+```
+
+Tester settings:
+
+- Symbol: `GOLDm#`
+- Period: `M1`
+- Model: every tick based on real ticks
+- Execution delay: `100 ms`
+- From: `2024.01.01`
+- To: `2026.05.06`
+- Leverage: `1:1000`
+
+Important data limitation: MT5 accepted the `2024.01.01` start date, but the tester log reported real ticks beginning at `2024.11.07 00:00:00`. The test is therefore a local MT5 stress test over the available real-tick range, not full real-tick coverage from January 2024.
+
+Results:
+
+| Variant | Deposit | Final Balance | Net | Trades |
+|---|---:|---:|---:|---:|
+| `mined_alt8_long_h20_runner` | `5` | `0.92` | `-4.08` | `115` |
+| `adaptive_alt8_rsi50_wide_runner` | `5` | `1.16` | `-3.84` | `110` |
+| `mined_alt8_long_h20_runner` | `10` | `2.10` | `-7.90` | `292` |
+| `adaptive_alt8_rsi50_wide_runner` | `10` | `1.86` | `-8.14` | `505` |
+| `mined_alt8_long_h20_runner` | `20` | `3.93` | `-16.07` | `626` |
+| `adaptive_alt8_rsi50_wide_runner` | `20` | `15.85` | `-4.15` | `701` |
+| `mined_alt8_long_h20_runner` | `30` | `5.96` | `-24.04` | `1067` |
+| `adaptive_alt8_rsi50_wide_runner` | `30` | `25.85` | `-4.15` | `701` |
+| `mined_alt8_long_h20_runner` | `50` | `18.00` | `-32.00` | `1638` |
+| `adaptive_alt8_rsi50_wide_runner` | `50` | `45.85` | `-4.15` | `701` |
+| `mined_alt8_long_h20_runner` | `100` | `68.00` | `-32.00` | `1638` |
+| `adaptive_alt8_rsi50_wide_runner` | `100` | `95.85` | `-4.15` | `701` |
+| `mined_alt8_long_h20_runner` | `200` | `200.00` | `0.00` | `0` |
+| `adaptive_alt8_rsi50_wide_runner` | `200` | `200.00` | `0.00` | `0` |
+| `mined_alt8_long_h20_runner` | `500` | `500.00` | `0.00` | `0` |
+| `adaptive_alt8_rsi50_wide_runner` | `500` | `500.00` | `0.00` | `0` |
+| `mined_alt8_long_h20_runner` | `1000` | `1000.00` | `0.00` | `0` |
+| `adaptive_alt8_rsi50_wide_runner` | `1000` | `1000.00` | `0.00` | `0` |
+
+Interpretation:
+
+- `adaptive_alt8_rsi50_wide_runner` is not profitable over this stress period, but it is materially better than the pushed baseline for deposits `5`, `20`, `30`, `50`, and `100`.
+- At `10 USD`, the adaptive variant had more trades (`505` vs `292`) but slightly worse final balance.
+- Deposits `200+` are invalid for both current presets because auto sizing requests at least `0.20` lot while `InpMaxTotalOpenLot=0.10`; entries are blocked before trading starts. A separate scalable-deposit preset must raise the lot cap and be retested.
+
+Selected active research preset after this matrix: `adaptive_alt8_rsi50_wide_runner`.

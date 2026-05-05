@@ -87,6 +87,29 @@ After raw candle mining, the active research preset was changed again to `mined_
 
 This preset is the current aggressive research baseline because it reached `8.55 USD` from a `5 USD` deposit in the March screen and `10.68 USD` in the Jan-Mar in-sample run. It failed OOS April and latest May, so it must not be treated as validated live-ready settings.
 
+After the 2024 stress/deposit matrix, the active preset was changed to `adaptive_alt8_rsi50_wide_runner`. It keeps the same mined long-only sequence but adds a coarse RSI context gate and wider runner exits:
+
+- `InpSignalModel=2`
+- `InpMinedRuleMode=3`
+- `InpMinedRawSequence=UDUDUDUD`
+- `InpRSIPeriod=14`
+- `InpUseMinedRSIFilter=true`
+- `InpMinedMinRSI=50.0`
+- `InpLockStartMin=3.00`
+- `InpTrailBackMin=1.20`
+- `InpEmergencySLMin=5.00`
+- `InpUseAdaptiveTradePause=true`
+
+This preset still is not a validated profitable EA. It became the active research baseline because it materially reduced the full stress loss versus `mined_alt8_long_h20_runner` on deposits from `5` to `100 USD`.
+
+Run the 2024 deposit matrix with:
+
+```powershell
+.\scripts\run-mt5-goldm-deposit-matrix.ps1 -CloseRunningTerminal
+```
+
+Current local MT5 real ticks for `GOLDm#` begin at `2024.11.07`, so a tester start date of `2024.01.01` does not mean real-tick coverage exists for the first ten months of 2024.
+
 ## Review Metrics
 
 Do not accept net profit alone. Review:
