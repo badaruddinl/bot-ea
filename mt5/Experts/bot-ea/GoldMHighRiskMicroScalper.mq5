@@ -30,6 +30,12 @@ enum TrendEntryMode
    TREND_ENTRY_BREAK_OR_PULL  = 2
 };
 
+enum SignalModel
+{
+   SIGNAL_MODEL_SCORE_REVISED    = 0,
+   SIGNAL_MODEL_EMA_RSI_ATR_MOMO = 1
+};
+
 input string          InpExpectedSymbol                  = "GOLDm#";
 input ulong           InpMagicNumber                     = 26050501;
 input int             InpDeviationPoints                 = 20;
@@ -61,6 +67,20 @@ input int             InpADXPeriod                       = 7;
 input int             InpDonchianPeriod                  = 5;
 input int             InpBollingerPeriod                 = 20;
 input double          InpBollingerDeviation              = 2.0;
+
+input SignalModel     InpSignalModel                     = SIGNAL_MODEL_SCORE_REVISED;
+input ENUM_TIMEFRAMES InpTrendMATimeframe                = PERIOD_M1;
+input int             InpTrendMAFast                     = 50;
+input int             InpTrendMASlow                     = 200;
+input double          InpRSIMomentumBuy                  = 52.0;
+input double          InpRSIMomentumSell                 = 48.0;
+input bool            InpUseClosedBarBreakout            = false;
+input int             InpMicroStructureBars              = 8;
+input bool            InpUseSessionFilter                = false;
+input int             InpSession1StartHour               = 7;
+input int             InpSession1EndHour                 = 11;
+input int             InpSession2StartHour               = 13;
+input int             InpSession2EndHour                 = 17;
 
 input double          InpTrendADXOn                      = 22.0;
 input double          InpRangeADXOn                      = 16.0;
@@ -95,6 +115,10 @@ input double          InpTrailBackSpreadMult             = 0.60;
 input double          InpEmergencySLMin                  = 0.80;
 input double          InpEmergencySLMax                  = 1.50;
 input double          InpEmergencySLATRMult              = 1.50;
+input bool            InpUseAtrTakeProfit                = false;
+input double          InpTakeProfitMin                   = 0.10;
+input double          InpTakeProfitMax                   = 0.60;
+input double          InpTakeProfitATRMult               = 1.20;
 
 input int             InpMaxHoldSeconds                  = 90;
 input int             InpCooldownAfterEntrySeconds       = 5;
@@ -133,6 +157,8 @@ struct IndicatorSnapshot
    double bbUpper1;
    double bbMiddle1;
    double bbLower1;
+   double trendMAFast1;
+   double trendMASlow1;
    double close1;
    double open1;
    double high1;
@@ -160,6 +186,8 @@ int g_rsiHandle = INVALID_HANDLE;
 int g_atrHandle = INVALID_HANDLE;
 int g_adxHandle = INVALID_HANDLE;
 int g_bandsHandle = INVALID_HANDLE;
+int g_trendMAFastHandle = INVALID_HANDLE;
+int g_trendMASlowHandle = INVALID_HANDLE;
 
 double   g_lastBid = 0.0;
 double   g_lastAsk = 0.0;
@@ -212,11 +240,14 @@ int OnInit()
    g_atrHandle = iATR(_Symbol, InpTimeframeEntry, InpATRPeriod);
    g_adxHandle = iADX(_Symbol, InpTimeframeEntry, InpADXPeriod);
    g_bandsHandle = iBands(_Symbol, InpTimeframeEntry, InpBollingerPeriod, 0, InpBollingerDeviation, PRICE_CLOSE);
+   g_trendMAFastHandle = iMA(_Symbol, InpTrendMATimeframe, InpTrendMAFast, 0, MODE_EMA, PRICE_CLOSE);
+   g_trendMASlowHandle = iMA(_Symbol, InpTrendMATimeframe, InpTrendMASlow, 0, MODE_EMA, PRICE_CLOSE);
 
    if(g_emaFastHandle == INVALID_HANDLE || g_emaSlowHandle == INVALID_HANDLE ||
       g_emaFilterHandle == INVALID_HANDLE || g_rsiHandle == INVALID_HANDLE ||
       g_atrHandle == INVALID_HANDLE || g_adxHandle == INVALID_HANDLE ||
-      g_bandsHandle == INVALID_HANDLE)
+      g_bandsHandle == INVALID_HANDLE || g_trendMAFastHandle == INVALID_HANDLE ||
+      g_trendMASlowHandle == INVALID_HANDLE)
    {
       Print("Failed to create one or more indicator handles");
       return INIT_FAILED;
@@ -239,6 +270,8 @@ void OnDeinit(const int reason)
    if(g_atrHandle != INVALID_HANDLE) IndicatorRelease(g_atrHandle);
    if(g_adxHandle != INVALID_HANDLE) IndicatorRelease(g_adxHandle);
    if(g_bandsHandle != INVALID_HANDLE) IndicatorRelease(g_bandsHandle);
+   if(g_trendMAFastHandle != INVALID_HANDLE) IndicatorRelease(g_trendMAFastHandle);
+   if(g_trendMASlowHandle != INVALID_HANDLE) IndicatorRelease(g_trendMASlowHandle);
 }
 
 void OnTick()
@@ -345,11 +378,13 @@ double OnTester()
 
 bool LoadIndicators(IndicatorSnapshot &snap)
 {
-   double emaFast[], emaSlow[], emaFilter[], rsi[], atr[], adx[], plusDI[], minusDI[];
+   double emaFast[], emaSlow[], emaFilter[], trendMAFast[], trendMASlow[], rsi[], atr[], adx[], plusDI[], minusDI[];
    double bbMiddle[], bbUpper[], bbLower[];
    ArrayResize(emaFast, 4);
    ArrayResize(emaSlow, 4);
    ArrayResize(emaFilter, 3);
+   ArrayResize(trendMAFast, 3);
+   ArrayResize(trendMASlow, 3);
    ArrayResize(rsi, 4);
    ArrayResize(atr, 32);
    ArrayResize(adx, 4);
@@ -361,6 +396,8 @@ bool LoadIndicators(IndicatorSnapshot &snap)
    ArraySetAsSeries(emaFast, true);
    ArraySetAsSeries(emaSlow, true);
    ArraySetAsSeries(emaFilter, true);
+   ArraySetAsSeries(trendMAFast, true);
+   ArraySetAsSeries(trendMASlow, true);
    ArraySetAsSeries(rsi, true);
    ArraySetAsSeries(atr, true);
    ArraySetAsSeries(adx, true);
@@ -373,6 +410,8 @@ bool LoadIndicators(IndicatorSnapshot &snap)
    if(CopyBuffer(g_emaFastHandle, 0, 0, 4, emaFast) < 4) return false;
    if(CopyBuffer(g_emaSlowHandle, 0, 0, 4, emaSlow) < 4) return false;
    if(CopyBuffer(g_emaFilterHandle, 0, 0, 3, emaFilter) < 3) return false;
+   if(CopyBuffer(g_trendMAFastHandle, 0, 0, 3, trendMAFast) < 3) return false;
+   if(CopyBuffer(g_trendMASlowHandle, 0, 0, 3, trendMASlow) < 3) return false;
    if(CopyBuffer(g_rsiHandle, 0, 0, 4, rsi) < 4) return false;
    if(CopyBuffer(g_atrHandle, 0, 0, 32, atr) < 16) return false;
    if(CopyBuffer(g_adxHandle, 0, 0, 4, adx) < 4) return false;
@@ -397,6 +436,8 @@ bool LoadIndicators(IndicatorSnapshot &snap)
    snap.bbMiddle1 = bbMiddle[1];
    snap.bbUpper1 = bbUpper[1];
    snap.bbLower1 = bbLower[1];
+   snap.trendMAFast1 = trendMAFast[1];
+   snap.trendMASlow1 = trendMASlow[1];
    snap.open1 = iOpen(_Symbol, InpTimeframeEntry, 1);
    snap.close1 = iClose(_Symbol, InpTimeframeEntry, 1);
    snap.high1 = iHigh(_Symbol, InpTimeframeEntry, 1);
@@ -442,6 +483,15 @@ MarketRegime DetectRegime(const IndicatorSnapshot &snap, const double bid, const
    const bool insideBands = mid <= snap.bbUpper1 && mid >= snap.bbLower1;
    const bool breakoutSpike = IsBreakoutSpike(snap);
 
+   if(InpSignalModel == SIGNAL_MODEL_EMA_RSI_ATR_MOMO)
+   {
+      const bool trendUp = snap.trendMAFast1 > snap.trendMASlow1 && mid > snap.trendMAFast1;
+      const bool trendDown = snap.trendMAFast1 < snap.trendMASlow1 && mid < snap.trendMAFast1;
+      if((trendUp || trendDown) && AtrActiveAndNormal(snap))
+         return REGIME_TREND;
+      return REGIME_NO_TRADE;
+   }
+
    if(snap.adx1 > InpTrendADXOn && alignedTrend && adxTrendOk)
       return REGIME_TREND;
 
@@ -459,6 +509,9 @@ MarketRegime DetectRegime(const IndicatorSnapshot &snap, const double bid, const
 
 int ScoreTrendBuy(const IndicatorSnapshot &snap, const double ask, const double spread, const bool tickUp)
 {
+   if(InpSignalModel == SIGNAL_MODEL_EMA_RSI_ATR_MOMO)
+      return ScoreMomentumBuy(snap, ask, spread, tickUp);
+
    int score = 0;
    if(snap.emaFast1 > snap.emaSlow1) score += 20;
    if(snap.emaFast1 > snap.emaFast2) score += 15;
@@ -476,6 +529,9 @@ int ScoreTrendBuy(const IndicatorSnapshot &snap, const double ask, const double 
 
 int ScoreTrendSell(const IndicatorSnapshot &snap, const double bid, const double spread, const bool tickDown)
 {
+   if(InpSignalModel == SIGNAL_MODEL_EMA_RSI_ATR_MOMO)
+      return ScoreMomentumSell(snap, bid, spread, tickDown);
+
    int score = 0;
    if(snap.emaFast1 < snap.emaSlow1) score += 20;
    if(snap.emaFast1 < snap.emaFast2) score += 15;
@@ -493,6 +549,9 @@ int ScoreTrendSell(const IndicatorSnapshot &snap, const double bid, const double
 
 int ScoreRangeBuy(const IndicatorSnapshot &snap, const double bid, const double spread, const bool tickUp)
 {
+   if(InpSignalModel == SIGNAL_MODEL_EMA_RSI_ATR_MOMO)
+      return 0;
+
    int score = 0;
    if(snap.adx1 < InpRangeADXOn) score += 20;
    if(AtrActiveAndNormal(snap)) score += 15;
@@ -507,6 +566,9 @@ int ScoreRangeBuy(const IndicatorSnapshot &snap, const double bid, const double 
 
 int ScoreRangeSell(const IndicatorSnapshot &snap, const double ask, const double spread, const bool tickDown)
 {
+   if(InpSignalModel == SIGNAL_MODEL_EMA_RSI_ATR_MOMO)
+      return 0;
+
    int score = 0;
    if(snap.adx1 < InpRangeADXOn) score += 20;
    if(AtrActiveAndNormal(snap)) score += 15;
@@ -514,6 +576,38 @@ int ScoreRangeSell(const IndicatorSnapshot &snap, const double ask, const double
    if(RsiReboundSell(snap)) score += 20;
    if(RejectionFromAbove(snap)) score += 15;
    if(tickDown) score += 10;
+   if(spread > InpMaxSpread) score -= 40;
+   if(spread > InpHardMaxSpread) score -= 100;
+   return score;
+}
+
+int ScoreMomentumBuy(const IndicatorSnapshot &snap, const double ask, const double spread, const bool tickUp)
+{
+   int score = 0;
+   if(snap.trendMAFast1 > snap.trendMASlow1) score += 25;
+   if(snap.close1 > snap.trendMAFast1) score += 15;
+   if(snap.emaFast1 > snap.emaSlow1) score += 10;
+   if(snap.rsi1 >= InpRSIMomentumBuy) score += 15;
+   if(AtrActiveAndNormal(snap)) score += 10;
+   if(snap.close1 > snap.open1) score += 10;
+   if(MomentumBreakoutBuy(snap, ask) || TrendPullbackBuy(snap, ask, spread)) score += 15;
+   if(tickUp) score += 5;
+   if(spread > InpMaxSpread) score -= 40;
+   if(spread > InpHardMaxSpread) score -= 100;
+   return score;
+}
+
+int ScoreMomentumSell(const IndicatorSnapshot &snap, const double bid, const double spread, const bool tickDown)
+{
+   int score = 0;
+   if(snap.trendMAFast1 < snap.trendMASlow1) score += 25;
+   if(snap.close1 < snap.trendMAFast1) score += 15;
+   if(snap.emaFast1 < snap.emaSlow1) score += 10;
+   if(snap.rsi1 <= InpRSIMomentumSell) score += 15;
+   if(AtrActiveAndNormal(snap)) score += 10;
+   if(snap.close1 < snap.open1) score += 10;
+   if(MomentumBreakoutSell(snap, bid) || TrendPullbackSell(snap, bid, spread)) score += 15;
+   if(tickDown) score += 5;
    if(spread > InpMaxSpread) score -= 40;
    if(spread > InpHardMaxSpread) score -= 100;
    return score;
@@ -625,6 +719,28 @@ bool BreaksDonchianLow(const double price)
    for(int i = 1; i <= InpDonchianPeriod; i++)
       lowest = MathMin(lowest, iLow(_Symbol, InpTimeframeEntry, i));
    return price < lowest;
+}
+
+bool MomentumBreakoutBuy(const IndicatorSnapshot &snap, const double price)
+{
+   if(!InpUseClosedBarBreakout)
+      return BreaksDonchianHigh(price);
+
+   double highest = -DBL_MAX;
+   for(int i = 2; i <= InpMicroStructureBars + 1; i++)
+      highest = MathMax(highest, iHigh(_Symbol, InpTimeframeEntry, i));
+   return snap.close1 > highest;
+}
+
+bool MomentumBreakoutSell(const IndicatorSnapshot &snap, const double price)
+{
+   if(!InpUseClosedBarBreakout)
+      return BreaksDonchianLow(price);
+
+   double lowest = DBL_MAX;
+   for(int i = 2; i <= InpMicroStructureBars + 1; i++)
+      lowest = MathMin(lowest, iLow(_Symbol, InpTimeframeEntry, i));
+   return snap.close1 < lowest;
 }
 
 void ManageOpenPositions(
@@ -818,6 +934,11 @@ bool CanOpenNewTrade(const double lot, const double spread, const IndicatorSnaps
       reason = "rollover no-trade window";
       return false;
    }
+   if(InpUseSessionFilter && !IsConfiguredSessionWindow())
+   {
+      reason = "outside configured session";
+      return false;
+   }
    if(TimeCurrent() < g_lastEntryTime + InpCooldownAfterEntrySeconds)
    {
       reason = "entry cooldown active";
@@ -888,15 +1009,16 @@ bool CanOpenDirection(const TradeSide side, const double lot, const double price
 bool OpenMarketPosition(const TradeSide side, const double lot, const IndicatorSnapshot &snap, const string comment)
 {
    const double sl = EmergencyStopPrice(side, snap.atr1);
+   const double tp = TakeProfitPrice(side, snap.atr1);
    bool sent = false;
    if(side == SIDE_BUY)
-      sent = g_trade.Buy(lot, _Symbol, 0.0, sl, 0.0, comment);
+      sent = g_trade.Buy(lot, _Symbol, 0.0, sl, tp, comment);
    else
-      sent = g_trade.Sell(lot, _Symbol, 0.0, sl, 0.0, comment);
+      sent = g_trade.Sell(lot, _Symbol, 0.0, sl, tp, comment);
 
    const uint retcode = g_trade.ResultRetcode();
-   PrintFormat("open %s lot=%.2f sl=%.5f sent=%s retcode=%u %s order=%I64u deal=%I64u",
-      comment, lot, sl, sent ? "true" : "false", retcode, g_trade.ResultRetcodeDescription(),
+   PrintFormat("open %s lot=%.2f sl=%.5f tp=%.5f sent=%s retcode=%u %s order=%I64u deal=%I64u",
+      comment, lot, sl, tp, sent ? "true" : "false", retcode, g_trade.ResultRetcodeDescription(),
       g_trade.ResultOrder(), g_trade.ResultDeal());
 
    if(IsTradeRetcodeSuccess(retcode))
@@ -993,6 +1115,28 @@ double EmergencyStopPrice(const TradeSide side, const double atr)
    if(side == SIDE_BUY)
       return NormalizeDouble(tick.ask - distance, digits);
    return NormalizeDouble(tick.bid + distance, digits);
+}
+
+double TakeProfitPrice(const TradeSide side, const double atr)
+{
+   if(!InpUseAtrTakeProfit)
+      return 0.0;
+
+   MqlTick tick;
+   if(!SymbolInfoTick(_Symbol, tick))
+      return 0.0;
+
+   const double distance = Clamp(MathMax(InpTakeProfitMin, atr * InpTakeProfitATRMult), InpTakeProfitMin, InpTakeProfitMax);
+   const double point = SymbolPoint();
+   const long stopsLevel = SymbolInfoInteger(_Symbol, SYMBOL_TRADE_STOPS_LEVEL);
+   const double minStopDistance = stopsLevel * point;
+   if(minStopDistance > 0.0 && distance < minStopDistance)
+      return 0.0;
+
+   const int digits = (int)SymbolInfoInteger(_Symbol, SYMBOL_DIGITS);
+   if(side == SIDE_BUY)
+      return NormalizeDouble(tick.ask + distance, digits);
+   return NormalizeDouble(tick.bid - distance, digits);
 }
 
 bool HasMinimumEntryDistance(const TradeSide side, const double price, const double atr)
@@ -1251,6 +1395,26 @@ bool IsRolloverWindow()
    if(startMinutes <= endMinutes)
       return nowMinutes >= startMinutes && nowMinutes <= endMinutes;
    return nowMinutes >= startMinutes || nowMinutes <= endMinutes;
+}
+
+bool IsConfiguredSessionWindow()
+{
+   MqlDateTime dt;
+   TimeToStruct(TimeCurrent(), dt);
+   const int nowMinutes = dt.hour * 60 + dt.min;
+   return IsWithinHourWindow(nowMinutes, InpSession1StartHour, InpSession1EndHour) ||
+          IsWithinHourWindow(nowMinutes, InpSession2StartHour, InpSession2EndHour);
+}
+
+bool IsWithinHourWindow(const int nowMinutes, const int startHour, const int endHour)
+{
+   const int startMinutes = startHour * 60;
+   const int endMinutes = endHour * 60;
+   if(startHour == endHour)
+      return false;
+   if(startMinutes < endMinutes)
+      return nowMinutes >= startMinutes && nowMinutes < endMinutes;
+   return nowMinutes >= startMinutes || nowMinutes < endMinutes;
 }
 
 datetime StartOfCurrentDay()
