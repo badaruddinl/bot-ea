@@ -1,0 +1,98 @@
+# GOLDm# High-Risk Micro Scalper Testing Protocol
+
+This protocol keeps the EA inputs fixed. Backtest, OOS, and forward checks are separate evidence layers; none of them should be used to tune the baseline settings in `GoldMHighRiskMicroScalper_GOLDm.set`.
+
+## Source Strategy
+
+Baseline: `C:\Users\badaruddinl\Downloads\pilihan_strategi_final_ea_goldm_high_risk_scalper.md`
+
+Implemented artifact:
+
+- `D:\luthfi\project\bot-ea\mt5\Experts\bot-ea\GoldMHighRiskMicroScalper.mq5`
+- `D:\luthfi\project\bot-ea\mt5\Profiles\Tester\GoldMHighRiskMicroScalper_GOLDm.set`
+
+## Test Method
+
+Use MetaTrader 5 Strategy Tester with:
+
+- Symbol: `GOLDm#`
+- Period: `M1`
+- Model: `Every tick based on real ticks`
+- Optimization: off
+- Execution delay: fixed delay, default `100` ms in the script
+- Deposit: can be small if the broker symbol allows it; `InpMinimumCapitalToTrade=0.0` disables the fixed USD floor and lets broker margin/min-lot checks decide
+- Leverage: `1:1000`
+- Inputs: fixed set file above
+
+The active micro account gate is tuned for ultra-high risk: for a `5 USD` deposit, `MaxDailyLossPercent=80.0` and `MaxEquityDrawdownStop=80.0` allow trading down to roughly `1 USD` before new entries stop. `FreeMarginCheck=true` remains active, so broker margin can still block entries before that level.
+
+The default fixed test split is:
+
+- Backtest: `2026.01.01` to `2026.04.01`
+- OOS: `2026.04.01` to `2026.05.01`
+- Forward test: demo/live-shadow from `2026.05.05` onward, with the same set file and no parameter changes
+
+## Commands
+
+Install and compile:
+
+```powershell
+rtk powershell -ExecutionPolicy Bypass -File .\scripts\install-mt5-goldm-scalper.ps1
+```
+
+Run fixed-parameter backtest and OOS:
+
+```powershell
+rtk powershell -ExecutionPolicy Bypass -File .\scripts\run-mt5-goldm-backtests.ps1
+```
+
+The runner asks MT5 to write HTML reports under:
+
+```text
+D:\luthfi\project\bot-ea\data\backtests\goldm_high_risk_scalper\reports\
+```
+
+If MT5 does not emit HTML, use the tester `.tst` cache and logs under the terminal data folder. The run result summary for the first execution is recorded in `docs/goldm-high-risk-scalper-backtest-results.md`.
+
+On this machine, command-line HTML reports did not get written because MT5 saves reports relative to `C:\Program Files\MetaTrader 5`, and that directory is not user-writable. The tester journal and `.tst` cache are the authoritative local outputs for these runs.
+
+For micro-equity tests such as `5 USD`, run:
+
+```powershell
+.\scripts\run-mt5-goldm-backtests.ps1 -Deposit 5 -CloseRunningTerminal
+```
+
+Run tuning candidates without changing the EA logic:
+
+```powershell
+.\scripts\tune-mt5-goldm-scalper.ps1 -SkipInstall -CloseRunningTerminal -Deposit 5 -TopToValidate 8
+```
+
+The current selected tuned preset is `dense_entries_aggressive`, installed into `GoldMHighRiskMicroScalper_GOLDm.set`.
+
+After the research-driven pass, the active preset was changed to `tight_spread_aggressive` because it had the least-bad OOS result among tested variants while preserving high trade count. It is still not profitable in the tested OOS window.
+
+## Review Metrics
+
+Do not accept net profit alone. Review:
+
+- Profit factor
+- Expected payoff
+- Balance and equity drawdown
+- Recovery factor
+- Sharpe ratio
+- Number of trades
+- Consecutive wins/losses
+- Average win/loss
+- Holding time
+- Trades per day
+- Whether OOS behavior is materially worse than the backtest
+
+## Sources
+
+- MetaTrader 5 Strategy Testing: https://www.metatrader5.com/en/terminal/help/algotrading/testing
+- MetaTrader 5 Real and Generated Ticks: https://www.metatrader5.com/en/terminal/help/algotrading/tick_generation
+- MetaTrader 5 Tester Data Preparation: https://www.metatrader5.com/en/terminal/help/algotrading/test_preparation
+- MetaTrader 5 Testing Report: https://www.metatrader5.com/en/terminal/help/algotrading/testing_report
+- MetaTrader 5 command-line tester configuration: https://www.metatrader5.com/en/terminal/help/start_advanced/start
+- MetaTrader 5 Strategy Optimization and Forward Testing: https://www.metatrader5.com/en/terminal/help/algotrading/strategy_optimization
