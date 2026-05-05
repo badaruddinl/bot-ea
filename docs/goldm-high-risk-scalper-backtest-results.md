@@ -300,17 +300,15 @@ Results:
 | `adaptive_alt8_rsi50_wide_runner` | `50` | `45.85` | `-4.15` | `701` |
 | `mined_alt8_long_h20_runner` | `100` | `68.00` | `-32.00` | `1638` |
 | `adaptive_alt8_rsi50_wide_runner` | `100` | `95.85` | `-4.15` | `701` |
-| `mined_alt8_long_h20_runner` | `200` | `200.00` | `0.00` | `0` |
-| `adaptive_alt8_rsi50_wide_runner` | `200` | `200.00` | `0.00` | `0` |
-| `mined_alt8_long_h20_runner` | `500` | `500.00` | `0.00` | `0` |
-| `adaptive_alt8_rsi50_wide_runner` | `500` | `500.00` | `0.00` | `0` |
-| `mined_alt8_long_h20_runner` | `1000` | `1000.00` | `0.00` | `0` |
-| `adaptive_alt8_rsi50_wide_runner` | `1000` | `1000.00` | `0.00` | `0` |
+| `adaptive_alt8_rsi50_wide_runner_scaled_lot` | `200` | `195.24` | `-4.76` | `701` |
+| `adaptive_alt8_rsi50_wide_runner_scaled_lot` | `500` | `481.78` | `-18.22` | `701` |
+| `adaptive_alt8_rsi50_wide_runner_scaled_lot` | `1000` | `957.48` | `-42.52` | `701` |
 
 Interpretation:
 
 - `adaptive_alt8_rsi50_wide_runner` is not profitable over this stress period, but it is materially better than the pushed baseline for deposits `5`, `20`, `30`, `50`, and `100`.
 - At `10 USD`, the adaptive variant had more trades (`505` vs `292`) but slightly worse final balance.
-- Deposits `200+` are invalid for both current presets because auto sizing requests at least `0.20` lot while `InpMaxTotalOpenLot=0.10`; entries are blocked before trading starts. A separate scalable-deposit preset must raise the lot cap and be retested.
+- The original `200+` matrix entries were invalid because auto sizing requested `0.20+` lot while `InpMaxTotalOpenLot=0.10`; entries were blocked before trading started.
+- The active adaptive preset was corrected to `InpMaxTotalOpenLot=2.0` and retested for `200`, `500`, and `1000 USD`. Lot scaling then worked and all three deposits produced `701` trades.
 
 Selected active research preset after this matrix: `adaptive_alt8_rsi50_wide_runner`.

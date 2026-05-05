@@ -95,6 +95,7 @@ After the 2024 stress/deposit matrix, the active preset was changed to `adaptive
 - `InpRSIPeriod=14`
 - `InpUseMinedRSIFilter=true`
 - `InpMinedMinRSI=50.0`
+- `InpMaxTotalOpenLot=2.0`
 - `InpLockStartMin=3.00`
 - `InpTrailBackMin=1.20`
 - `InpEmergencySLMin=5.00`

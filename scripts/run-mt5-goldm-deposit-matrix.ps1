@@ -8,6 +8,8 @@ param(
     [int]$ExecutionDelayMs = 100,
     [double[]]$Deposits = @(5, 10, 20, 30, 50, 100, 200, 500, 1000),
     [string]$OnlyVariantRegex = "",
+    [string]$ResultName = "stress_2024_deposit_matrix",
+    [switch]$ForceRerun,
     [switch]$CloseRunningTerminal
 )
 
@@ -120,15 +122,18 @@ if($runningTerminals -and $CloseRunningTerminal) {
 }
 
 $profileDir = Join-Path $TerminalDataPath "MQL5\Profiles\Tester"
+$activeSet = Join-Path $RepoRoot "mt5\Profiles\Tester\GoldMHighRiskMicroScalper_GOLDm.set"
 $repoCandidateSet = Join-Path $RepoRoot "data\backtests\goldm_high_risk_scalper\tuning\sets\GoldMHighRiskMicroScalper_GOLDm_tune_adaptive_alt8_rsi50_wide_runner.set"
 $terminalCandidateSet = Join-Path $profileDir "GoldMHighRiskMicroScalper_GOLDm_tune_adaptive_alt8_rsi50_wide_runner.set"
 if(Test-Path -LiteralPath $repoCandidateSet) {
     Copy-Item -LiteralPath $repoCandidateSet -Destination $terminalCandidateSet -Force
+} elseif(Test-Path -LiteralPath $activeSet) {
+    Copy-Item -LiteralPath $activeSet -Destination $terminalCandidateSet -Force
 }
 
 $testerLogDir = Join-Path $TerminalDataPath "Tester\logs"
 $testerLogPath = Join-Path $testerLogDir "$(Get-Date -Format yyyyMMdd).log"
-$resultDir = Join-Path $RepoRoot "data\backtests\goldm_high_risk_scalper\stress_2024_deposit_matrix"
+$resultDir = Join-Path $RepoRoot "data\backtests\goldm_high_risk_scalper\$ResultName"
 $configDir = Join-Path $resultDir "configs"
 New-Item -ItemType Directory -Force -Path $testerLogDir, $resultDir, $configDir | Out-Null
 
@@ -150,6 +155,9 @@ if($OnlyVariantRegex) {
 }
 
 $completed = @{}
+if($ForceRerun -and (Test-Path -LiteralPath $csvPath)) {
+    Remove-Item -LiteralPath $csvPath -Force
+}
 if(Test-Path -LiteralPath $csvPath) {
     Import-Csv -LiteralPath $csvPath | ForEach-Object {
         $completed["$($_.Variant)|$($_.Deposit)"] = $true
