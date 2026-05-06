@@ -8,6 +8,8 @@ param(
     [int]$ExecutionDelayMs = 100,
     [double[]]$Deposits = @(5, 10, 20, 30, 50, 100, 200, 500, 1000),
     [string]$OnlyVariantRegex = "",
+    [string]$ExtraSetPath = "",
+    [string]$ExtraVariantName = "",
     [string]$ResultName = "stress_2024_deposit_matrix",
     [switch]$ForceRerun,
     [switch]$CloseRunningTerminal
@@ -122,6 +124,7 @@ if($runningTerminals -and $CloseRunningTerminal) {
 }
 
 $profileDir = Join-Path $TerminalDataPath "MQL5\Profiles\Tester"
+New-Item -ItemType Directory -Force -Path $profileDir | Out-Null
 $activeSet = Join-Path $RepoRoot "mt5\Profiles\Tester\GoldMHighRiskMicroScalper_GOLDm.set"
 $repoCandidateSet = Join-Path $RepoRoot "data\backtests\goldm_high_risk_scalper\tuning\sets\GoldMHighRiskMicroScalper_GOLDm_tune_adaptive_alt8_rsi50_wide_runner.set"
 $terminalCandidateSet = Join-Path $profileDir "GoldMHighRiskMicroScalper_GOLDm_tune_adaptive_alt8_rsi50_wide_runner.set"
@@ -129,6 +132,10 @@ if(Test-Path -LiteralPath $repoCandidateSet) {
     Copy-Item -LiteralPath $repoCandidateSet -Destination $terminalCandidateSet -Force
 } elseif(Test-Path -LiteralPath $activeSet) {
     Copy-Item -LiteralPath $activeSet -Destination $terminalCandidateSet -Force
+}
+if($ExtraSetPath) {
+    $resolvedExtraSetPath = (Resolve-Path -LiteralPath $ExtraSetPath).Path
+    Copy-Item -LiteralPath $resolvedExtraSetPath -Destination (Join-Path $profileDir (Split-Path -Leaf $resolvedExtraSetPath)) -Force
 }
 
 $testerLogDir = Join-Path $TerminalDataPath "Tester\logs"
@@ -150,6 +157,13 @@ $variants = @(
         SetFileName = "GoldMHighRiskMicroScalper_GOLDm_tune_adaptive_alt8_rsi50_wide_runner.set"
     }
 )
+if($ExtraSetPath) {
+    $extraName = if($ExtraVariantName) { $ExtraVariantName } else { [System.IO.Path]::GetFileNameWithoutExtension($resolvedExtraSetPath) }
+    $variants += [pscustomobject]@{
+        Name = $extraName
+        SetFileName = (Split-Path -Leaf $resolvedExtraSetPath)
+    }
+}
 if($OnlyVariantRegex) {
     $variants = $variants | Where-Object { $_.Name -match $OnlyVariantRegex }
 }
@@ -160,13 +174,13 @@ if($ForceRerun -and (Test-Path -LiteralPath $csvPath)) {
 }
 if(Test-Path -LiteralPath $csvPath) {
     Import-Csv -LiteralPath $csvPath | ForEach-Object {
-        $completed["$($_.Variant)|$($_.Deposit)"] = $true
+        $completed["$($_.Variant)|$($_.Deposit)|$($_.From)|$($_.To)"] = $true
     }
 }
 
 foreach($variant in $variants) {
     foreach($deposit in $Deposits) {
-        $key = "$($variant.Name)|$deposit"
+        $key = "$($variant.Name)|$deposit|$FromDate|$ToDate"
         if($completed.ContainsKey($key)) {
             continue
         }

@@ -312,3 +312,41 @@ Interpretation:
 - The active adaptive preset was corrected to `InpMaxTotalOpenLot=2.0` and retested for `200`, `500`, and `1000 USD`. Lot scaling then worked and all three deposits produced `701` trades.
 
 Selected active research preset after this matrix: `adaptive_alt8_rsi50_wide_runner`.
+
+## $5 Walk-Forward Retune And Stress Comparison
+
+Run date: `2026-05-06`
+
+The next pass kept the same high-risk M1 scalper vision and tested broader ideas as hypotheses rather than direct assumptions:
+
+- M5 short continuation from mined micro-structure
+- M5/M15 slower guards inspired by Fibonacci retracement and market-structure logic
+- Wider M1 runner exits with later profit lock and wider emergency SL
+
+The M5/M15 candidates did not become active because they either traded too little for the requested scalper profile or lost during screen samples. The strongest candidate remained M1 and kept high trade count.
+
+Walk-forward, `Deposit=5`, real ticks, `100 ms` execution delay:
+
+| Stage | Variant | Windows | Net | Trades | Avg PF |
+|---|---|---:|---:|---:|---:|
+| Screen | `m1_later_lock4_sl7` | `3` | `3.89` | `58` | `1.9476` |
+| Validation | `m1_later_lock4_sl7` | `3` | `3.75` | `96` | `2.0146` |
+
+OOS rows:
+
+| Variant | Sample | Final | Net | Trades | PF |
+|---|---|---:|---:|---:|---:|
+| `m1_later_lock4_sl7` | `2025.11` | `5.37` | `0.37` | `41` | `1.0492` |
+| `m1_later_lock4_sl7` | `2026.Q1` | `16.97` | `11.97` | `110` | `1.5334` |
+| `m1_later_lock4_sl7` | `2026.04-05` | `6.18` | `1.18` | `23` | `1.2453` |
+
+Full stress comparison, same local MT5 real-tick range:
+
+| Variant | Deposit | Final Balance | Net | PF | Trades |
+|---|---:|---:|---:|---:|---:|
+| `adaptive_alt8_rsi50_wide_runner` | `5` | `1.16` | `-3.84` | `0.7709` | `110` |
+| `m1_later_lock4_sl7` | `5` | `2.58` | `-2.42` | `0.9697` | `545` |
+
+The active research preset was changed to `m1_later_lock4_sl7` because it materially improved both full-stress final balance and trade count versus the previous active preset while preserving the high-risk scalper behavior. It is still not accepted as a profitable final/live preset because the full-stress net remains negative.
+
+The monthly reset diagnostic showed why the sequential stress still fails: resetting each month to `5 USD` produced a positive total net of about `14.26 USD`, but the full sequential run suffered severe path dependency. Bad months, especially `2025.10` and `2025.12`, pushed equity too low for later profitable months to recover fully under broker margin constraints.

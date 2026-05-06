@@ -103,6 +103,25 @@ After the 2024 stress/deposit matrix, the active preset was changed to `adaptive
 
 This preset still is not a validated profitable EA. It became the active research baseline because it materially reduced the full stress loss versus `mined_alt8_long_h20_runner` on deposits from `5` to `100 USD`.
 
+After the $5 walk-forward and broader structure/Fibonacci research pass, the active research baseline was changed to `m1_later_lock4_sl7`. It keeps the same high-risk M1 raw-sequence scalper direction, but lets winners run longer and gives retracement more room:
+
+- `InpSignalModel=2`
+- `InpMinedRuleMode=3`
+- `InpMinedRawSequence=UDUDUDUD`
+- `InpRSIPeriod=14`
+- `InpUseMinedRSIFilter=true`
+- `InpMinedMinRSI=50.0`
+- `InpMaxTotalOpenLot=2.0`
+- `InpLockStartMin=4.00`
+- `InpLockStartMax=10.00`
+- `InpTrailBackMin=2.00`
+- `InpTrailBackMax=6.00`
+- `InpEmergencySLMin=7.00`
+- `InpEmergencySLMax=18.00`
+- `InpMaxHoldSeconds=1800`
+
+This became active because it beat `adaptive_alt8_rsi50_wide_runner` on the same $5 full stress comparison: final balance `2.58 USD` with `545` trades versus `1.16 USD` with `110` trades. It is still not a validated profitable final/live preset because the full stress net remained negative.
+
 Run the 2024 deposit matrix with:
 
 ```powershell
