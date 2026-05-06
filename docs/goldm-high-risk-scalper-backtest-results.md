@@ -350,3 +350,28 @@ Full stress comparison, same local MT5 real-tick range:
 The active research preset was changed to `m1_later_lock4_sl7` because it materially improved both full-stress final balance and trade count versus the previous active preset while preserving the high-risk scalper behavior. It is still not accepted as a profitable final/live preset because the full-stress net remains negative.
 
 The monthly reset diagnostic showed why the sequential stress still fails: resetting each month to `5 USD` produced a positive total net of about `14.26 USD`, but the full sequential run suffered severe path dependency. Bad months, especially `2025.10` and `2025.12`, pushed equity too low for later profitable months to recover fully under broker margin constraints.
+
+## Post-Entry Failure Guard Probe
+
+Run date: `2026-05-07`
+
+A conditional 3-candle post-entry failure guard was added as an off-by-default research control. The goal was to close only after the mined M1 buy signal failed to continue during the first closed candles after entry, without changing the active global runner settings.
+
+Full stress results, `Deposit=5`:
+
+| Variant | Final Balance | Net | PF | Trades | Guard closes |
+|---|---:|---:|---:|---:|---:|
+| `m1_later_lock4_sl7` guard off | `2.58` | `-2.42` | `0.9697` | `545` | `0` |
+| `guard3_pause` | `1.45` | `-3.55` | `0.9475` | `516` | `97` |
+| `guard3_severe` | `2.61` | `-2.39` | `0.9700` | `545` | low |
+| `guard_dd20` | `1.74` | `-3.26` | `0.9530` | `513` | active after DD |
+
+Selected monthly diagnostics:
+
+| Variant | 2025.10 Net | 2025.12 Net | 2026.01 Net | 2026.02 Net | 2026.04 Net |
+|---|---:|---:|---:|---:|---:|
+| Guard off | `-3.63` | `-4.25` | `4.07` | `7.38` | `0.96` |
+| `guard_dd20` | `-1.54` | `-4.18` | `4.59` | `7.38` | `1.35` |
+| `guard3_severe` | `-3.63` | `-4.25` | `4.37` | `7.85` | `0.96` |
+
+Decision: the guard remains disabled in the active preset. `guard_dd20` improved the isolated `2025.10` loss but failed the full sequential stress. `guard3_severe` slightly improved full stress but did not address the targeted loss windows. No guard candidate met the acceptance rule for replacing the active preset.

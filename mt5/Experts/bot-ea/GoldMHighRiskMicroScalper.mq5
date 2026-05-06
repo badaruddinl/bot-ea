@@ -146,6 +146,18 @@ input int             InpCooldownAfterCloseSeconds       = 3;
 input int             InpReverseCloseMinSeconds          = 0;
 input int             InpReverseCloseOppositeScore       = 65;
 input int             InpWeakSignalCloseScore            = 45;
+input bool            InpUsePostEntryFailureGuard        = false;
+input int             InpFailureGuardBars                = 3;
+input int             InpFailureGuardBearishBars         = 2;
+input bool            InpFailureGuardRequireWindowNetLoss = true;
+input double          InpFailureGuardMinWindowLossPrice  = 0.30;
+input double          InpFailureGuardMinAdversePrice     = 1.20;
+input double          InpFailureGuardMinAdverseATRMult   = 0.20;
+input double          InpFailureGuardMaxPeakLockFraction = 0.35;
+input double          InpFailureGuardMinDrawdownPercent  = 0.0;
+input bool            InpFailureGuardCloseOnlyLoss       = true;
+input int             InpFailureGuardPauseAfterCloses    = 2;
+input int             InpFailureGuardPauseMinutes        = 30;
 
 input double          InpMaxDailyLossPercent             = 5.0;
 input double          InpMaxEquityDrawdownStop           = 10.0;
@@ -194,6 +206,7 @@ struct TicketState
 {
    ulong    ticket;
    bool     lockActive;
+   bool     failureGuardEvaluated;
    double   peakNetMove;
    datetime openTime;
 };
@@ -225,6 +238,8 @@ datetime g_lastLossTime = 0;
 int      g_adaptiveLossStreak = 0;
 datetime g_adaptivePauseUntil = 0;
 ulong    g_lastAdaptiveDeal = 0;
+int      g_failureGuardCloseStreak = 0;
+datetime g_failureGuardPauseUntil = 0;
 
 long g_diagTicks = 0;
 long g_diagIndicatorReady = 0;
@@ -242,6 +257,8 @@ long g_diagDirectionBlocked = 0;
 long g_diagOpenedBuy = 0;
 long g_diagOpenedSell = 0;
 long g_diagClosed = 0;
+long g_diagFailureGuardClosed = 0;
+long g_diagFailureGuardPaused = 0;
 
 const double ATR_SPIKE_MULTIPLIER = 2.0;
 const double ATR_DEAD_TICKS = 2.0;
@@ -978,6 +995,12 @@ void ManageOpenPositions(
          closeReason = "emergency sl";
       }
 
+      if(!shouldClose && PostEntryFailureGuardShouldClose(type, openPrice, openTime, netMove, lockStart, snap, stateIndex))
+      {
+         shouldClose = true;
+         closeReason = "post-entry failure guard";
+      }
+
       if(!shouldClose && ageSeconds >= InpMaxHoldSeconds)
       {
          if(profit > 0.0)
@@ -1003,7 +1026,105 @@ void ManageOpenPositions(
       }
 
       if(shouldClose)
-         ClosePosition(ticket, closeReason);
+      {
+         const bool closed = ClosePosition(ticket, closeReason);
+         if(closed && closeReason == "post-entry failure guard")
+            RegisterFailureGuardClose();
+      }
+   }
+}
+
+bool PostEntryFailureGuardShouldClose(
+   const long positionType,
+   const double openPrice,
+   const datetime openTime,
+   const double netMove,
+   const double lockStart,
+   const IndicatorSnapshot &snap,
+   const int stateIndex
+)
+{
+   if(!InpUsePostEntryFailureGuard)
+      return false;
+   if(InpSignalModel != SIGNAL_MODEL_MINED_RULES || InpMinedRuleMode != MINED_RULE_RAW_SEQUENCE_LONG)
+      return false;
+   if(positionType != POSITION_TYPE_BUY)
+      return false;
+   if(InpFailureGuardMinDrawdownPercent > 0.0 && EquityDrawdownPercent() < InpFailureGuardMinDrawdownPercent)
+      return false;
+   if(stateIndex < 0 || stateIndex >= ArraySize(g_states))
+      return false;
+   if(g_states[stateIndex].failureGuardEvaluated)
+      return false;
+   if(g_states[stateIndex].lockActive)
+   {
+      g_states[stateIndex].failureGuardEvaluated = true;
+      return false;
+   }
+
+   const int barsToCheck = MathMax(1, InpFailureGuardBars);
+   const int requiredBearishBars = MathMax(1, InpFailureGuardBearishBars);
+   const int entryBarShift = iBarShift(_Symbol, InpTimeframeEntry, openTime, false);
+   if(entryBarShift < barsToCheck)
+      return false;
+
+   g_states[stateIndex].failureGuardEvaluated = true;
+   if(InpFailureGuardCloseOnlyLoss && netMove >= 0.0)
+      return false;
+
+   const double adverseDistance = MathMax(InpFailureGuardMinAdversePrice, snap.atr1 * InpFailureGuardMinAdverseATRMult);
+   if(netMove > -adverseDistance)
+      return false;
+
+   const double allowedPeak = lockStart * Clamp(InpFailureGuardMaxPeakLockFraction, 0.0, 1.0);
+   if(g_states[stateIndex].peakNetMove > allowedPeak)
+      return false;
+
+   int bearishBars = 0;
+   for(int shift = 1; shift <= barsToCheck; shift++)
+   {
+      const double open = iOpen(_Symbol, InpTimeframeEntry, shift);
+      const double close = iClose(_Symbol, InpTimeframeEntry, shift);
+      if(open <= 0.0 || close <= 0.0)
+         return false;
+      if(close < open)
+         bearishBars++;
+   }
+
+   const double firstThreeNet = iClose(_Symbol, InpTimeframeEntry, 1) - openPrice;
+   if(InpFailureGuardRequireWindowNetLoss && firstThreeNet > -MathMax(0.0, InpFailureGuardMinWindowLossPrice))
+      return false;
+
+   if(bearishBars < requiredBearishBars)
+      return false;
+
+   PrintFormat(
+      "post-entry failure guard ticket=%I64u bars=%d bearish=%d netMove=%.5f firstWindowNet=%.5f peak=%.5f lockStart=%.5f adverseDistance=%.5f",
+      g_states[stateIndex].ticket,
+      barsToCheck,
+      bearishBars,
+      netMove,
+      firstThreeNet,
+      g_states[stateIndex].peakNetMove,
+      lockStart,
+      adverseDistance
+   );
+   return true;
+}
+
+void RegisterFailureGuardClose()
+{
+   g_diagFailureGuardClosed++;
+   if(InpFailureGuardPauseAfterCloses <= 0 || InpFailureGuardPauseMinutes <= 0)
+      return;
+
+   g_failureGuardCloseStreak++;
+   if(g_failureGuardCloseStreak >= InpFailureGuardPauseAfterCloses)
+   {
+      g_failureGuardPauseUntil = TimeCurrent() + InpFailureGuardPauseMinutes * 60;
+      g_failureGuardCloseStreak = 0;
+      g_diagFailureGuardPaused++;
+      PrintFormat("post-entry failure guard pause until %s", TimeToString(g_failureGuardPauseUntil, TIME_DATE | TIME_SECONDS));
    }
 }
 
@@ -1108,6 +1229,11 @@ bool CanOpenNewTrade(const double lot, const double spread, const IndicatorSnaps
    if(g_consecutiveLosses >= InpMaxConsecutiveLoss && TimeCurrent() < g_lastLossTime + InpPauseAfterLossMinutes * 60)
    {
       reason = "pause after consecutive losses";
+      return false;
+   }
+   if(InpUsePostEntryFailureGuard && TimeCurrent() < g_failureGuardPauseUntil)
+   {
+      reason = "post-entry failure guard pause active";
       return false;
    }
    if(InpNoTradeDuringRollover && IsRolloverWindow())
@@ -1429,6 +1555,7 @@ int EnsureTicketState(const ulong ticket, const datetime openTime)
    ArrayResize(g_states, size + 1);
    g_states[size].ticket = ticket;
    g_states[size].lockActive = false;
+   g_states[size].failureGuardEvaluated = false;
    g_states[size].peakNetMove = 0.0;
    g_states[size].openTime = openTime;
    return size;
@@ -1535,6 +1662,9 @@ void UpdateClosedTradeStats()
          g_adaptiveLossStreak = 0;
       }
    }
+
+   if(lastProfit > 0.0 && TimeCurrent() >= g_failureGuardPauseUntil)
+      g_failureGuardCloseStreak = 0;
 }
 
 double DailyLossPercent()
@@ -1651,7 +1781,7 @@ void CountRegime(const MarketRegime regime)
 void PrintDiagnosticSummary()
 {
    PrintFormat(
-      "diagnostic summary ticks=%I64d indicatorReady=%I64d spreadOk=%I64d trendRegime=%I64d rangeRegime=%I64d noTradeRegime=%I64d trendBuyCandidates=%I64d trendSellCandidates=%I64d rangeBuyCandidates=%I64d rangeSellCandidates=%I64d canOpenOk=%I64d canOpenBlocked=%I64d directionBlocked=%I64d openedBuy=%I64d openedSell=%I64d closed=%I64d",
+      "diagnostic summary ticks=%I64d indicatorReady=%I64d spreadOk=%I64d trendRegime=%I64d rangeRegime=%I64d noTradeRegime=%I64d trendBuyCandidates=%I64d trendSellCandidates=%I64d rangeBuyCandidates=%I64d rangeSellCandidates=%I64d canOpenOk=%I64d canOpenBlocked=%I64d directionBlocked=%I64d openedBuy=%I64d openedSell=%I64d closed=%I64d failureGuardClosed=%I64d failureGuardPaused=%I64d",
       g_diagTicks,
       g_diagIndicatorReady,
       g_diagSpreadOk,
@@ -1667,7 +1797,9 @@ void PrintDiagnosticSummary()
       g_diagDirectionBlocked,
       g_diagOpenedBuy,
       g_diagOpenedSell,
-      g_diagClosed
+      g_diagClosed,
+      g_diagFailureGuardClosed,
+      g_diagFailureGuardPaused
    );
 }
 
