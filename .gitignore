@@ -4,6 +4,11 @@ Thumbs.db
 .idea/
 .vscode/
 
+# Local secrets
+.env
+.env.*
+!.env.example
+
 # Python
 .venv/
 venv/

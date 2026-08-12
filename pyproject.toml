@@ -15,6 +15,7 @@ dependencies = [
 [project.scripts]
 bot-ea-qt = "bot_ea.entrypoints:qt_main"
 bot-ea-websocket = "bot_ea.entrypoints:websocket_main"
+goldm-telegram-worker = "goldm_signal.notify.cli:main"
 
 [project.optional-dependencies]
 live = [

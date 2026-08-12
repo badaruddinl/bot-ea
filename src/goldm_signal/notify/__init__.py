@@ -1,4 +1,11 @@
+from .approval import TelegramApprovalWorker
 from .outbox import OutboxWorker
-from .telegram import TelegramSender
+from .telegram import ApprovedTelegramSender, TelegramBotClient, TelegramSender
 
-__all__ = ["OutboxWorker", "TelegramSender"]
+__all__ = [
+    "ApprovedTelegramSender",
+    "OutboxWorker",
+    "TelegramApprovalWorker",
+    "TelegramBotClient",
+    "TelegramSender",
+]

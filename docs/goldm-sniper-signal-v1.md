@@ -54,6 +54,30 @@ Only the final `SNIPER_SIGNAL status=ENTRY_READY` event may be consumed by a
 separate execution boundary. Early-candidate, promotion, and cancellation events
 are informational and cannot authorize an order.
 
+## Telegram subscriber approval
+
+Run the notification worker with:
+
+```powershell
+$env:PYTHONPATH="$PWD\src"
+python -m goldm_signal.notify.cli
+```
+
+The worker loads `.env`, stores subscriber state in
+`runtime_data/goldm_signal.db`, and enforces this lifecycle:
+
+1. A new private chat sends `/start` and becomes `PENDING`.
+2. The requester receives no trading notifications while pending.
+3. An administrator receives Approve and Reject buttons.
+4. Only `APPROVED` chat IDs are selected by the broadcast sender.
+5. `/stop` removes a non-admin chat from future broadcasts. A rejected chat can
+   send `/start` to request access again.
+
+`TELEGRAM_ADMIN_CHAT_IDS` accepts comma-separated chat IDs and falls back to
+`TELEGRAM_CHAT_ID` for a single administrator. Admin authorization is checked
+server-side for both inline callbacks and `/approve CHAT_ID` or
+`/reject CHAT_ID`; hiding a button is never treated as authorization.
+
 ## Signal-only parity research
 
 `GoldMSniperParity.mq5` now provides a no-order Strategy Tester reference using

@@ -43,6 +43,30 @@ CREATE TABLE IF NOT EXISTS signal_outbox (
     last_error TEXT,
     UNIQUE(setup_id, event_key)
 );
+CREATE TABLE IF NOT EXISTS telegram_subscribers (
+    chat_id TEXT PRIMARY KEY,
+    username TEXT NOT NULL DEFAULT '',
+    first_name TEXT NOT NULL DEFAULT '',
+    last_name TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL CHECK(status IN ('PENDING', 'APPROVED', 'REJECTED')),
+    requested_at TEXT NOT NULL,
+    decided_at TEXT,
+    decided_by TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_telegram_subscribers_status
+    ON telegram_subscribers(status);
+CREATE TABLE IF NOT EXISTS telegram_bot_state (
+    state_key TEXT PRIMARY KEY,
+    state_value TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS telegram_deliveries (
+    outbox_id INTEGER NOT NULL REFERENCES signal_outbox(id) ON DELETE CASCADE,
+    chat_id TEXT NOT NULL REFERENCES telegram_subscribers(chat_id),
+    sent_at TEXT,
+    attempt_count INTEGER NOT NULL DEFAULT 0,
+    last_error TEXT,
+    PRIMARY KEY(outbox_id, chat_id)
+);
 """
 
 
@@ -162,6 +186,180 @@ class SignalStore:
             connection.execute(
                 "UPDATE signal_outbox SET attempt_count = attempt_count + 1, last_error = ? WHERE id = ?",
                 (error[:1000], outbox_id),
+            )
+
+    def request_telegram_subscription(
+        self,
+        *,
+        chat_id: str | int,
+        username: str = "",
+        first_name: str = "",
+        last_name: str = "",
+    ) -> tuple[dict[str, Any], bool]:
+        """Create a pending request or reopen a previously rejected request.
+
+        The boolean result is true only when an administrator needs a new
+        approval notification. Repeated ``/start`` messages from an already
+        pending or approved chat are idempotent.
+        """
+
+        normalized_id = str(chat_id)
+        now = _utc_now()
+        needs_review = False
+        with self._connect() as connection:
+            existing = connection.execute(
+                "SELECT status FROM telegram_subscribers WHERE chat_id = ?", (normalized_id,)
+            ).fetchone()
+            if existing is None:
+                connection.execute(
+                    """
+                    INSERT INTO telegram_subscribers (
+                        chat_id, username, first_name, last_name, status, requested_at
+                    ) VALUES (?, ?, ?, ?, 'PENDING', ?)
+                    """,
+                    (normalized_id, username, first_name, last_name, now),
+                )
+                needs_review = True
+            elif str(existing["status"]) == "REJECTED":
+                connection.execute(
+                    """
+                    UPDATE telegram_subscribers
+                    SET username = ?, first_name = ?, last_name = ?, status = 'PENDING',
+                        requested_at = ?, decided_at = NULL, decided_by = NULL
+                    WHERE chat_id = ?
+                    """,
+                    (username, first_name, last_name, now, normalized_id),
+                )
+                needs_review = True
+            else:
+                connection.execute(
+                    """
+                    UPDATE telegram_subscribers
+                    SET username = ?, first_name = ?, last_name = ?
+                    WHERE chat_id = ?
+                    """,
+                    (username, first_name, last_name, normalized_id),
+                )
+            row = connection.execute(
+                "SELECT * FROM telegram_subscribers WHERE chat_id = ?", (normalized_id,)
+            ).fetchone()
+        assert row is not None
+        return dict(row), needs_review
+
+    def ensure_telegram_admin(self, chat_id: str | int) -> None:
+        normalized_id = str(chat_id)
+        now = _utc_now()
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO telegram_subscribers (
+                    chat_id, status, requested_at, decided_at, decided_by
+                ) VALUES (?, 'APPROVED', ?, ?, ?)
+                ON CONFLICT(chat_id) DO UPDATE SET
+                    status = 'APPROVED', decided_at = excluded.decided_at,
+                    decided_by = excluded.decided_by
+                """,
+                (normalized_id, now, now, normalized_id),
+            )
+
+    def set_telegram_subscription_status(
+        self, *, chat_id: str | int, status: str, decided_by: str | int
+    ) -> bool:
+        normalized_status = status.upper()
+        if normalized_status not in {"APPROVED", "REJECTED"}:
+            raise ValueError("Telegram subscription status must be APPROVED or REJECTED")
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """
+                UPDATE telegram_subscribers
+                SET status = ?, decided_at = ?, decided_by = ?
+                WHERE chat_id = ?
+                """,
+                (normalized_status, _utc_now(), str(decided_by), str(chat_id)),
+            )
+        return cursor.rowcount > 0
+
+    def telegram_subscriber(self, chat_id: str | int) -> dict[str, Any] | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM telegram_subscribers WHERE chat_id = ?", (str(chat_id),)
+            ).fetchone()
+        return dict(row) if row is not None else None
+
+    def telegram_subscribers(self, *, status: str | None = None) -> list[dict[str, Any]]:
+        query = "SELECT * FROM telegram_subscribers"
+        parameters: tuple[str, ...] = ()
+        if status is not None:
+            query += " WHERE status = ?"
+            parameters = (status.upper(),)
+        query += " ORDER BY requested_at, chat_id"
+        with self._connect() as connection:
+            rows = connection.execute(query, parameters).fetchall()
+        return [dict(row) for row in rows]
+
+    def approved_telegram_chat_ids(self) -> list[str]:
+        return [
+            str(row["chat_id"]) for row in self.telegram_subscribers(status="APPROVED")
+        ]
+
+    def telegram_update_offset(self) -> int | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT state_value FROM telegram_bot_state WHERE state_key = 'update_offset'"
+            ).fetchone()
+        return int(row["state_value"]) if row is not None else None
+
+    def set_telegram_update_offset(self, offset: int) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO telegram_bot_state (state_key, state_value)
+                VALUES ('update_offset', ?)
+                ON CONFLICT(state_key) DO UPDATE SET state_value = excluded.state_value
+                """,
+                (str(offset),),
+            )
+
+    def telegram_delivery_was_sent(self, *, outbox_id: int, chat_id: str | int) -> bool:
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT sent_at FROM telegram_deliveries
+                WHERE outbox_id = ? AND chat_id = ?
+                """,
+                (outbox_id, str(chat_id)),
+            ).fetchone()
+        return row is not None and row["sent_at"] is not None
+
+    def mark_telegram_delivery_sent(self, *, outbox_id: int, chat_id: str | int) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO telegram_deliveries (
+                    outbox_id, chat_id, sent_at, attempt_count, last_error
+                ) VALUES (?, ?, ?, 1, NULL)
+                ON CONFLICT(outbox_id, chat_id) DO UPDATE SET
+                    sent_at = excluded.sent_at,
+                    attempt_count = telegram_deliveries.attempt_count + 1,
+                    last_error = NULL
+                """,
+                (outbox_id, str(chat_id), _utc_now()),
+            )
+
+    def mark_telegram_delivery_failed(
+        self, *, outbox_id: int, chat_id: str | int, error: str
+    ) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO telegram_deliveries (
+                    outbox_id, chat_id, attempt_count, last_error
+                ) VALUES (?, ?, 1, ?)
+                ON CONFLICT(outbox_id, chat_id) DO UPDATE SET
+                    attempt_count = telegram_deliveries.attempt_count + 1,
+                    last_error = excluded.last_error
+                """,
+                (outbox_id, str(chat_id), error[:1000]),
             )
 
     @contextmanager
