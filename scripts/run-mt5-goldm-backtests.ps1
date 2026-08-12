@@ -5,6 +5,15 @@ param(
     [int]$ExecutionDelayMs = 100,
     [double]$Deposit = 100.0,
     [string]$Leverage = "1:1000",
+    [string]$Symbol = "GOLDm#",
+    [string]$ExpertParameters = "GoldMHighRiskMicroScalper_GOLDm.set",
+    [string]$RunSlug = "goldm_high_risk_scalper",
+    [string]$BacktestFrom = "2026.01.01",
+    [string]$BacktestTo = "2026.04.01",
+    [string]$BacktestName = "backtest_2026_q1",
+    [string]$OosFrom = "2026.04.01",
+    [string]$OosTo = "2026.05.01",
+    [string]$OosName = "oos_2026_april",
     [switch]$SkipInstall,
     [switch]$CloseRunningTerminal
 )
@@ -50,7 +59,9 @@ function New-TesterConfig {
         [string]$ToDate,
         [double]$DepositValue,
         [string]$LeverageValue,
-        [int]$DelayMs
+        [int]$DelayMs,
+        [string]$SymbolValue,
+        [string]$ExpertParametersValue
     )
 
     $content = @"
@@ -66,8 +77,8 @@ Profile=0
 
 [Tester]
 Expert=bot-ea\GoldMHighRiskMicroScalper
-ExpertParameters=GoldMHighRiskMicroScalper_GOLDm.set
-Symbol=GOLDm#
+ExpertParameters=$ExpertParametersValue
+Symbol=$SymbolValue
 Period=M1
 Model=4
 ExecutionMode=$DelayMs
@@ -114,23 +125,31 @@ if (-not $SkipInstall) {
     & (Join-Path $PSScriptRoot "install-mt5-goldm-scalper.ps1") -RepoRoot $RepoRoot -TerminalDataPath $dataPath
 }
 
-$runRoot = Join-Path $RepoRoot "data\backtests\goldm_high_risk_scalper"
+$repoSetPath = Join-Path $RepoRoot "mt5\Profiles\Tester\$ExpertParameters"
+if (-not (Test-Path -LiteralPath $repoSetPath)) {
+    throw "Tester parameter file not found: $repoSetPath"
+}
+$testerProfileDir = Join-Path $dataPath "MQL5\Profiles\Tester"
+New-Item -ItemType Directory -Force -Path $testerProfileDir | Out-Null
+Copy-Item -LiteralPath $repoSetPath -Destination (Join-Path $testerProfileDir $ExpertParameters) -Force
+
+$runRoot = Join-Path $RepoRoot "data\backtests\$RunSlug"
 $configDir = Join-Path $runRoot "configs"
 $reportDir = Join-Path $runRoot "reports"
 New-Item -ItemType Directory -Force -Path $configDir, $reportDir | Out-Null
 
 $tests = @(
     @{
-        Name = "backtest_2026_q1"
-        From = "2026.01.01"
-        To = "2026.04.01"
-        Report = (Join-Path $reportDir "backtest_2026_q1.html")
+        Name = $BacktestName
+        From = $BacktestFrom
+        To = $BacktestTo
+        Report = (Join-Path $reportDir "$BacktestName.html")
     },
     @{
-        Name = "oos_2026_april"
-        From = "2026.04.01"
-        To = "2026.05.01"
-        Report = (Join-Path $reportDir "oos_2026_april.html")
+        Name = $OosName
+        From = $OosFrom
+        To = $OosTo
+        Report = (Join-Path $reportDir "$OosName.html")
     }
 )
 
@@ -143,7 +162,9 @@ foreach ($test in $tests) {
         -ToDate $test.To `
         -DepositValue $Deposit `
         -LeverageValue $Leverage `
-        -DelayMs $ExecutionDelayMs
+        -DelayMs $ExecutionDelayMs `
+        -SymbolValue $Symbol `
+        -ExpertParametersValue $ExpertParameters
 
     Write-Output "starting_test=$($test.Name)"
     Write-Output "config=$configPath"
