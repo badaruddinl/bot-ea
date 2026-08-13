@@ -44,6 +44,49 @@ class GoldMMt5LogBridgeTests(unittest.TestCase):
         self.assertEqual(event.setup_id, "GOLD.i#-BUY-4379.22-2026.08.13 12:15")
         self.assertEqual(event.fields["confidence"], "64")
         self.assertIn("Belum entry", event.telegram_text)
+        self.assertIn("📍 LEVEL PANTAU\n• Trigger: 4379.22", event.telegram_text)
+        self.assertIn("📊 VALIDASI", event.telegram_text)
+        self.assertIn(
+            "🕒 Waktu sinyal: 13 Agu 2026 • 19:15 WIB (UTC+7)",
+            event.telegram_text,
+        )
+        self.assertTrue(
+            event.telegram_text.endswith(
+                "🆔 GOLD.i#-BUY-4379.22-2026.08.13 19:15 WIB"
+            )
+        )
+
+    def test_entry_ready_message_uses_scannable_sections(self) -> None:
+        event = parse_mt5_log_line(SIGNAL)
+        self.assertIsNotNone(event)
+        assert event is not None
+        self.assertEqual(
+            event.telegram_text,
+            "\n".join(
+                [
+                    "🔔 ENTRY READY",
+                    "GOLD.i#  •  BUY",
+                    "🕒 Waktu sinyal: 13 Agu 2026 • 19:15 WIB (UTC+7)",
+                    "",
+                    "💰 RENCANA TRADE",
+                    "• Entry: 4380.10",
+                    "• Stop Loss: 4374.20",
+                    "• Take Profit: 4397.80",
+                    "",
+                    "📊 VALIDASI FINAL",
+                    "• Score: 78/100",
+                    "• Projected R: 3.000R",
+                    "• M5 votes: 3",
+                    "• Konfirmasi M1: ✅ Ya",
+                    "",
+                    "⚠️ STATUS ORDER",
+                    "Sinyal akun demo — bukan konfirmasi bahwa order broker sudah terbuka.",
+                    "Periksa tab Trade di MT5 untuk status eksekusi.",
+                    "",
+                    "🆔 GOLD.i#-BUY-4379.22-2026.08.13 19:15 WIB",
+                ]
+            ),
+        )
 
     def test_utf16_log_is_tailed_enqueued_and_deduplicated(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

@@ -4,7 +4,7 @@ import glob
 import os
 import re
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -234,41 +234,130 @@ def _split_complete_lines(text: str) -> tuple[list[str], str]:
 
 def _format_telegram_text(event: ParsedMt5Event) -> str:
     fields = event.fields
-    header = f"{event.symbol} {event.side} | ID {event.setup_id}"
+    instrument = f"{event.symbol}  •  {event.side}"
+    event_time = f"🕒 Waktu sinyal: {_format_wib_time(event.occurred_at)}"
+    identity = f"🆔 {_format_display_id(event)}"
     if event.event_type == "SNIPER_EARLY_CANDIDATE":
         return "\n".join(
             [
-                f"🟡 WATCH ONLY — {header}",
-                f"Confidence awal: {fields.get('confidence', '?')} (bukan probabilitas)",
-                f"Level: {fields.get('level', event.level)} | Harga pantau: {fields.get('watchPrice', '?')}",
-                f"Invalidasi: {fields.get('invalidation', '?')} | M5 votes: {fields.get('m5Votes', '?')}",
-                f"Pattern: {fields.get('pattern', '?')} | Fib reaction: {fields.get('fibonacciReaction', '?')}",
-                "Belum entry. Menunggu konfirmasi M1 dan pemeriksaan risiko final.",
+                "🟡 WATCH ONLY",
+                instrument,
+                event_time,
+                "",
+                "📍 LEVEL PANTAU",
+                f"• Trigger: {fields.get('level', event.level)}",
+                f"• Harga saat sinyal: {fields.get('watchPrice', '?')}",
+                f"• Invalidasi: {fields.get('invalidation', '?')}",
+                "",
+                "📊 VALIDASI",
+                f"• Confidence: {fields.get('confidence', '?')}/100 (indikator, bukan probabilitas)",
+                f"• M5 votes: {fields.get('m5Votes', '?')}",
+                f"• Pattern: {_display_token(fields.get('pattern', '?'))}",
+                f"• Reaksi Fibonacci: {fields.get('fibonacciReaction', '?')}",
+                "",
+                "⏳ STATUS",
+                "Belum entry — menunggu konfirmasi M1 dan pemeriksaan risiko final.",
+                "",
+                identity,
             ]
         )
     if event.event_type == "SNIPER_EARLY_PROMOTED":
         return "\n".join(
             [
-                f"🟢 WATCH PROMOTED — {header}",
-                f"Confidence awal: {fields.get('confidenceEarly', '?')} | Score final: {fields.get('scoreFinal', '?')}",
-                "Promosi analisis; bukan bukti order broker sudah dibuka.",
+                "🟢 WATCH PROMOTED",
+                instrument,
+                event_time,
+                "",
+                "📊 PENILAIAN",
+                f"• Confidence awal: {fields.get('confidenceEarly', '?')}/100",
+                f"• Score final: {fields.get('scoreFinal', '?')}/100",
+                "",
+                "⏳ STATUS",
+                "Kandidat lolos promosi analisis dan menunggu sinyal final.",
+                "Belum ada order broker.",
+                "",
+                identity,
             ]
         )
     if event.event_type == "SNIPER_SIGNAL":
         return "\n".join(
             [
-                f"🔔 ENTRY READY — {header}",
-                f"Entry: {fields.get('entry', '?')} | SL: {fields.get('stop', '?')} | TP: {fields.get('target', '?')}",
-                f"Projected R: {fields.get('projectedR', '?')} | Score: {fields.get('score', '?')}",
-                f"M5 votes: {fields.get('m5Votes', '?')} | M1 confirmed: {fields.get('m1Confirmed', '?')}",
-                "Sinyal informasi pada akun demo; cek terminal untuk status order sebenarnya.",
+                "🔔 ENTRY READY",
+                instrument,
+                event_time,
+                "",
+                "💰 RENCANA TRADE",
+                f"• Entry: {fields.get('entry', '?')}",
+                f"• Stop Loss: {fields.get('stop', '?')}",
+                f"• Take Profit: {fields.get('target', '?')}",
+                "",
+                "📊 VALIDASI FINAL",
+                f"• Score: {fields.get('score', '?')}/100",
+                f"• Projected R: {fields.get('projectedR', '?')}R",
+                f"• M5 votes: {fields.get('m5Votes', '?')}",
+                f"• Konfirmasi M1: {_yes_no(fields.get('m1Confirmed'))}",
+                "",
+                "⚠️ STATUS ORDER",
+                "Sinyal akun demo — bukan konfirmasi bahwa order broker sudah terbuka.",
+                "Periksa tab Trade di MT5 untuk status eksekusi.",
+                "",
+                identity,
             ]
         )
     return "\n".join(
         [
-            f"⚪ WATCH CANCELLED — {header}",
-            f"Confidence awal: {fields.get('confidenceEarly', '?')}",
-            f"Alasan: {fields.get('reason', 'setup dibatalkan')}",
-            "Tidak ada entry dari kandidat ini.",
+            "⚪ WATCH CANCELLED",
+            instrument,
+            event_time,
+            "",
+            "📊 PENILAIAN",
+            f"• Confidence awal: {fields.get('confidenceEarly', '?')}/100",
+            "",
+            "❌ ALASAN",
+            _display_token(fields.get("reason", "setup dibatalkan")),
+            "",
+            "⛔ STATUS",
+            "Kandidat dibatalkan — tidak ada entry.",
+            "",
+            identity,
         ]
     )
+
+
+def _display_token(value: str) -> str:
+    return value.replace("_", " ").strip()
+
+
+def _format_wib_time(value: datetime) -> str:
+    months = (
+        "Jan",
+        "Feb",
+        "Mar",
+        "Apr",
+        "Mei",
+        "Jun",
+        "Jul",
+        "Agu",
+        "Sep",
+        "Okt",
+        "Nov",
+        "Des",
+    )
+    local = value.astimezone(timezone(timedelta(hours=7)))
+    return f"{local.day:02d} {months[local.month - 1]} {local.year} • {local:%H:%M} WIB (UTC+7)"
+
+
+def _format_display_id(event: ParsedMt5Event) -> str:
+    local = event.occurred_at.astimezone(timezone(timedelta(hours=7)))
+    return (
+        f"{event.symbol}-{event.side}-{event.level:.2f}-"
+        f"{local:%Y.%m.%d %H:%M} WIB"
+    )
+
+
+def _yes_no(value: str | None) -> str:
+    if str(value).strip().lower() == "true":
+        return "✅ Ya"
+    if str(value).strip().lower() == "false":
+        return "❌ Tidak"
+    return "?"
