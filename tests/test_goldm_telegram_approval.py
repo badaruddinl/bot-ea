@@ -147,6 +147,43 @@ class GoldMTelegramApprovalTests(unittest.TestCase):
         self.assertEqual(self.worker.run_once(timeout=0), 1)
         self.assertEqual(self.store.telegram_update_offset(), 43)
 
+    def test_snapshot_commands_require_approved_access(self) -> None:
+        self.worker.process_update(self._start_update(1, "200", "alice"))
+        self.client.messages.clear()
+
+        self.worker.process_update(self._message_update(2, "200", "/snapshot"))
+
+        self.assertEqual(len(self.client.messages), 1)
+        self.assertIn("subscriber APPROVED", self.client.messages[0]["text"])
+
+    def test_approved_snapshot_and_signal_commands_are_read_only(self) -> None:
+        self.worker.process_update(self._start_update(1, "200", "alice"))
+        self.worker.process_update(self._callback_update(2, "100", "approve:200"))
+        self._enqueue_signal()
+        self.client.messages.clear()
+
+        self.worker.process_update(self._message_update(3, "200", "/snapshot"))
+        self.worker.process_update(self._message_update(4, "200", "/signal"))
+        self.worker.process_update(self._message_update(5, "200", "/history"))
+        self.worker.process_update(self._message_update(6, "200", "/health"))
+
+        texts = [item["text"] for item in self.client.messages]
+        self.assertIn("📸 SNAPSHOT GOLD.i#", texts[0])
+        self.assertIn("ENTRY READY", texts[0])
+        self.assertIn("bukan sinyal baru", texts[1])
+        self.assertIn("GOLD.i# ENTRY_READY", texts[1])
+        self.assertIn("5 EVENT TERBARU", texts[2])
+        self.assertIn("HEALTH SNAPSHOT", texts[3])
+
+    def test_watch_snapshot_reports_no_data_without_creating_an_entry(self) -> None:
+        self.client.messages.clear()
+
+        self.worker.process_update(self._message_update(1, "100", "/watch"))
+
+        self.assertEqual(len(self.client.messages), 1)
+        self.assertIn("Belum ada data", self.client.messages[0]["text"])
+        self.assertEqual(self.store.recent_events(), [])
+
     def _enqueue_signal(self) -> dict[str, Any]:
         record = SetupRecord(
             "setup-1",
@@ -186,6 +223,16 @@ class GoldMTelegramApprovalTests(unittest.TestCase):
                 "id": f"callback-{update_id}",
                 "from": {"id": int(actor_id)},
                 "data": data,
+            },
+        }
+
+    @staticmethod
+    def _message_update(update_id: int, chat_id: str, text: str) -> dict[str, Any]:
+        return {
+            "update_id": update_id,
+            "message": {
+                "text": text,
+                "chat": {"id": int(chat_id), "type": "private"},
             },
         }
 

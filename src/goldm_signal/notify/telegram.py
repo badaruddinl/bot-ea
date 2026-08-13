@@ -57,6 +57,11 @@ class TelegramBotClient:
                 "commands": [
                     {"command": "start", "description": "Minta akses notifikasi"},
                     {"command": "status", "description": "Cek status akses"},
+                    {"command": "snapshot", "description": "Ringkasan kondisi bot"},
+                    {"command": "signal", "description": "Sinyal entry terakhir"},
+                    {"command": "watch", "description": "Kandidat terakhir"},
+                    {"command": "history", "description": "5 event terbaru"},
+                    {"command": "health", "description": "Kesehatan worker dan antrean"},
                     {"command": "stop", "description": "Berhenti menerima notifikasi"},
                     {"command": "pending", "description": "Daftar permintaan (admin)"},
                 ]

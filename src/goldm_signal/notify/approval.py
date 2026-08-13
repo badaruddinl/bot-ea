@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 import time
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from ..storage.database import SignalStore
@@ -75,6 +76,28 @@ class TelegramApprovalWorker:
             self._request_access(chat)
         elif command == "/status":
             self._send_status(chat_id)
+        elif command == "/snapshot":
+            self._send_snapshot(chat_id)
+        elif command == "/signal":
+            self._send_event_snapshot(
+                chat_id,
+                title="🔔 SNAPSHOT • SINYAL ENTRY TERAKHIR",
+                event_types=("SNIPER_SIGNAL", "ENTRY_READY"),
+            )
+        elif command == "/watch":
+            self._send_event_snapshot(
+                chat_id,
+                title="🟡 SNAPSHOT • WATCH TERAKHIR",
+                event_types=(
+                    "SNIPER_EARLY_CANDIDATE",
+                    "SNIPER_EARLY_PROMOTED",
+                    "SNIPER_EARLY_CANCELLED",
+                ),
+            )
+        elif command == "/history":
+            self._send_history(chat_id)
+        elif command == "/health":
+            self._send_health(chat_id)
         elif command == "/stop":
             self._unsubscribe(chat_id)
         elif command in {"/approve", "/reject"}:
@@ -86,7 +109,16 @@ class TelegramApprovalWorker:
         elif text.startswith("/"):
             self.client.send_message(
                 chat_id=chat_id,
-                text="Perintah tersedia: /start, /status, dan /stop.",
+                text=(
+                    "Perintah tersedia:\n"
+                    "/snapshot — ringkasan bot\n"
+                    "/signal — sinyal entry terakhir\n"
+                    "/watch — kandidat terakhir\n"
+                    "/history — 5 event terbaru\n"
+                    "/health — kesehatan worker\n"
+                    "/status — status akses\n"
+                    "/stop — hentikan notifikasi"
+                ),
             )
 
     def _request_access(self, chat: dict[str, Any]) -> None:
@@ -230,6 +262,113 @@ class TelegramApprovalWorker:
         )
         self.client.send_message(chat_id=chat_id, text=text)
 
+    def _send_snapshot(self, chat_id: str) -> None:
+        if not self._require_approved(chat_id):
+            return
+        health = self.store.notification_health()
+        latest = self.store.latest_event()
+        lines = [
+            "📸 SNAPSHOT GOLD.i#",
+            f"🕒 {_wib_now()}",
+            "",
+            "🟢 WORKER TELEGRAM",
+            "Aktif — bot berhasil merespons command ini.",
+            "",
+            "📡 BRIDGE MT5",
+            f"• Aktivitas log terakhir: {_format_wib_iso(health['last_log_at'])}",
+            f"• Antrean belum terkirim: {health['pending_count']}",
+            f"• Event gagal: {health['failed_count']}",
+        ]
+        if latest is not None:
+            lines.extend(
+                [
+                    "",
+                    "📣 EVENT TERAKHIR",
+                    f"• Tipe: {_display_event_type(str(latest['event_type']))}",
+                    f"• Instrumen: {latest['symbol']} • {latest['side']}",
+                    f"• Waktu: {_format_wib_iso(latest['breakout_at'])}",
+                ]
+            )
+        lines.extend(
+            [
+                "",
+                "Gunakan /signal, /watch, /history, atau /health untuk detail.",
+            ]
+        )
+        self.client.send_message(chat_id=chat_id, text="\n".join(lines))
+
+    def _send_event_snapshot(
+        self, chat_id: str, *, title: str, event_types: tuple[str, ...]
+    ) -> None:
+        if not self._require_approved(chat_id):
+            return
+        event = self.store.latest_event(event_types=event_types)
+        if event is None:
+            self.client.send_message(
+                chat_id=chat_id,
+                text=f"{title}\n\nBelum ada data yang tersedia.",
+            )
+            return
+        body = str(event["payload"].get("text", "")).strip()
+        self.client.send_message(
+            chat_id=chat_id,
+            text=(
+                f"{title}\n"
+                "ℹ️ Ini permintaan snapshot, bukan sinyal baru.\n\n"
+                f"{body}"
+            ),
+        )
+
+    def _send_history(self, chat_id: str) -> None:
+        if not self._require_approved(chat_id):
+            return
+        events = self.store.recent_events(limit=5)
+        lines = ["🗂 SNAPSHOT • 5 EVENT TERBARU", ""]
+        if not events:
+            lines.append("Belum ada event yang tersedia.")
+        else:
+            for index, event in enumerate(events, start=1):
+                lines.extend(
+                    [
+                        f"{index}. {_display_event_type(str(event['event_type']))}",
+                        f"   {event['symbol']} • {event['side']}",
+                        f"   {_format_wib_iso(event['breakout_at'])}",
+                    ]
+                )
+        self.client.send_message(chat_id=chat_id, text="\n".join(lines))
+
+    def _send_health(self, chat_id: str) -> None:
+        if not self._require_approved(chat_id):
+            return
+        health = self.store.notification_health()
+        status = "🟢 SEHAT" if health["failed_count"] == 0 else "🟠 PERLU DIPERIKSA"
+        self.client.send_message(
+            chat_id=chat_id,
+            text="\n".join(
+                [
+                    "🩺 HEALTH SNAPSHOT",
+                    f"Status: {status}",
+                    f"Waktu cek: {_wib_now()}",
+                    "",
+                    f"• Total event: {health['total_count']}",
+                    f"• Antrean: {health['pending_count']}",
+                    f"• Gagal: {health['failed_count']}",
+                    f"• Log MT5 terakhir: {_format_wib_iso(health['last_log_at'])}",
+                    f"• Telegram terkirim terakhir: {_format_wib_iso(health['last_sent_at'])}",
+                ]
+            ),
+        )
+
+    def _require_approved(self, chat_id: str) -> bool:
+        subscriber = self.store.telegram_subscriber(chat_id)
+        if subscriber is not None and subscriber["status"] == "APPROVED":
+            return True
+        self.client.send_message(
+            chat_id=chat_id,
+            text="⛔ Snapshot hanya tersedia untuk subscriber APPROVED. Kirim /status untuk mengecek akses.",
+        )
+        return False
+
     def _list_subscribers(self, actor_id: str, status: str) -> None:
         if actor_id not in self.admin_chat_ids:
             self.client.send_message(chat_id=actor_id, text="⛔ Perintah khusus admin.")
@@ -261,3 +400,30 @@ class TelegramApprovalWorker:
             if part
         )
         return full_name or "Tanpa nama"
+
+
+_WIB = timezone(timedelta(hours=7))
+
+
+def _wib_now() -> str:
+    return datetime.now(timezone.utc).astimezone(_WIB).strftime("%d %b %Y • %H:%M WIB")
+
+
+def _format_wib_iso(value: Any) -> str:
+    if not value:
+        return "belum tersedia"
+    parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(_WIB).strftime("%d %b %Y • %H:%M WIB")
+
+
+def _display_event_type(value: str) -> str:
+    labels = {
+        "SNIPER_EARLY_CANDIDATE": "WATCH ONLY",
+        "SNIPER_EARLY_PROMOTED": "WATCH PROMOTED",
+        "SNIPER_EARLY_CANCELLED": "WATCH CANCELLED",
+        "SNIPER_SIGNAL": "ENTRY READY",
+        "ENTRY_READY": "ENTRY READY",
+    }
+    return labels.get(value, value.replace("_", " "))

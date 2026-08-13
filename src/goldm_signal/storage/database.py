@@ -177,6 +177,67 @@ class SignalStore:
             ).fetchall()
         return [{**dict(row), "payload": json.loads(row["payload_json"])} for row in rows]
 
+    def latest_event(
+        self, *, event_types: tuple[str, ...] | None = None
+    ) -> dict[str, Any] | None:
+        query = """
+            SELECT signal_outbox.*, setups.symbol, setups.side, setups.level,
+                   setups.breakout_at, setups.state
+            FROM signal_outbox
+            JOIN setups ON setups.setup_id = signal_outbox.setup_id
+        """
+        parameters: tuple[str, ...] = ()
+        if event_types:
+            placeholders = ", ".join("?" for _ in event_types)
+            query += f" WHERE signal_outbox.event_type IN ({placeholders})"
+            parameters = event_types
+        query += " ORDER BY signal_outbox.id DESC LIMIT 1"
+        with self._connect() as connection:
+            row = connection.execute(query, parameters).fetchone()
+        return _outbox_row(row) if row is not None else None
+
+    def recent_events(self, *, limit: int = 5) -> list[dict[str, Any]]:
+        safe_limit = max(1, min(int(limit), 20))
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT signal_outbox.*, setups.symbol, setups.side, setups.level,
+                       setups.breakout_at, setups.state
+                FROM signal_outbox
+                JOIN setups ON setups.setup_id = signal_outbox.setup_id
+                ORDER BY signal_outbox.id DESC
+                LIMIT ?
+                """,
+                (safe_limit,),
+            ).fetchall()
+        return [_outbox_row(row) for row in rows]
+
+    def notification_health(self) -> dict[str, Any]:
+        with self._connect() as connection:
+            outbox = connection.execute(
+                """
+                SELECT
+                    COUNT(*) AS total_count,
+                    SUM(CASE WHEN sent_at IS NULL THEN 1 ELSE 0 END) AS pending_count,
+                    SUM(CASE WHEN last_error IS NOT NULL THEN 1 ELSE 0 END) AS failed_count,
+                    MAX(created_at) AS last_event_at,
+                    MAX(sent_at) AS last_sent_at
+                FROM signal_outbox
+                """
+            ).fetchone()
+            cursor = connection.execute(
+                "SELECT MAX(updated_at) AS last_log_at FROM mt5_log_cursors"
+            ).fetchone()
+        assert outbox is not None and cursor is not None
+        return {
+            "total_count": int(outbox["total_count"] or 0),
+            "pending_count": int(outbox["pending_count"] or 0),
+            "failed_count": int(outbox["failed_count"] or 0),
+            "last_event_at": outbox["last_event_at"],
+            "last_sent_at": outbox["last_sent_at"],
+            "last_log_at": cursor["last_log_at"],
+        }
+
     def mark_sent(self, outbox_id: int) -> None:
         with self._connect() as connection:
             connection.execute(
@@ -417,3 +478,9 @@ def _utc_now() -> str:
 def _iso(value: datetime) -> str:
     aware = value if value.tzinfo else value.replace(tzinfo=timezone.utc)
     return aware.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _outbox_row(row: sqlite3.Row) -> dict[str, Any]:
+    result = dict(row)
+    result["payload"] = json.loads(str(row["payload_json"]))
+    return result
