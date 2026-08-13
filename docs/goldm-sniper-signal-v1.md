@@ -78,6 +78,15 @@ The worker loads `.env`, stores subscriber state in
 server-side for both inline callbacks and `/approve CHAT_ID` or
 `/reject CHAT_ID`; hiding a button is never treated as authorization.
 
+The same worker now tails the newest live `MQL5/Logs/*.log` file for each MT5
+terminal under `%APPDATA%\\MetaQuotes\\Terminal`. It parses the EA's
+`SNIPER_EARLY_CANDIDATE`, `SNIPER_EARLY_PROMOTED`, `SNIPER_SIGNAL`, and
+`SNIPER_EARLY_CANCELLED` records, persists a byte cursor, and enqueues each event
+exactly once before Telegram delivery. Use `--mt5-log PATH` to override discovery.
+For a harmless end-to-end check, run once with `--debug-notification --once`;
+the resulting message explicitly states that it is not an entry and opens no
+order.
+
 ## Signal-only parity research
 
 `GoldMSniperParity.mq5` now provides a no-order Strategy Tester reference using

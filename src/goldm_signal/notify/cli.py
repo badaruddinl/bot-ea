@@ -7,6 +7,7 @@ from pathlib import Path
 
 from ..storage.database import SignalStore
 from .approval import TelegramApprovalWorker
+from .mt5_log import Mt5LogBridge
 from .outbox import OutboxWorker
 from .telegram import ApprovedTelegramSender, TelegramBotClient
 
@@ -18,6 +19,18 @@ def main() -> None:
     parser.add_argument("--env-file", default=".env")
     parser.add_argument("--db", default=None)
     parser.add_argument("--poll-timeout", type=int, default=15)
+    parser.add_argument(
+        "--mt5-log",
+        action="append",
+        default=None,
+        help="Explicit MT5 MQL5 log path; repeat for multiple terminals.",
+    )
+    parser.add_argument("--no-mt5-log-bridge", action="store_true")
+    parser.add_argument(
+        "--debug-notification",
+        action="store_true",
+        help="Queue a harmless end-to-end Telegram diagnostic notification.",
+    )
     parser.add_argument("--once", action="store_true")
     args = parser.parse_args()
 
@@ -46,6 +59,10 @@ def main() -> None:
         store,
         ApprovedTelegramSender(store=store, client=client),
     )
+    log_bridge = None if args.no_mt5_log_bridge else Mt5LogBridge(store, log_paths=args.mt5_log)
+    if args.debug_notification:
+        log_bridge = log_bridge or Mt5LogBridge(store, log_paths=[])
+        log_bridge.enqueue_debug_notification()
     client.set_commands()
     print(
         f"Telegram approval worker ready: admins={len(admin_ids)} db={db_path}",
@@ -53,17 +70,24 @@ def main() -> None:
     )
 
     if args.once:
+        files, lines, ingested = log_bridge.run_once() if log_bridge else (0, 0, 0)
         processed = approval_worker.run_once(timeout=0)
         sent, failed = outbox_worker.run_once()
-        print(f"processed={processed} sent={sent} failed={failed}", flush=True)
+        print(
+            f"files={files} lines={lines} ingested={ingested} "
+            f"processed={processed} sent={sent} failed={failed}",
+            flush=True,
+        )
         return
 
     while True:
         try:
+            files, lines, ingested = log_bridge.run_once() if log_bridge else (0, 0, 0)
             processed = approval_worker.run_once(timeout=max(0, args.poll_timeout))
             sent, failed = outbox_worker.run_once()
-            if processed or sent or failed:
+            if ingested or processed or sent or failed:
                 print(
+                    f"files={files} lines={lines} ingested={ingested} "
                     f"processed={processed} sent={sent} failed={failed}",
                     flush=True,
                 )

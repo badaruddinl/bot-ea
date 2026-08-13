@@ -59,6 +59,13 @@ CREATE TABLE IF NOT EXISTS telegram_bot_state (
     state_key TEXT PRIMARY KEY,
     state_value TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS mt5_log_cursors (
+    log_path TEXT PRIMARY KEY,
+    byte_offset INTEGER NOT NULL DEFAULT 0,
+    encoding TEXT NOT NULL DEFAULT 'utf-8',
+    fragment TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS telegram_deliveries (
     outbox_id INTEGER NOT NULL REFERENCES signal_outbox(id) ON DELETE CASCADE,
     chat_id TEXT NOT NULL REFERENCES telegram_subscribers(chat_id),
@@ -318,6 +325,36 @@ class SignalStore:
                 ON CONFLICT(state_key) DO UPDATE SET state_value = excluded.state_value
                 """,
                 (str(offset),),
+            )
+
+    def mt5_log_cursor(self, log_path: str | Path) -> dict[str, Any] | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM mt5_log_cursors WHERE log_path = ?", (str(log_path),)
+            ).fetchone()
+        return dict(row) if row is not None else None
+
+    def set_mt5_log_cursor(
+        self,
+        *,
+        log_path: str | Path,
+        byte_offset: int,
+        encoding: str,
+        fragment: str = "",
+    ) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO mt5_log_cursors (
+                    log_path, byte_offset, encoding, fragment, updated_at
+                ) VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(log_path) DO UPDATE SET
+                    byte_offset = excluded.byte_offset,
+                    encoding = excluded.encoding,
+                    fragment = excluded.fragment,
+                    updated_at = excluded.updated_at
+                """,
+                (str(log_path), int(byte_offset), encoding, fragment, _utc_now()),
             )
 
     def telegram_delivery_was_sent(self, *, outbox_id: int, chat_id: str | int) -> bool:
