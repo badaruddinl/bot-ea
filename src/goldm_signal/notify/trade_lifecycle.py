@@ -281,6 +281,7 @@ class TradeLifecycleWorker:
             actualEntry=str(record.get("actual_entry") or ""),
         )
         payload["fields"] = fields
+        payload.update(_execution_audience(record.get("execution_mode")))
         setup_at = _parse_iso(payload.get("setup_at_utc")) or _parse_iso(row.get("breakout_at")) or self.now_fn()
         generated_at = _parse_iso(payload.get("generated_at_utc")) or setup_at
         payload["text"] = render_stored_event(
@@ -370,6 +371,7 @@ class TradeLifecycleWorker:
                 "setup_id": execution["setup_id"],
                 "event_type": event_type,
                 "source": "mt5_broker_execution",
+                **_execution_audience(execution.get("execution_mode")),
             },
         )
         self.store.mark_trade_event_processed(
@@ -400,6 +402,7 @@ class TradeLifecycleWorker:
                 "setup_id": record["setup_id"],
                 "event_type": "POSITION_OPENED",
                 "source": "mt5_broker_execution",
+                **_execution_audience(record.get("execution_mode")),
             },
         )
 
@@ -472,6 +475,7 @@ class TradeLifecycleWorker:
                     "setup_id": record["setup_id"],
                     "event_type": "POSITION_CLOSED",
                     "source": "mt5_broker_history",
+                    **_execution_audience(record.get("execution_mode")),
                 },
             )
             closed_count += 1
@@ -500,6 +504,14 @@ def _execution_record(*, row, mode, entry, stop, target, valid_until, client_tag
         "position_ticket": None, "actual_entry": None, "opened_at": None,
         "closed_at": None, "exit_price": None, "profit_cash": None,
         "close_reason": None, "closed_by": None, "last_error": None,
+    }
+
+
+def _execution_audience(mode: Any) -> dict[str, str]:
+    account_scope = str(mode or "off").strip().lower()
+    return {
+        "account_scope": account_scope,
+        "audience": "admin_only" if account_scope == "live" else "approved",
     }
 
 

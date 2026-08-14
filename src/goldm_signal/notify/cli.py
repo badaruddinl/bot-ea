@@ -57,7 +57,11 @@ def main() -> None:
     client = TelegramBotClient(bot_token=token)
     outbox_worker = OutboxWorker(
         store,
-        ApprovedTelegramSender(store=store, client=client),
+        ApprovedTelegramSender(
+            store=store,
+            client=client,
+            admin_chat_ids=admin_ids,
+        ),
     )
     log_bridge = None if args.no_mt5_log_bridge else Mt5LogBridge(store, log_paths=args.mt5_log)
     lifecycle_config = TradeLifecycleConfig.from_sources(store)
@@ -85,7 +89,7 @@ def main() -> None:
     if args.debug_notification:
         log_bridge = log_bridge or Mt5LogBridge(store, log_paths=[])
         log_bridge.enqueue_debug_notification()
-    client.set_commands()
+    client.set_commands(admin_chat_ids=admin_ids)
     print(
         f"Telegram approval worker ready: admins={len(admin_ids)} db={db_path}",
         flush=True,

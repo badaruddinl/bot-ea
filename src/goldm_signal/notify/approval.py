@@ -8,7 +8,10 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from ..storage.database import SignalStore
-from .telegram import TelegramBotClient
+from .telegram import (
+    PUBLIC_BOT_COMMAND_NAMES,
+    TelegramBotClient,
+)
 from .trade_lifecycle import TradeLifecycleConfig
 
 
@@ -77,6 +80,25 @@ class TelegramApprovalWorker:
         command = command.split("@", 1)[0].lower()
         argument = argument.strip()
 
+        if (
+            text.startswith("/")
+            and chat_id not in self.admin_chat_ids
+            and command not in PUBLIC_BOT_COMMAND_NAMES
+        ):
+            self.client.send_message(
+                chat_id=chat_id,
+                text=(
+                    "⛔ Perintah khusus root admin.\n\n"
+                    "Perintah tersedia:\n"
+                    "/start — minta akses notifikasi demo\n"
+                    "/status — status akses\n"
+                    "/signal — sinyal demo terakhir\n"
+                    "/history — 5 event demo terbaru\n"
+                    "/stop — hentikan notifikasi"
+                ),
+            )
+            return
+
         if command == "/start":
             self._request_access(chat)
         elif command == "/status":
@@ -121,7 +143,7 @@ class TelegramApprovalWorker:
             self.client.send_message(
                 chat_id=chat_id,
                 text=(
-                    "Perintah tersedia:\n"
+                    "Perintah admin tersedia:\n"
                     "/snapshot — ringkasan bot\n"
                     "/signal — sinyal entry terakhir\n"
                     "/watch — kandidat terakhir\n"
@@ -129,6 +151,8 @@ class TelegramApprovalWorker:
                     "/health — kesehatan worker\n"
                     "/control — kontrol akun, entry, dan risiko (admin)\n"
                     "/account — akun MT5 aktif (admin)\n"
+                    "/users — user penerima notifikasi\n"
+                    "/pending — permintaan akses\n"
                     "/status — status akses\n"
                     "/stop — hentikan notifikasi"
                 ),
@@ -629,7 +653,10 @@ class TelegramApprovalWorker:
     ) -> None:
         if not self._require_approved(chat_id):
             return
-        event = self.store.latest_event(event_types=event_types)
+        event = self.store.latest_event(
+            event_types=event_types,
+            include_admin_only=chat_id in self.admin_chat_ids,
+        )
         if event is None:
             self.client.send_message(
                 chat_id=chat_id,
@@ -649,7 +676,10 @@ class TelegramApprovalWorker:
     def _send_history(self, chat_id: str) -> None:
         if not self._require_approved(chat_id):
             return
-        events = self.store.recent_events(limit=5)
+        events = self.store.recent_events(
+            limit=5,
+            include_admin_only=chat_id in self.admin_chat_ids,
+        )
         lines = ["🗂 SNAPSHOT • 5 EVENT TERBARU", ""]
         if not events:
             lines.append("Belum ada event yang tersedia.")

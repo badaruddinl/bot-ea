@@ -122,7 +122,11 @@ class GoldMTradeLifecycleTests(unittest.TestCase):
             self.assertEqual(execution["status"], "FILLED")
             self.assertEqual(adapter.send_count, 1)
             self.assertIn("Order broker terisi", store.pending()[0]["payload"]["text"])
-            self.assertTrue(any(row["event_type"] == "POSITION_OPENED" for row in store.pending()))
+            opened = next(
+                row for row in store.pending() if row["event_type"] == "POSITION_OPENED"
+            )
+            self.assertEqual(opened["payload"]["account_scope"], "demo")
+            self.assertEqual(opened["payload"]["audience"], "approved")
 
     def test_runtime_settings_override_worker_config_without_restart(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

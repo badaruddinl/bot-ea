@@ -130,6 +130,33 @@ class GoldMTelegramApprovalTests(unittest.TestCase):
         self.assertNotIn("300", recipients)
         self.assertNotIn("400", recipients)
 
+    def test_live_account_event_is_delivered_only_to_root_admin(self) -> None:
+        self.worker.process_update(self._start_update(1, "200", "approved_user"))
+        self.worker.process_update(self._callback_update(2, "100", "approve:200"))
+        event = self._enqueue_signal()
+        self.store.update_outbox_payload(
+            int(event["id"]),
+            {
+                "text": "REAL position opened",
+                "account_scope": "live",
+                "audience": "approved",
+            },
+        )
+        event = self.store.pending()[0]
+        self.client.messages.clear()
+
+        sender = ApprovedTelegramSender(
+            store=self.store,
+            client=self.client,  # type: ignore[arg-type]
+            admin_chat_ids={"100"},
+        )
+        sender(event)
+
+        self.assertEqual(
+            [item["chat_id"] for item in self.client.messages],
+            ["100"],
+        )
+
     def test_retry_does_not_resend_to_successful_recipient(self) -> None:
         self.worker.process_update(self._start_update(1, "200", "alice"))
         self.worker.process_update(self._callback_update(2, "100", "approve:200"))
@@ -155,33 +182,65 @@ class GoldMTelegramApprovalTests(unittest.TestCase):
         self.assertEqual(self.worker.run_once(timeout=0), 1)
         self.assertEqual(self.store.telegram_update_offset(), 43)
 
-    def test_snapshot_commands_require_approved_access(self) -> None:
+    def test_non_admin_admin_command_is_rejected_before_dispatch(self) -> None:
         self.worker.process_update(self._start_update(1, "200", "alice"))
         self.client.messages.clear()
 
         self.worker.process_update(self._message_update(2, "200", "/snapshot"))
 
         self.assertEqual(len(self.client.messages), 1)
+        self.assertIn("khusus root admin", self.client.messages[0]["text"])
+        self.assertIn("/signal — sinyal demo terakhir", self.client.messages[0]["text"])
+        self.assertNotIn("/control", self.client.messages[0]["text"])
+
+    def test_public_signal_and_history_commands_require_approved_access(self) -> None:
+        self.worker.process_update(self._start_update(1, "200", "alice"))
+        self.client.messages.clear()
+
+        self.worker.process_update(self._message_update(2, "200", "/signal"))
+
+        self.assertEqual(len(self.client.messages), 1)
         self.assertIn("subscriber APPROVED", self.client.messages[0]["text"])
 
-    def test_approved_snapshot_and_signal_commands_are_read_only(self) -> None:
+    def test_approved_user_can_only_use_public_read_only_commands(self) -> None:
         self.worker.process_update(self._start_update(1, "200", "alice"))
         self.worker.process_update(self._callback_update(2, "100", "approve:200"))
         self._enqueue_signal()
         self.client.messages.clear()
 
-        self.worker.process_update(self._message_update(3, "200", "/snapshot"))
-        self.worker.process_update(self._message_update(4, "200", "/signal"))
-        self.worker.process_update(self._message_update(5, "200", "/history"))
-        self.worker.process_update(self._message_update(6, "200", "/health"))
+        self.worker.process_update(self._message_update(3, "200", "/signal"))
+        self.worker.process_update(self._message_update(4, "200", "/history"))
+        self.worker.process_update(self._message_update(5, "200", "/health"))
 
         texts = [item["text"] for item in self.client.messages]
-        self.assertIn("📸 SNAPSHOT GOLD.i#", texts[0])
-        self.assertIn("ENTRY READY", texts[0])
-        self.assertIn("bukan sinyal baru", texts[1])
-        self.assertIn("GOLD.i# ENTRY_READY", texts[1])
-        self.assertIn("5 EVENT TERBARU", texts[2])
-        self.assertIn("HEALTH SNAPSHOT", texts[3])
+        self.assertIn("bukan sinyal baru", texts[0])
+        self.assertIn("GOLD.i# ENTRY_READY", texts[0])
+        self.assertIn("5 EVENT TERBARU", texts[1])
+        self.assertIn("khusus root admin", texts[2])
+        self.assertNotIn("HEALTH SNAPSHOT", texts[2])
+
+    def test_public_snapshots_hide_live_events_but_admin_can_read_them(self) -> None:
+        self.worker.process_update(self._start_update(1, "200", "alice"))
+        self.worker.process_update(self._callback_update(2, "100", "approve:200"))
+        event = self._enqueue_signal()
+        self.store.update_outbox_payload(
+            int(event["id"]),
+            {
+                "text": "REAL secret event",
+                "account_scope": "live",
+                "audience": "admin_only",
+            },
+        )
+        self.client.messages.clear()
+
+        self.worker.process_update(self._message_update(3, "200", "/signal"))
+        self.worker.process_update(self._message_update(4, "200", "/history"))
+        self.worker.process_update(self._message_update(5, "100", "/signal"))
+
+        texts = [item["text"] for item in self.client.messages]
+        self.assertIn("Belum ada data", texts[0])
+        self.assertIn("Belum ada event", texts[1])
+        self.assertIn("REAL secret event", texts[2])
 
     def test_watch_snapshot_reports_no_data_without_creating_an_entry(self) -> None:
         self.client.messages.clear()

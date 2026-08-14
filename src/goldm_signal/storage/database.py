@@ -232,7 +232,10 @@ class SignalStore:
         return [{**dict(row), "payload": json.loads(row["payload_json"])} for row in rows]
 
     def latest_event(
-        self, *, event_types: tuple[str, ...] | None = None
+        self,
+        *,
+        event_types: tuple[str, ...] | None = None,
+        include_admin_only: bool = True,
     ) -> dict[str, Any] | None:
         query = """
             SELECT signal_outbox.*, setups.symbol, setups.side, setups.level,
@@ -245,12 +248,18 @@ class SignalStore:
             placeholders = ", ".join("?" for _ in event_types)
             query += f" WHERE signal_outbox.event_type IN ({placeholders})"
             parameters = event_types
-        query += " ORDER BY signal_outbox.id DESC LIMIT 1"
+        query += " ORDER BY signal_outbox.id DESC"
         with self._connect() as connection:
-            row = connection.execute(query, parameters).fetchone()
-        return _outbox_row(row) if row is not None else None
+            rows = connection.execute(query, parameters).fetchall()
+        for row in rows:
+            event = _outbox_row(row)
+            if include_admin_only or not _event_is_admin_only(event):
+                return event
+        return None
 
-    def recent_events(self, *, limit: int = 5) -> list[dict[str, Any]]:
+    def recent_events(
+        self, *, limit: int = 5, include_admin_only: bool = True
+    ) -> list[dict[str, Any]]:
         safe_limit = max(1, min(int(limit), 20))
         with self._connect() as connection:
             rows = connection.execute(
@@ -260,11 +269,12 @@ class SignalStore:
                 FROM signal_outbox
                 JOIN setups ON setups.setup_id = signal_outbox.setup_id
                 ORDER BY signal_outbox.id DESC
-                LIMIT ?
                 """,
-                (safe_limit,),
             ).fetchall()
-        return [_outbox_row(row) for row in rows]
+        events = [_outbox_row(row) for row in rows]
+        if not include_admin_only:
+            events = [event for event in events if not _event_is_admin_only(event)]
+        return events[:safe_limit]
 
     def execution_candidates(self, *, event_type: str = "SNIPER_SIGNAL", limit: int = 20) -> list[dict[str, Any]]:
         with self._connect() as connection:
@@ -732,3 +742,11 @@ def _outbox_row(row: sqlite3.Row) -> dict[str, Any]:
     result = dict(row)
     result["payload"] = json.loads(str(row["payload_json"]))
     return result
+
+
+def _event_is_admin_only(event: dict[str, Any]) -> bool:
+    payload = event.get("payload") or {}
+    return (
+        str(payload.get("audience", "")).strip().lower() == "admin_only"
+        or str(payload.get("account_scope", "")).strip().lower() == "live"
+    )

@@ -7,6 +7,30 @@ from urllib import parse, request
 from ..storage.database import SignalStore
 
 
+PUBLIC_BOT_COMMANDS: tuple[dict[str, str], ...] = (
+    {"command": "start", "description": "Minta akses notifikasi demo"},
+    {"command": "status", "description": "Cek status akses"},
+    {"command": "signal", "description": "Sinyal demo terakhir"},
+    {"command": "history", "description": "5 event demo terbaru"},
+    {"command": "stop", "description": "Berhenti menerima notifikasi"},
+)
+
+ADMIN_BOT_COMMANDS: tuple[dict[str, str], ...] = (
+    *PUBLIC_BOT_COMMANDS,
+    {"command": "snapshot", "description": "Ringkasan kondisi bot"},
+    {"command": "watch", "description": "Kandidat terakhir"},
+    {"command": "health", "description": "Kesehatan worker dan antrean"},
+    {"command": "control", "description": "Panel akun, entry, dan risiko"},
+    {"command": "account", "description": "Akun MT5 aktif"},
+    {"command": "users", "description": "User penerima notifikasi"},
+    {"command": "pending", "description": "Daftar permintaan akses"},
+)
+
+PUBLIC_BOT_COMMAND_NAMES = frozenset(
+    f"/{item['command']}" for item in PUBLIC_BOT_COMMANDS
+)
+
+
 class TelegramBotClient:
     """Small Telegram Bot API client with no third-party runtime dependency."""
 
@@ -50,26 +74,20 @@ class TelegramBotClient:
             },
         )
 
-    def set_commands(self) -> None:
+    def set_commands(self, *, admin_chat_ids: set[str | int]) -> None:
+        """Publish a minimal default menu and a richer menu per admin chat."""
         self._call(
             "setMyCommands",
-            {
-                "commands": [
-                    {"command": "start", "description": "Minta akses notifikasi"},
-                    {"command": "status", "description": "Cek status akses"},
-                    {"command": "snapshot", "description": "Ringkasan kondisi bot"},
-                    {"command": "signal", "description": "Sinyal entry terakhir"},
-                    {"command": "watch", "description": "Kandidat terakhir"},
-                    {"command": "history", "description": "5 event terbaru"},
-                    {"command": "health", "description": "Kesehatan worker dan antrean"},
-                    {"command": "control", "description": "Panel akun, entry, dan risiko (admin)"},
-                    {"command": "account", "description": "Akun MT5 aktif (admin)"},
-                    {"command": "users", "description": "User penerima notifikasi (admin)"},
-                    {"command": "stop", "description": "Berhenti menerima notifikasi"},
-                    {"command": "pending", "description": "Daftar permintaan (admin)"},
-                ]
-            },
+            {"commands": list(PUBLIC_BOT_COMMANDS)},
         )
+        for chat_id in sorted({str(value) for value in admin_chat_ids if str(value)}):
+            self._call(
+                "setMyCommands",
+                {
+                    "commands": list(ADMIN_BOT_COMMANDS),
+                    "scope": {"type": "chat", "chat_id": chat_id},
+                },
+            )
 
     def _call(
         self,
@@ -121,9 +139,18 @@ class ApprovedTelegramSender:
     the same event again when another recipient temporarily fails.
     """
 
-    def __init__(self, *, store: SignalStore, client: TelegramBotClient) -> None:
+    def __init__(
+        self,
+        *,
+        store: SignalStore,
+        client: TelegramBotClient,
+        admin_chat_ids: set[str | int] | None = None,
+    ) -> None:
         self._store = store
         self._client = client
+        self._admin_chat_ids = {
+            str(chat_id) for chat_id in (admin_chat_ids or set()) if str(chat_id)
+        }
 
     def __call__(self, event: dict[str, Any]) -> None:
         payload = event.get("payload", {})
@@ -131,9 +158,15 @@ class ApprovedTelegramSender:
         if not text:
             raise ValueError("outbox payload does not contain message text")
         outbox_id = int(event["id"])
-        chat_ids = self._store.approved_telegram_chat_ids()
+        admin_only = telegram_event_is_admin_only(payload)
+        chat_ids = (
+            sorted(self._admin_chat_ids)
+            if admin_only
+            else self._store.approved_telegram_chat_ids()
+        )
         if not chat_ids:
-            raise RuntimeError("No approved Telegram subscribers")
+            audience = "root administrators" if admin_only else "approved Telegram subscribers"
+            raise RuntimeError(f"No eligible {audience}")
 
         failures = 0
         for chat_id in chat_ids:
@@ -154,3 +187,11 @@ class ApprovedTelegramSender:
                 )
         if failures:
             raise RuntimeError(f"Telegram delivery failed for {failures} approved subscriber(s)")
+
+
+def telegram_event_is_admin_only(payload: dict[str, Any]) -> bool:
+    """Fail closed when an event is explicitly admin-only or belongs to REAL."""
+    return (
+        str(payload.get("audience", "")).strip().lower() == "admin_only"
+        or str(payload.get("account_scope", "")).strip().lower() == "live"
+    )
