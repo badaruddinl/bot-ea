@@ -74,6 +74,42 @@ CREATE TABLE IF NOT EXISTS telegram_deliveries (
     last_error TEXT,
     PRIMARY KEY(outbox_id, chat_id)
 );
+CREATE TABLE IF NOT EXISTS trade_executions (
+    setup_id TEXT PRIMARY KEY REFERENCES setups(setup_id),
+    signal_outbox_id INTEGER NOT NULL UNIQUE REFERENCES signal_outbox(id),
+    execution_mode TEXT NOT NULL,
+    status TEXT NOT NULL,
+    symbol TEXT NOT NULL,
+    side TEXT NOT NULL,
+    requested_entry REAL NOT NULL,
+    stop_price REAL NOT NULL,
+    target_price REAL NOT NULL,
+    volume REAL NOT NULL DEFAULT 0,
+    risk_cash REAL NOT NULL DEFAULT 0,
+    expected_profit_cash REAL NOT NULL DEFAULT 0,
+    valid_until TEXT,
+    client_tag TEXT NOT NULL DEFAULT '',
+    order_ticket INTEGER,
+    deal_ticket INTEGER,
+    position_ticket INTEGER,
+    actual_entry REAL,
+    opened_at TEXT,
+    closed_at TEXT,
+    exit_price REAL,
+    profit_cash REAL,
+    close_reason TEXT,
+    closed_by TEXT,
+    last_error TEXT,
+    updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_trade_executions_status
+    ON trade_executions(status);
+CREATE TABLE IF NOT EXISTS trade_event_receipts (
+    outbox_id INTEGER PRIMARY KEY REFERENCES signal_outbox(id) ON DELETE CASCADE,
+    event_type TEXT NOT NULL,
+    result TEXT NOT NULL,
+    processed_at TEXT NOT NULL
+);
 """
 
 
@@ -211,6 +247,107 @@ class SignalStore:
                 (safe_limit,),
             ).fetchall()
         return [_outbox_row(row) for row in rows]
+
+    def execution_candidates(self, *, event_type: str = "SNIPER_SIGNAL", limit: int = 20) -> list[dict[str, Any]]:
+        with self._connect() as connection:
+            if event_type == "SNIPER_SIGNAL":
+                rows = connection.execute(
+                    """
+                    SELECT signal_outbox.*, setups.symbol, setups.side, setups.level,
+                           setups.breakout_at, setups.state
+                    FROM signal_outbox
+                    JOIN setups ON setups.setup_id = signal_outbox.setup_id
+                    LEFT JOIN trade_executions ON trade_executions.signal_outbox_id = signal_outbox.id
+                    WHERE signal_outbox.event_type = ? AND trade_executions.signal_outbox_id IS NULL
+                    ORDER BY signal_outbox.id LIMIT ?
+                    """,
+                    (event_type, max(1, int(limit))),
+                ).fetchall()
+            else:
+                rows = connection.execute(
+                    """
+                    SELECT signal_outbox.*, setups.symbol, setups.side, setups.level,
+                           setups.breakout_at, setups.state
+                    FROM signal_outbox
+                    JOIN setups ON setups.setup_id = signal_outbox.setup_id
+                    LEFT JOIN trade_event_receipts ON trade_event_receipts.outbox_id = signal_outbox.id
+                    WHERE signal_outbox.event_type = ? AND trade_event_receipts.outbox_id IS NULL
+                    ORDER BY signal_outbox.id LIMIT ?
+                    """,
+                    (event_type, max(1, int(limit))),
+                ).fetchall()
+        return [_outbox_row(row) for row in rows]
+
+    def save_trade_execution(self, record: dict[str, Any]) -> None:
+        now = _utc_now()
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO trade_executions (
+                    setup_id, signal_outbox_id, execution_mode, status, symbol, side,
+                    requested_entry, stop_price, target_price, volume, risk_cash,
+                    expected_profit_cash, valid_until, client_tag, order_ticket,
+                    deal_ticket, position_ticket, actual_entry, opened_at, closed_at,
+                    exit_price, profit_cash, close_reason, closed_by, last_error, updated_at
+                ) VALUES (
+                    :setup_id, :signal_outbox_id, :execution_mode, :status, :symbol, :side,
+                    :requested_entry, :stop_price, :target_price, :volume, :risk_cash,
+                    :expected_profit_cash, :valid_until, :client_tag, :order_ticket,
+                    :deal_ticket, :position_ticket, :actual_entry, :opened_at, :closed_at,
+                    :exit_price, :profit_cash, :close_reason, :closed_by, :last_error, :updated_at
+                )
+                ON CONFLICT(setup_id) DO UPDATE SET
+                    status=excluded.status, volume=excluded.volume, risk_cash=excluded.risk_cash,
+                    expected_profit_cash=excluded.expected_profit_cash,
+                    order_ticket=COALESCE(excluded.order_ticket, trade_executions.order_ticket),
+                    deal_ticket=COALESCE(excluded.deal_ticket, trade_executions.deal_ticket),
+                    position_ticket=COALESCE(excluded.position_ticket, trade_executions.position_ticket),
+                    actual_entry=COALESCE(excluded.actual_entry, trade_executions.actual_entry),
+                    opened_at=COALESCE(excluded.opened_at, trade_executions.opened_at),
+                    closed_at=COALESCE(excluded.closed_at, trade_executions.closed_at),
+                    exit_price=COALESCE(excluded.exit_price, trade_executions.exit_price),
+                    profit_cash=COALESCE(excluded.profit_cash, trade_executions.profit_cash),
+                    close_reason=COALESCE(excluded.close_reason, trade_executions.close_reason),
+                    closed_by=COALESCE(excluded.closed_by, trade_executions.closed_by),
+                    last_error=excluded.last_error, updated_at=excluded.updated_at
+                """,
+                {**record, "updated_at": now},
+            )
+
+    def trade_execution(self, setup_id: str) -> dict[str, Any] | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM trade_executions WHERE setup_id = ?", (setup_id,)
+            ).fetchone()
+        return dict(row) if row is not None else None
+
+    def active_trade_executions(self) -> list[dict[str, Any]]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT * FROM trade_executions
+                WHERE status IN ('FILLED', 'CLOSE_SUBMITTED', 'CLOSE_REJECTED')
+                ORDER BY updated_at
+                """
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def update_outbox_payload(self, outbox_id: int, payload: dict[str, Any]) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                "UPDATE signal_outbox SET payload_json = ? WHERE id = ? AND sent_at IS NULL",
+                (json.dumps(payload, sort_keys=True), int(outbox_id)),
+            )
+
+    def mark_trade_event_processed(self, *, outbox_id: int, event_type: str, result: str) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT OR IGNORE INTO trade_event_receipts (outbox_id, event_type, result, processed_at)
+                VALUES (?, ?, ?, ?)
+                """,
+                (int(outbox_id), event_type, result[:1000], _utc_now()),
+            )
 
     def notification_health(self) -> dict[str, Any]:
         with self._connect() as connection:

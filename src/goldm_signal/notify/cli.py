@@ -5,11 +5,14 @@ import os
 import time
 from pathlib import Path
 
+from bot_ea.mt5_adapter import LiveMT5Adapter
+
 from ..storage.database import SignalStore
 from .approval import TelegramApprovalWorker
 from .mt5_log import Mt5LogBridge
 from .outbox import OutboxWorker
 from .telegram import ApprovedTelegramSender, TelegramBotClient
+from .trade_lifecycle import TradeLifecycleConfig, TradeLifecycleWorker
 
 
 def main() -> None:
@@ -60,6 +63,20 @@ def main() -> None:
         ApprovedTelegramSender(store=store, client=client),
     )
     log_bridge = None if args.no_mt5_log_bridge else Mt5LogBridge(store, log_paths=args.mt5_log)
+    lifecycle_config = TradeLifecycleConfig.from_env()
+    lifecycle_worker = None
+    if lifecycle_config.enabled:
+        mt5_login = os.environ.get("MT5_LOGIN", "").strip()
+        lifecycle_worker = TradeLifecycleWorker(
+            store=store,
+            adapter=LiveMT5Adapter(
+                path=os.environ.get("MT5_PATH") or None,
+                login=int(mt5_login) if mt5_login else None,
+                password=os.environ.get("MT5_PASSWORD") or None,
+                server=os.environ.get("MT5_SERVER") or None,
+            ),
+            config=lifecycle_config,
+        )
     if args.debug_notification:
         log_bridge = log_bridge or Mt5LogBridge(store, log_paths=[])
         log_bridge.enqueue_debug_notification()
@@ -71,10 +88,12 @@ def main() -> None:
 
     if args.once:
         files, lines, ingested = log_bridge.run_once() if log_bridge else (0, 0, 0)
-        processed = approval_worker.run_once(timeout=0)
+        planned, outcomes, closed = lifecycle_worker.run_once() if lifecycle_worker else (0, 0, 0)
         sent, failed = outbox_worker.run_once()
+        processed = approval_worker.run_once(timeout=0)
         print(
             f"files={files} lines={lines} ingested={ingested} "
+            f"planned={planned} outcomes={outcomes} closed={closed} "
             f"processed={processed} sent={sent} failed={failed}",
             flush=True,
         )
@@ -83,11 +102,13 @@ def main() -> None:
     while True:
         try:
             files, lines, ingested = log_bridge.run_once() if log_bridge else (0, 0, 0)
-            processed = approval_worker.run_once(timeout=max(0, args.poll_timeout))
+            planned, outcomes, closed = lifecycle_worker.run_once() if lifecycle_worker else (0, 0, 0)
             sent, failed = outbox_worker.run_once()
-            if ingested or processed or sent or failed:
+            processed = approval_worker.run_once(timeout=max(0, args.poll_timeout))
+            if ingested or planned or outcomes or closed or processed or sent or failed:
                 print(
                     f"files={files} lines={lines} ingested={ingested} "
+                    f"planned={planned} outcomes={outcomes} closed={closed} "
                     f"processed={processed} sent={sent} failed={failed}",
                     flush=True,
                 )

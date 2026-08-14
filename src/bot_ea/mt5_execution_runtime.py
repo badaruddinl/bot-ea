@@ -207,6 +207,10 @@ class MT5ExecutionRuntime:
         request["order_type"] = side
         request["price"] = float(intent.entry_price or (snapshot.ask if side == "buy" else snapshot.bid) or 0.0)
         request["stop_distance_points"] = stop_distance_points
+        if intent.payload.get("sl") is not None:
+            request["sl"] = float(intent.payload["sl"])
+        if intent.payload.get("tp") is not None:
+            request["tp"] = float(intent.payload["tp"])
         return request
 
     def _refresh_live_request(self, snapshot, request: dict) -> dict:

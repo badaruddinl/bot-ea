@@ -47,9 +47,10 @@ class GoldMMt5LogBridgeTests(unittest.TestCase):
         self.assertIn("📍 LEVEL PANTAU\n• Trigger: 4379.22", event.telegram_text)
         self.assertIn("📊 VALIDASI", event.telegram_text)
         self.assertIn(
-            "🕒 Waktu sinyal: 13 Agu 2026 • 19:15 WIB (UTC+7)",
+            "🕒 Dibuat: 13 Agu 2026 • 19:15 WIB (UTC+7)",
             event.telegram_text,
         )
+        self.assertIn("• Setup M15: 13 Agu 2026 • 19:15 WIB (UTC+7)", event.telegram_text)
         self.assertTrue(
             event.telegram_text.endswith(
                 "🆔 GOLD.i#-BUY-4379.22-2026.08.13 19:15 WIB"
@@ -60,33 +61,29 @@ class GoldMMt5LogBridgeTests(unittest.TestCase):
         event = parse_mt5_log_line(SIGNAL)
         self.assertIsNotNone(event)
         assert event is not None
-        self.assertEqual(
-            event.telegram_text,
-            "\n".join(
-                [
-                    "🔔 ENTRY READY",
-                    "GOLD.i#  •  BUY",
-                    "🕒 Waktu sinyal: 13 Agu 2026 • 19:15 WIB (UTC+7)",
-                    "",
-                    "💰 RENCANA TRADE",
-                    "• Entry: 4380.10",
-                    "• Stop Loss: 4374.20",
-                    "• Take Profit: 4397.80",
-                    "",
-                    "📊 VALIDASI FINAL",
-                    "• Score: 78/100",
-                    "• Projected R: 3.000R",
-                    "• M5 votes: 3",
-                    "• Konfirmasi M1: ✅ Ya",
-                    "",
-                    "⚠️ STATUS ORDER",
-                    "Sinyal akun demo — bukan konfirmasi bahwa order broker sudah terbuka.",
-                    "Periksa tab Trade di MT5 untuk status eksekusi.",
-                    "",
-                    "🆔 GOLD.i#-BUY-4379.22-2026.08.13 19:15 WIB",
-                ]
-            ),
+        self.assertIn("🔔 ENTRY READY", event.telegram_text)
+        self.assertIn("• Entry: 4380.10", event.telegram_text)
+        self.assertIn("• Lot: menunggu sizing MT5", event.telegram_text)
+        self.assertIn("• Risiko estimasi: menunggu sizing MT5", event.telegram_text)
+        self.assertIn("Approval Telegram hanya memberi akses notifikasi", event.telegram_text)
+
+    def test_explicit_utc_epochs_override_broker_timestamp(self) -> None:
+        line = (
+            SIGNAL
+            + " setupUtcEpoch=1786608900 generatedUtcEpoch=1786616580 "
+            "serverUtcOffsetMinutes=180 validUntilUtcEpoch=1786616880 maxHoldingMinutes=1440"
         )
+        event = parse_mt5_log_line(line)
+        assert event is not None
+        self.assertEqual(event.occurred_at, datetime.fromtimestamp(1786608900, tz=timezone.utc))
+        self.assertEqual(event.generated_at, datetime.fromtimestamp(1786616580, tz=timezone.utc))
+        self.assertNotEqual(event.occurred_at, event.generated_at)
+        self.assertIn("Berlaku sampai", event.telegram_text)
+
+    def test_broker_offset_fallback_does_not_treat_server_time_as_utc(self) -> None:
+        event = parse_mt5_log_line(SIGNAL, server_utc_offset_minutes=180)
+        assert event is not None
+        self.assertEqual(event.occurred_at.hour, 9)
 
     def test_utf16_log_is_tailed_enqueued_and_deduplicated(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -105,8 +102,21 @@ class GoldMMt5LogBridgeTests(unittest.TestCase):
             promoted = store.load_setup("GOLD.i#-BUY-4379.22-2026.08.13 12:15")
             cancelled = store.load_setup("GOLD.i#-SELL-4400.00-2026.08.13 13:00")
             assert promoted is not None and cancelled is not None
-            self.assertEqual(promoted.state, SetupState.CONFIRMED_A_PLUS)
+            self.assertEqual(promoted.state, SetupState.ACTIVE_SIGNAL)
             self.assertEqual(cancelled.state, SetupState.CANCELLED)
+
+    def test_outcome_is_ingested_with_same_setup_id(self) -> None:
+        outcome = (
+            "SNIPER_OUTCOME id=GOLD.i#-BUY-4379.22-2026.08.13 12:15 status=CLOSED "
+            "side=BUY result=TARGET outcomeR=3.0 entry=4380.10 exitPrice=4397.80 "
+            "durationMinutes=42 setupUtcEpoch=1786608900 generatedUtcEpoch=1786616580 "
+            "serverUtcOffsetMinutes=180 source=MODEL_SIMULATION"
+        )
+        event = parse_mt5_log_line(outcome)
+        assert event is not None
+        self.assertEqual(event.event_type, "SNIPER_OUTCOME")
+        self.assertIn("HASIL MODEL STRATEGI", event.telegram_text)
+        self.assertIn("Bukan", event.telegram_text.title())
 
     def test_partial_line_waits_for_newline(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

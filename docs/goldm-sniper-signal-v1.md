@@ -1,8 +1,9 @@
 # GoldM Sniper Confidence Bot v1
 
-This branch introduces a separate, signal-only Python boundary. It intentionally
-does not reuse the existing order execution runtime and does not expose an
-`order_send` method.
+The strategy scanner remains signal-only. A separate, opt-in trade lifecycle
+worker consumes only final `SNIPER_SIGNAL status=ENTRY_READY` events and reuses
+the guarded MT5 execution runtime. This separation keeps market analysis from
+authorizing an order by itself.
 
 ## Broker profile
 
@@ -43,7 +44,7 @@ not a maximum-spread promise; the live hard gate uses spread divided by M15 ATR.
 - Position sizing is informational only and never rounds up to an unsafe broker
   minimum. The room-to-profit gate defaults to 3R.
 
-## Still intentionally gated
+## Intentionally gated execution boundary
 
 An early-candidate event may be delivered as a watchlist notification when its
 deterministic preliminary score is above 60. It must be labelled `WATCH_ONLY`,
@@ -53,6 +54,23 @@ cancelled using the same setup ID. A setup score is not treated as a probability
 Only the final `SNIPER_SIGNAL status=ENTRY_READY` event may be consumed by a
 separate execution boundary. Early-candidate, promotion, and cancellation events
 are informational and cannot authorize an order.
+
+Telegram `APPROVED` means only that a chat may receive notifications. It never
+enables trading. Trading is controlled independently by
+`GOLDM_TRADE_LIFECYCLE_ENABLED` and `GOLDM_EXECUTION_MODE`:
+
+- `off`: read the account, calculate a broker-normalized lot and expected cash
+  risk/reward, run preflight, but never submit an order.
+- `demo`: submit only when MT5 identifies the account as demo and all risk,
+  session, symbol, stale-signal, price-drift, and broker preflight gates pass.
+- `live`: additionally requires pinned login/server values and the exact
+  `GOLDM_LIVE_ORDER_CONSENT=I_UNDERSTAND_LIVE_ORDERS` acknowledgement.
+
+Every final signal has a short validity window. The execution worker stores the
+plan and broker tickets in SQLite, detects broker/manual/TP/SL closes from MT5
+history, and sends actual entry, exit, P/L, duration, close actor, and whether the
+exit matched the original TP/SL plan. Strategy `SNIPER_OUTCOME` events are
+explicitly labelled model simulations; only broker history is labelled actual.
 
 ## Telegram subscriber approval
 
@@ -80,12 +98,18 @@ server-side for both inline callbacks and `/approve CHAT_ID` or
 
 The same worker now tails the newest live `MQL5/Logs/*.log` file for each MT5
 terminal under `%APPDATA%\\MetaQuotes\\Terminal`. It parses the EA's
-`SNIPER_EARLY_CANDIDATE`, `SNIPER_EARLY_PROMOTED`, `SNIPER_SIGNAL`, and
-`SNIPER_EARLY_CANCELLED` records, persists a byte cursor, and enqueues each event
+`SNIPER_EARLY_CANDIDATE`, `SNIPER_EARLY_PROMOTED`, `SNIPER_SIGNAL`,
+`SNIPER_EARLY_CANCELLED`, and `SNIPER_OUTCOME` records, persists a byte cursor,
+and enqueues each event
 exactly once before Telegram delivery. Use `--mt5-log PATH` to override discovery.
 For a harmless end-to-end check, run once with `--debug-notification --once`;
 the resulting message explicitly states that it is not an entry and opens no
 order.
+
+New EA records include `setupUtcEpoch`, `generatedUtcEpoch`, and
+`serverUtcOffsetMinutes`. Telegram therefore shows the M15 setup time separately
+from the time the message was generated. `MT5_SERVER_UTC_OFFSET_MINUTES` is only
+a compatibility fallback for old logs that lack explicit epochs.
 
 ## Signal-only parity research
 

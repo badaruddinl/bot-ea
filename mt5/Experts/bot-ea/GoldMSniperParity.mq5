@@ -55,6 +55,7 @@ input double InpPsychologicalStep = 10.0;
 input double InpMinimumProjectedR = 1.50;
 input int    InpMinimumSetupScore = 70;
 input int    InpOutcomeHorizonM15Bars = 96;
+input int    InpSignalValidityMinutes = 5;
 input int    InpTradeWindowStartMinute = 62;
 input int    InpTradeWindowEndMinute = 1438;
 input int    InpMinimumContextVotes = 2;
@@ -122,6 +123,8 @@ bool g_earlyCandidatePromoted = false;
 int g_earlyCandidateConfidence = 0;
 
 bool g_active = false;
+string g_activeCandidateId = "";
+long g_activeSetupUtcEpoch = 0;
 SetupSide g_activeSide = SETUP_NONE;
 double g_entry = 0.0;
 double g_stop = 0.0;
@@ -197,7 +200,8 @@ int OnInit()
       return INIT_FAILED;
    }
    if(InpMaximumRetestBars <= 0 || InpMaximumM5TriggerBars <= 0 || InpMaximumM1EntryBars <= 0 ||
-      InpOutcomeHorizonM15Bars <= 0 || InpPsychologicalStep <= 0.0 ||
+      InpOutcomeHorizonM15Bars <= 0 || InpSignalValidityMinutes <= 0 ||
+      InpPsychologicalStep <= 0.0 ||
       InpBollingerPeriod <= 1 || InpBollingerDeviation <= 0.0 ||
       InpDojiMaximumBodyRatio <= 0.0 || InpDojiMaximumBodyRatio >= 1.0 ||
       InpFibonacciLookbackM15 < 3 || InpFibonacciTolerance <= 0.0 ||
@@ -266,7 +270,7 @@ int OnInit()
    }
 
    PrintFormat(
-      "SNIPER_CONFIG symbol=%s signalOnly=true level=PDH_PDL_PWH_PWL_H1_M15_PSYCH setupTF=M15 riskTF=M15 confirmTF=M5 refineTF=M1 RSI=%d STOCH=%d,%d,%d BB=%d,%.1f dojiRatio=%.2f FIB=23.6,38.2,50,61.8,78.6_EXT=127.2,161.8,200 lookback=%d tolerance=%.2f maxFibDelayM1=%d fibVote=%s fibScore=%s fibDelay=%s minM5Votes=%d maxM5Votes=%d minContextVotes=%d vwap=%s tradeWindow=%d-%d pre1RExit=%s,%d,%.2f strategyMode=%d channelBars=%d earlyAlert=%s,>%.1f reversalRSI=%.1f reversalStoch=%.1f trendSepATR=%.2f slowSlopeATR=%.2f partial=%s,%.2f,%.2f post1RLock=%.2f post2RLock=%.2f maxRetestBars=%d maxEntryDistanceATR=%.2f structuralStopBufferATR=%.2f minProjectedR=%.2f score=%d outcomeHorizonM15=%d",
+      "SNIPER_CONFIG symbol=%s signalOnly=true level=PDH_PDL_PWH_PWL_H1_M15_PSYCH setupTF=M15 riskTF=M15 confirmTF=M5 refineTF=M1 RSI=%d STOCH=%d,%d,%d BB=%d,%.1f dojiRatio=%.2f FIB=23.6,38.2,50,61.8,78.6_EXT=127.2,161.8,200 lookback=%d tolerance=%.2f maxFibDelayM1=%d fibVote=%s fibScore=%s fibDelay=%s minM5Votes=%d maxM5Votes=%d minContextVotes=%d vwap=%s tradeWindow=%d-%d pre1RExit=%s,%d,%.2f strategyMode=%d channelBars=%d earlyAlert=%s,>%.1f reversalRSI=%.1f reversalStoch=%.1f trendSepATR=%.2f slowSlopeATR=%.2f partial=%s,%.2f,%.2f post1RLock=%.2f post2RLock=%.2f maxRetestBars=%d maxEntryDistanceATR=%.2f structuralStopBufferATR=%.2f minProjectedR=%.2f score=%d outcomeHorizonM15=%d signalValidityMinutes=%d",
       _Symbol, InpRSIPeriod, InpStochK, InpStochD, InpStochSlowing,
       InpBollingerPeriod, InpBollingerDeviation, InpDojiMaximumBodyRatio,
       InpFibonacciLookbackM15, InpFibonacciTolerance, InpMaximumFibonacciDelayBars,
@@ -288,7 +292,7 @@ int OnInit()
       InpPost1RLockR, InpPost2RLockR,
       InpMaximumRetestBars, InpMaximumEntryDistanceATR,
       InpM15StructuralStopBufferATR, InpMinimumProjectedR, InpMinimumSetupScore,
-      InpOutcomeHorizonM15Bars
+      InpOutcomeHorizonM15Bars, InpSignalValidityMinutes
    );
    PrintFormat(
       "SNIPER_SYMBOL minLot=%.4f maxLot=%.4f lotStep=%.4f contract=%.2f tickSize=%.5f tickValue=%.5f point=%.5f stops=%d",
@@ -1103,6 +1107,23 @@ string BuildCandidateId()
    );
 }
 
+long ServerUtcOffsetSeconds()
+{
+   const datetime serverNow = TimeTradeServer() > 0 ? TimeTradeServer() : TimeCurrent();
+   return (long)serverNow - (long)TimeGMT();
+}
+
+long ServerTimeToUtcEpoch(const datetime serverTime)
+{
+   return (long)serverTime - ServerUtcOffsetSeconds();
+}
+
+long GeneratedUtcEpoch()
+{
+   const datetime serverNow = TimeTradeServer() > 0 ? TimeTradeServer() : TimeCurrent();
+   return ServerTimeToUtcEpoch(serverNow);
+}
+
 void EmitEarlyCandidateIfEligible(
    const MqlTick &tick,
    const bool strongPattern,
@@ -1122,12 +1143,14 @@ void EmitEarlyCandidateIfEligible(
    g_earlyCandidateAlerted = true;
    g_earlyCandidateAlerts++;
    PrintFormat(
-      "SNIPER_EARLY_CANDIDATE id=%s status=WATCH_ONLY autoEntry=false side=%s level=%.2f watchPrice=%.2f invalidation=%.2f confidence=%d threshold=>%.1f m5Votes=%d pattern=%s fibonacciReaction=%.2f next=M1_AND_FINAL_RISK_CHECK",
+      "SNIPER_EARLY_CANDIDATE id=%s status=WATCH_ONLY autoEntry=false side=%s level=%.2f watchPrice=%.2f invalidation=%.2f confidence=%d threshold=>%.1f m5Votes=%d pattern=%s fibonacciReaction=%.2f next=M1_AND_FINAL_RISK_CHECK setupUtcEpoch=%I64d generatedUtcEpoch=%I64d serverUtcOffsetMinutes=%d",
       g_candidateId,
       g_side == SETUP_BUY ? "BUY" : "SELL",
       g_level, watchPrice, invalidation, g_earlyCandidateConfidence,
       InpMinimumEarlyCandidateConfidence, g_m5ConfluenceVotes,
-      g_m5PatternName, fibonacciReaction
+      g_m5PatternName, fibonacciReaction,
+      ServerTimeToUtcEpoch(g_breakoutTime), GeneratedUtcEpoch(),
+      (int)(ServerUtcOffsetSeconds() / 60)
    );
 }
 
@@ -1362,7 +1385,11 @@ void CreateTechnicalSignal(
       return;
    }
 
+   if(g_candidateId == "")
+      g_candidateId = BuildCandidateId();
    g_active = true;
+   g_activeCandidateId = g_candidateId;
+   g_activeSetupUtcEpoch = ServerTimeToUtcEpoch(g_breakoutTime);
    g_activeSide = g_side;
    g_entry = entry;
    g_stop = stop;
@@ -1387,26 +1414,30 @@ void CreateTechnicalSignal(
    g_totalProjectedR += projectedR;
    g_totalScore += score;
 
-   if(g_candidateId == "")
-      g_candidateId = BuildCandidateId();
    if(g_earlyCandidateAlerted)
    {
       g_earlyCandidatePromoted = true;
       g_earlyCandidatePromotions++;
       PrintFormat(
-         "SNIPER_EARLY_PROMOTED id=%s status=ENTRY_READY confidenceEarly=%d scoreFinal=%d",
-         g_candidateId, g_earlyCandidateConfidence, score
+         "SNIPER_EARLY_PROMOTED id=%s status=ENTRY_READY confidenceEarly=%d scoreFinal=%d setupUtcEpoch=%I64d generatedUtcEpoch=%I64d serverUtcOffsetMinutes=%d",
+         g_candidateId, g_earlyCandidateConfidence, score,
+         ServerTimeToUtcEpoch(g_breakoutTime), GeneratedUtcEpoch(),
+         (int)(ServerUtcOffsetSeconds() / 60)
       );
    }
 
    PrintFormat(
-      "SNIPER_SIGNAL id=%s status=ENTRY_READY autoEntryEligible=true side=%s level=%.2f entry=%.2f stop=%.2f target=%.2f riskTF=M15 entryDistanceATR=%.3f stopDistanceATR=%.3f projectedR=%.3f score=%d m5Votes=%d pattern=%s fibonacciAligned=%s fibonacciReaction=%.2f m1Confirmed=%s retestBars=%d",
+      "SNIPER_SIGNAL id=%s status=ENTRY_READY autoEntryEligible=true side=%s level=%.2f entry=%.2f stop=%.2f target=%.2f riskTF=M15 entryDistanceATR=%.3f stopDistanceATR=%.3f projectedR=%.3f score=%d m5Votes=%d pattern=%s fibonacciAligned=%s fibonacciReaction=%.2f m1Confirmed=%s retestBars=%d setupUtcEpoch=%I64d generatedUtcEpoch=%I64d serverUtcOffsetMinutes=%d validUntilUtcEpoch=%I64d maxHoldingMinutes=%d",
       g_candidateId,
       g_side == SETUP_BUY ? "BUY" : "SELL",
       g_level, g_entry, g_stop, g_target, entryDistanceAtr, risk / atr,
       projectedR, score, g_m5ConfluenceVotes, g_m5PatternName,
       fibonacciAligned ? "true" : "false", g_activeFibReaction,
-      m1Confirmed ? "true" : "false", g_retestBars
+      m1Confirmed ? "true" : "false", g_retestBars,
+      ServerTimeToUtcEpoch(g_breakoutTime), GeneratedUtcEpoch(),
+      (int)(ServerUtcOffsetSeconds() / 60),
+      GeneratedUtcEpoch() + (long)InpSignalValidityMinutes * 60,
+      InpOutcomeHorizonM15Bars * 15
    );
    ResetSetup("PROMOTED_TO_ENTRY_READY");
 }
@@ -1498,14 +1529,21 @@ void CompleteSignal(const double outcomeR, const string reason)
    g_totalMfeR += g_activeMfeR;
    g_totalMaeR += g_activeMaeR;
    PrintFormat(
-      "SNIPER_OUTCOME side=%s result=%s outcomeR=%.4f hit1R=%s hit2R=%s hit3R=%s mfeR=%.4f maeR=%.4f durationMinutes=%d",
+      "SNIPER_OUTCOME id=%s status=CLOSED side=%s result=%s outcomeR=%.4f entry=%.2f exitPrice=%.2f stop=%.2f target=%.2f projectedR=%.4f hit1R=%s hit2R=%s hit3R=%s mfeR=%.4f maeR=%.4f durationMinutes=%d setupUtcEpoch=%I64d generatedUtcEpoch=%I64d serverUtcOffsetMinutes=%d source=MODEL_SIMULATION",
+      g_activeCandidateId,
       g_activeSide == SETUP_BUY ? "BUY" : "SELL", reason, outcomeR,
+      g_entry,
+      g_activeSide == SETUP_BUY ? SymbolInfoDouble(_Symbol, SYMBOL_BID) : SymbolInfoDouble(_Symbol, SYMBOL_ASK),
+      g_stop, g_target, g_activeProjectedR,
       g_hit1R ? "true" : "false", g_hit2R ? "true" : "false",
       g_hit3R ? "true" : "false", g_activeMfeR, g_activeMaeR,
-      (int)((TimeCurrent() - g_signalTime) / 60)
+      (int)((TimeCurrent() - g_signalTime) / 60), g_activeSetupUtcEpoch,
+      GeneratedUtcEpoch(), (int)(ServerUtcOffsetSeconds() / 60)
    );
    g_active = false;
    g_activeSide = SETUP_NONE;
+   g_activeCandidateId = "";
+   g_activeSetupUtcEpoch = 0;
    g_activeFibReaction = 0.0;
 }
 
@@ -1801,8 +1839,10 @@ void ResetSetup(const string reason = "SETUP_RESET")
    {
       g_earlyCandidateCancellations++;
       PrintFormat(
-         "SNIPER_EARLY_CANCELLED id=%s status=CANCELLED autoEntry=false confidenceEarly=%d reason=%s",
-         g_candidateId, g_earlyCandidateConfidence, reason
+         "SNIPER_EARLY_CANCELLED id=%s status=CANCELLED autoEntry=false confidenceEarly=%d reason=%s setupUtcEpoch=%I64d generatedUtcEpoch=%I64d serverUtcOffsetMinutes=%d",
+         g_candidateId, g_earlyCandidateConfidence, reason,
+         ServerTimeToUtcEpoch(g_breakoutTime), GeneratedUtcEpoch(),
+         (int)(ServerUtcOffsetSeconds() / 60)
       );
    }
    g_phase = PHASE_SCANNING;

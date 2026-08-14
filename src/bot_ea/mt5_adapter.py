@@ -84,6 +84,39 @@ class AccountFingerprintSnapshot:
     is_live: bool | None = None
 
 
+@dataclass(slots=True)
+class OpenPositionSnapshot:
+    ticket: int
+    symbol: str
+    side: str
+    volume: float
+    price_open: float
+    sl: float
+    tp: float
+    profit: float
+    opened_at: str | None
+    magic: int
+    comment: str
+
+
+@dataclass(slots=True)
+class DealSnapshot:
+    ticket: int
+    position_ticket: int
+    symbol: str
+    side: str
+    entry: str
+    volume: float
+    price: float
+    profit: float
+    commission: float
+    swap: float
+    reason: str
+    occurred_at: str | None
+    magic: int
+    comment: str
+
+
 class MT5Adapter(Protocol):
     """Future integration seam for MetaTrader 5 terminal access."""
 
@@ -115,6 +148,12 @@ class MT5Adapter(Protocol):
         raise NotImplementedError
 
     def send_order(self, request: dict) -> OrderSendResult:
+        raise NotImplementedError
+
+    def load_open_positions(self, *, symbol: str | None = None) -> list[OpenPositionSnapshot]:
+        raise NotImplementedError
+
+    def load_deals(self, *, since: datetime, symbol: str | None = None) -> list[DealSnapshot]:
         raise NotImplementedError
 
 
@@ -294,6 +333,12 @@ class MockMT5Adapter:
             volume=float(request.get("volume", 0.0) or 0.0),
             price=float(request.get("price", 0.0) or 0.0),
         )
+
+    def load_open_positions(self, *, symbol: str | None = None) -> list[OpenPositionSnapshot]:
+        return []
+
+    def load_deals(self, *, since: datetime, symbol: str | None = None) -> list[DealSnapshot]:
+        return []
 
 
 class LiveMT5Adapter:
@@ -513,6 +558,84 @@ class LiveMT5Adapter:
             request_id=getattr(result, "request_id", None),
             retcode_external=getattr(result, "retcode_external", None),
         )
+
+    def load_open_positions(self, *, symbol: str | None = None) -> list[OpenPositionSnapshot]:
+        mt5 = self._ensure_initialized()
+        rows = self._call_mt5(
+            lambda module: module.positions_get(symbol=symbol) if symbol else module.positions_get(),
+            retry_on_none=True,
+        )
+        if rows is None:
+            raise RuntimeError(f"MT5 positions_get() failed: {mt5.last_error()}")
+        buy_code = int(getattr(mt5, "POSITION_TYPE_BUY", 0))
+        return [
+            OpenPositionSnapshot(
+                ticket=int(getattr(row, "ticket", 0) or 0),
+                symbol=str(getattr(row, "symbol", "") or ""),
+                side="buy" if int(getattr(row, "type", -1)) == buy_code else "sell",
+                volume=float(getattr(row, "volume", 0.0) or 0.0),
+                price_open=float(getattr(row, "price_open", 0.0) or 0.0),
+                sl=float(getattr(row, "sl", 0.0) or 0.0),
+                tp=float(getattr(row, "tp", 0.0) or 0.0),
+                profit=float(getattr(row, "profit", 0.0) or 0.0),
+                opened_at=self._format_epoch(getattr(row, "time", None)),
+                magic=int(getattr(row, "magic", 0) or 0),
+                comment=str(getattr(row, "comment", "") or ""),
+            )
+            for row in rows
+        ]
+
+    def load_deals(self, *, since: datetime, symbol: str | None = None) -> list[DealSnapshot]:
+        mt5 = self._ensure_initialized()
+        start = since if since.tzinfo else since.replace(tzinfo=timezone.utc)
+        rows = self._call_mt5(
+            lambda module: module.history_deals_get(start, datetime.now(timezone.utc)),
+            retry_on_none=True,
+        )
+        if rows is None:
+            raise RuntimeError(f"MT5 history_deals_get() failed: {mt5.last_error()}")
+        buy_code = int(getattr(mt5, "DEAL_TYPE_BUY", 0))
+        entry_names = {
+            int(getattr(mt5, "DEAL_ENTRY_IN", 0)): "in",
+            int(getattr(mt5, "DEAL_ENTRY_OUT", 1)): "out",
+            int(getattr(mt5, "DEAL_ENTRY_INOUT", 2)): "inout",
+            int(getattr(mt5, "DEAL_ENTRY_OUT_BY", 3)): "out_by",
+        }
+        reason_names = {
+            int(getattr(mt5, "DEAL_REASON_CLIENT", 0)): "manual_desktop",
+            int(getattr(mt5, "DEAL_REASON_MOBILE", 1)): "manual_mobile",
+            int(getattr(mt5, "DEAL_REASON_WEB", 2)): "manual_web",
+            int(getattr(mt5, "DEAL_REASON_EXPERT", 3)): "expert",
+            int(getattr(mt5, "DEAL_REASON_SL", 4)): "stop_loss",
+            int(getattr(mt5, "DEAL_REASON_TP", 5)): "take_profit",
+            int(getattr(mt5, "DEAL_REASON_SO", 6)): "stop_out",
+        }
+        result: list[DealSnapshot] = []
+        for row in rows:
+            row_symbol = str(getattr(row, "symbol", "") or "")
+            if symbol and row_symbol != symbol:
+                continue
+            raw_entry = int(getattr(row, "entry", -1))
+            raw_reason = int(getattr(row, "reason", -1))
+            result.append(
+                DealSnapshot(
+                    ticket=int(getattr(row, "ticket", 0) or 0),
+                    position_ticket=int(getattr(row, "position_id", 0) or 0),
+                    symbol=row_symbol,
+                    side="buy" if int(getattr(row, "type", -1)) == buy_code else "sell",
+                    entry=entry_names.get(raw_entry, str(raw_entry)),
+                    volume=float(getattr(row, "volume", 0.0) or 0.0),
+                    price=float(getattr(row, "price", 0.0) or 0.0),
+                    profit=float(getattr(row, "profit", 0.0) or 0.0),
+                    commission=float(getattr(row, "commission", 0.0) or 0.0),
+                    swap=float(getattr(row, "swap", 0.0) or 0.0),
+                    reason=reason_names.get(raw_reason, str(raw_reason)),
+                    occurred_at=self._format_epoch(getattr(row, "time", None)),
+                    magic=int(getattr(row, "magic", 0) or 0),
+                    comment=str(getattr(row, "comment", "") or ""),
+                )
+            )
+        return result
 
     def shutdown(self) -> None:
         if self._initialized:

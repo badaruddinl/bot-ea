@@ -21,6 +21,7 @@ class SetupState(str, Enum):
     CANCELLED = "CANCELLED"
     MANUALLY_ENTERED = "MANUALLY_ENTERED"
     MISSED = "MISSED"
+    CLOSED = "CLOSED"
 
 
 TERMINAL_STATES = frozenset(
@@ -29,6 +30,7 @@ TERMINAL_STATES = frozenset(
         SetupState.CANCELLED,
         SetupState.MANUALLY_ENTERED,
         SetupState.MISSED,
+        SetupState.CLOSED,
     }
 )
 
@@ -64,7 +66,7 @@ _TRANSITIONS: dict[SetupState, frozenset[SetupState]] = {
         {SetupState.ACTIVE_SIGNAL, SetupState.CANCELLED, SetupState.MANUALLY_ENTERED, SetupState.MISSED}
     ),
     SetupState.ACTIVE_SIGNAL: frozenset(
-        {SetupState.CANCELLED, SetupState.MANUALLY_ENTERED, SetupState.MISSED}
+        {SetupState.CANCELLED, SetupState.MANUALLY_ENTERED, SetupState.MISSED, SetupState.CLOSED}
     ),
 }
 

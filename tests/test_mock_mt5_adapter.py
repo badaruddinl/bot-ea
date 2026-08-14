@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sys
 import unittest
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from pathlib import Path
 
@@ -109,6 +110,15 @@ class FakeMT5Module:
     ORDER_FILLING_RETURN = 2
     ORDER_TIME_GTC = 0
     TRADE_ACTION_DEAL = 1
+    POSITION_TYPE_BUY = 0
+    DEAL_TYPE_BUY = 0
+    DEAL_ENTRY_IN = 0
+    DEAL_ENTRY_OUT = 1
+    DEAL_ENTRY_INOUT = 2
+    DEAL_ENTRY_OUT_BY = 3
+    DEAL_REASON_EXPERT = 3
+    DEAL_REASON_SL = 4
+    DEAL_REASON_TP = 5
 
     def __init__(self) -> None:
         self.initialize_calls = []
@@ -125,6 +135,24 @@ class FakeMT5Module:
 
     def last_error(self):
         return (0, "ok")
+
+    def positions_get(self, **kwargs):
+        return (
+            SimpleNamespace(
+                ticket=321, symbol="EURUSD", type=0, volume=0.1, price_open=1.1,
+                sl=1.09, tp=1.12, profit=5.0, time=1713628800, magic=260814,
+                comment="GMS: abc123",
+            ),
+        )
+
+    def history_deals_get(self, start, end):
+        return (
+            SimpleNamespace(
+                ticket=654, position_id=321, symbol="EURUSD", type=1, entry=1,
+                volume=0.1, price=1.12, profit=20.0, commission=-0.5, swap=0.0,
+                reason=5, time=1713629800, magic=260814, comment="GMS: abc123",
+            ),
+        )
 
     def account_info(self):
         return SimpleNamespace(
@@ -231,6 +259,18 @@ class LiveMT5AdapterTests(unittest.TestCase):
         self.assertEqual(result.retcode, 0)
         self.assertIsNotNone(fake_mt5.last_checked_request)
         self.assertIn("sl", fake_mt5.last_checked_request)
+
+    def test_live_adapter_maps_positions_and_deals_for_lifecycle_reconciliation(self) -> None:
+        adapter = LiveMT5Adapter(mt5_module=FakeMT5Module())
+        positions = adapter.load_open_positions(symbol="EURUSD")
+        deals = adapter.load_deals(
+            since=datetime(2024, 4, 20, tzinfo=timezone.utc), symbol="EURUSD"
+        )
+        self.assertEqual(positions[0].ticket, 321)
+        self.assertEqual(positions[0].side, "buy")
+        self.assertEqual(deals[0].position_ticket, 321)
+        self.assertEqual(deals[0].reason, "take_profit")
+        self.assertEqual(deals[0].entry, "out")
 
     def test_mt5_snapshot_provider_builds_runtime_snapshot(self) -> None:
         adapter = MockMT5Adapter(

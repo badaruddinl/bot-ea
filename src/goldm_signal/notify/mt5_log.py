@@ -13,7 +13,7 @@ from ..strategy.state_machine import SetupRecord, SetupState
 
 
 _EVENT_RE = re.compile(
-    r"\b(?P<event>SNIPER_(?:EARLY_CANDIDATE|EARLY_PROMOTED|SIGNAL|EARLY_CANCELLED))\b(?P<body>.*)"
+    r"\b(?P<event>SNIPER_(?:EARLY_CANDIDATE|EARLY_PROMOTED|SIGNAL|EARLY_CANCELLED|OUTCOME))\b(?P<body>.*)"
 )
 _SETUP_ID_RE = re.compile(r"\bid=(?P<setup_id>.+?)\s+status=")
 _FIELD_RE = re.compile(r"(?P<key>[A-Za-z][A-Za-z0-9_]*)=(?P<value>\S+)")
@@ -31,6 +31,7 @@ class ParsedMt5Event:
     side: str
     level: float
     occurred_at: datetime
+    generated_at: datetime
     fields: dict[str, str]
     raw_text: str
 
@@ -48,12 +49,19 @@ class Mt5LogBridge:
         *,
         log_paths: Iterable[str | Path] | None = None,
         appdata: str | Path | None = None,
+        server_utc_offset_minutes: int | None = None,
     ) -> None:
         self._store = store
         self._log_paths = (
             tuple(Path(path) for path in log_paths) if log_paths is not None else None
         )
         self._appdata = Path(appdata) if appdata else None
+        configured_offset = os.environ.get("MT5_SERVER_UTC_OFFSET_MINUTES", "0")
+        self._server_utc_offset_minutes = (
+            int(configured_offset)
+            if server_utc_offset_minutes is None
+            else int(server_utc_offset_minutes)
+        )
 
     def run_once(self) -> tuple[int, int, int]:
         files = 0
@@ -139,7 +147,9 @@ class Mt5LogBridge:
 
         enqueued = 0
         for line in complete_lines:
-            event = parse_mt5_log_line(line)
+            event = parse_mt5_log_line(
+                line, server_utc_offset_minutes=self._server_utc_offset_minutes
+            )
             if event is not None and self._persist(event):
                 enqueued += 1
 
@@ -155,8 +165,9 @@ class Mt5LogBridge:
         state = {
             "SNIPER_EARLY_CANDIDATE": SetupState.EARLY_CANDIDATE,
             "SNIPER_EARLY_PROMOTED": SetupState.CONFIRMED_A_PLUS,
-            "SNIPER_SIGNAL": SetupState.CONFIRMED_A_PLUS,
+            "SNIPER_SIGNAL": SetupState.ACTIVE_SIGNAL,
             "SNIPER_EARLY_CANCELLED": SetupState.CANCELLED,
+            "SNIPER_OUTCOME": SetupState.CLOSED,
         }[event.event_type]
         self._store.save_setup(
             SetupRecord(
@@ -178,12 +189,16 @@ class Mt5LogBridge:
                 "setup_id": event.setup_id,
                 "event_type": event.event_type,
                 "fields": event.fields,
+                "setup_at_utc": _iso_utc(event.occurred_at),
+                "generated_at_utc": _iso_utc(event.generated_at),
                 "source": "mt5_expert_log",
             },
         )
 
 
-def parse_mt5_log_line(line: str) -> ParsedMt5Event | None:
+def parse_mt5_log_line(
+    line: str, *, server_utc_offset_minutes: int = 0
+) -> ParsedMt5Event | None:
     event_match = _EVENT_RE.search(line)
     if event_match is None:
         return None
@@ -196,9 +211,15 @@ def parse_mt5_log_line(line: str) -> ParsedMt5Event | None:
     if id_match is None:
         return None
     fields = {match.group("key"): match.group("value") for match in _FIELD_RE.finditer(body)}
-    occurred_at = datetime.strptime(
+    fallback_offset = int(fields.get("serverUtcOffsetMinutes", server_utc_offset_minutes))
+    fallback_zone = timezone(timedelta(minutes=fallback_offset))
+    setup_server_time = datetime.strptime(
         f"{id_match.group('date')} {id_match.group('time')}", "%Y.%m.%d %H:%M"
-    ).replace(tzinfo=timezone.utc)
+    ).replace(tzinfo=fallback_zone)
+    occurred_at = _datetime_from_epoch(fields.get("setupUtcEpoch")) or setup_server_time.astimezone(
+        timezone.utc
+    )
+    generated_at = _datetime_from_epoch(fields.get("generatedUtcEpoch")) or occurred_at
     return ParsedMt5Event(
         event_type=event_match.group("event"),
         setup_id=setup_id,
@@ -206,8 +227,29 @@ def parse_mt5_log_line(line: str) -> ParsedMt5Event | None:
         side=id_match.group("side"),
         level=float(id_match.group("level")),
         occurred_at=occurred_at,
+        generated_at=generated_at,
         fields=fields,
         raw_text=event_match.group(0).strip(),
+    )
+
+
+def render_stored_event(
+    *, event_type: str, setup_id: str, symbol: str, side: str, level: float,
+    setup_at: datetime, generated_at: datetime, fields: dict[str, str]
+) -> str:
+    """Render a stored event again after account-specific sizing/execution enrichment."""
+    return _format_telegram_text(
+        ParsedMt5Event(
+            event_type=event_type,
+            setup_id=setup_id,
+            symbol=symbol,
+            side=side,
+            level=level,
+            occurred_at=setup_at,
+            generated_at=generated_at,
+            fields=fields,
+            raw_text="",
+        )
     )
 
 
@@ -235,14 +277,16 @@ def _split_complete_lines(text: str) -> tuple[list[str], str]:
 def _format_telegram_text(event: ParsedMt5Event) -> str:
     fields = event.fields
     instrument = f"{event.symbol}  •  {event.side}"
-    event_time = f"🕒 Waktu sinyal: {_format_wib_time(event.occurred_at)}"
+    generated_time = f"🕒 Dibuat: {_format_wib_time(event.generated_at)}"
+    setup_time = f"• Setup M15: {_format_wib_time(event.occurred_at)}"
     identity = f"🆔 {_format_display_id(event)}"
     if event.event_type == "SNIPER_EARLY_CANDIDATE":
         return "\n".join(
             [
                 "🟡 WATCH ONLY",
                 instrument,
-                event_time,
+                generated_time,
+                setup_time,
                 "",
                 "📍 LEVEL PANTAU",
                 f"• Trigger: {fields.get('level', event.level)}",
@@ -266,7 +310,8 @@ def _format_telegram_text(event: ParsedMt5Event) -> str:
             [
                 "🟢 WATCH PROMOTED",
                 instrument,
-                event_time,
+                generated_time,
+                setup_time,
                 "",
                 "📊 PENILAIAN",
                 f"• Confidence awal: {fields.get('confidenceEarly', '?')}/100",
@@ -284,12 +329,18 @@ def _format_telegram_text(event: ParsedMt5Event) -> str:
             [
                 "🔔 ENTRY READY",
                 instrument,
-                event_time,
+                generated_time,
+                setup_time,
                 "",
                 "💰 RENCANA TRADE",
                 f"• Entry: {fields.get('entry', '?')}",
                 f"• Stop Loss: {fields.get('stop', '?')}",
                 f"• Take Profit: {fields.get('target', '?')}",
+                f"• Lot: {fields.get('volume', 'menunggu sizing MT5')}",
+                f"• Risiko estimasi: {_money(fields.get('expectedLossCash'))}",
+                f"• Profit estimasi: {_money(fields.get('expectedProfitCash'))}",
+                f"• Berlaku sampai: {_format_epoch_wib(fields.get('validUntilUtcEpoch'))}",
+                f"• Estimasi durasi: belum dikalibrasi; batas max {_duration(fields.get('maxHoldingMinutes'))}",
                 "",
                 "📊 VALIDASI FINAL",
                 f"• Score: {fields.get('score', '?')}/100",
@@ -298,8 +349,28 @@ def _format_telegram_text(event: ParsedMt5Event) -> str:
                 f"• Konfirmasi M1: {_yes_no(fields.get('m1Confirmed'))}",
                 "",
                 "⚠️ STATUS ORDER",
-                "Sinyal akun demo — bukan konfirmasi bahwa order broker sudah terbuka.",
-                "Periksa tab Trade di MT5 untuk status eksekusi.",
+                *_execution_status_lines(fields),
+                "",
+                identity,
+            ]
+        )
+    if event.event_type == "SNIPER_OUTCOME":
+        return "\n".join(
+            [
+                "📌 HASIL MODEL STRATEGI",
+                instrument,
+                generated_time,
+                setup_time,
+                "",
+                "📊 HASIL SIMULASI",
+                f"• Alasan keluar: {_display_token(fields.get('result', '?'))}",
+                f"• Entry: {fields.get('entry', '?')}",
+                f"• Exit: {fields.get('exitPrice', '?')}",
+                f"• Hasil: {fields.get('outcomeR', '?')}R",
+                f"• Durasi aktual: {_duration(fields.get('durationMinutes'))}",
+                "",
+                "⚠️ BUKAN KONFIRMASI BROKER",
+                "Ini outcome model strategi. Status order aktual dilaporkan terpisah.",
                 "",
                 identity,
             ]
@@ -308,7 +379,8 @@ def _format_telegram_text(event: ParsedMt5Event) -> str:
         [
             "⚪ WATCH CANCELLED",
             instrument,
-            event_time,
+            generated_time,
+            setup_time,
             "",
             "📊 PENILAIAN",
             f"• Confidence awal: {fields.get('confidenceEarly', '?')}/100",
@@ -361,3 +433,71 @@ def _yes_no(value: str | None) -> str:
     if str(value).strip().lower() == "false":
         return "❌ Tidak"
     return "?"
+
+
+def _datetime_from_epoch(value: str | None) -> datetime | None:
+    if value is None:
+        return None
+    try:
+        return datetime.fromtimestamp(int(value), tz=timezone.utc)
+    except (TypeError, ValueError, OSError, OverflowError):
+        return None
+
+
+def _iso_utc(value: datetime) -> str:
+    aware = value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    return aware.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _format_epoch_wib(value: str | None) -> str:
+    parsed = _datetime_from_epoch(value)
+    return _format_wib_time(parsed) if parsed is not None else "tidak tersedia"
+
+
+def _money(value: str | None) -> str:
+    if value in {None, ""}:
+        return "menunggu sizing MT5"
+    try:
+        return f"{float(value):.2f} (mata uang akun)"
+    except ValueError:
+        return str(value)
+
+
+def _duration(value: str | None) -> str:
+    if value in {None, ""}:
+        return "tidak tersedia"
+    try:
+        minutes = max(0, int(float(value)))
+    except ValueError:
+        return str(value)
+    hours, remainder = divmod(minutes, 60)
+    if hours and remainder:
+        return f"{hours}j {remainder}m"
+    if hours:
+        return f"{hours} jam"
+    return f"{remainder} menit"
+
+
+def _execution_status_lines(fields: dict[str, str]) -> list[str]:
+    status = fields.get("executionStatus", "SIGNAL_ONLY")
+    if status == "FILLED":
+        return [
+            f"✅ Order broker terisi • ticket {fields.get('positionTicket') or fields.get('orderTicket', '?')}",
+            f"Harga aktual: {fields.get('actualEntry', fields.get('entry', '?'))}",
+        ]
+    if status in {"PRECHECK_REJECTED", "GUARD_REJECTED", "RISK_REJECTED", "EXPIRED"}:
+        return [
+            f"⛔ Tidak entry: {_display_token(status)}",
+            _display_token(fields.get("executionDetail", "ditolak oleh pemeriksaan risiko")),
+        ]
+    if status == "READY_MANUAL":
+        return [
+            "Mode eksekusi OFF — sizing selesai, order tidak dikirim.",
+            "Approval Telegram hanya memberi akses notifikasi, bukan izin trading.",
+        ]
+    if status == "DRY_RUN_OK":
+        return ["Dry-run lolos — tidak ada order broker yang dikirim."]
+    return [
+        "Sinyal strategi — belum ada konfirmasi order broker.",
+        "Approval Telegram hanya memberi akses notifikasi, bukan izin trading.",
+    ]
