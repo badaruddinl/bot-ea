@@ -55,28 +55,33 @@ def main() -> None:
     store = SignalStore(db_path)
     store.initialize()
     client = TelegramBotClient(bot_token=token)
-    approval_worker = TelegramApprovalWorker(
-        store=store, client=client, admin_chat_ids=admin_ids
-    )
     outbox_worker = OutboxWorker(
         store,
         ApprovedTelegramSender(store=store, client=client),
     )
     log_bridge = None if args.no_mt5_log_bridge else Mt5LogBridge(store, log_paths=args.mt5_log)
-    lifecycle_config = TradeLifecycleConfig.from_env()
+    lifecycle_config = TradeLifecycleConfig.from_sources(store)
     lifecycle_worker = None
+    mt5_adapter = None
     if lifecycle_config.enabled:
         mt5_login = os.environ.get("MT5_LOGIN", "").strip()
+        mt5_adapter = LiveMT5Adapter(
+            path=os.environ.get("MT5_PATH") or None,
+            login=int(mt5_login) if mt5_login else None,
+            password=os.environ.get("MT5_PASSWORD") or None,
+            server=os.environ.get("MT5_SERVER") or None,
+        )
         lifecycle_worker = TradeLifecycleWorker(
             store=store,
-            adapter=LiveMT5Adapter(
-                path=os.environ.get("MT5_PATH") or None,
-                login=int(mt5_login) if mt5_login else None,
-                password=os.environ.get("MT5_PASSWORD") or None,
-                server=os.environ.get("MT5_SERVER") or None,
-            ),
+            adapter=mt5_adapter,
             config=lifecycle_config,
         )
+    approval_worker = TelegramApprovalWorker(
+        store=store,
+        client=client,
+        admin_chat_ids=admin_ids,
+        account_probe=(lambda: _probe_account(mt5_adapter)) if mt5_adapter else None,
+    )
     if args.debug_notification:
         log_bridge = log_bridge or Mt5LogBridge(store, log_paths=[])
         log_bridge.enqueue_debug_notification()
@@ -134,6 +139,24 @@ def _load_env_file(path: Path) -> None:
 def _parse_chat_ids(value: str) -> set[str]:
     normalized = value.replace(";", ",").replace(" ", ",")
     return {item for item in normalized.split(",") if item and item.lstrip("-").isdigit()}
+
+
+def _probe_account(adapter: LiveMT5Adapter) -> dict[str, object]:
+    fingerprint = adapter.load_account_fingerprint()
+    terminal = adapter.load_terminal_status()
+    return {
+        "login": fingerprint.login,
+        "server": fingerprint.server,
+        "broker": fingerprint.broker,
+        "is_live": fingerprint.is_live,
+        "trade_allowed": bool(
+            terminal.connected
+            and terminal.trade_allowed
+            and terminal.account_trade_allowed
+            and terminal.account_trade_expert
+            and not terminal.tradeapi_disabled
+        ),
+    }
 
 
 if __name__ == "__main__":

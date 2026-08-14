@@ -124,6 +124,34 @@ class GoldMTradeLifecycleTests(unittest.TestCase):
             self.assertIn("Order broker terisi", store.pending()[0]["payload"]["text"])
             self.assertTrue(any(row["event_type"] == "POSITION_OPENED" for row in store.pending()))
 
+    def test_runtime_settings_override_worker_config_without_restart(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store, adapter = self._fixture(Path(tmpdir))
+            store.set_runtime_settings(
+                {
+                    "trade.execution_mode": "off",
+                    "trade.risk_pct": 0.25,
+                },
+                updated_by="100",
+            )
+            worker = TradeLifecycleWorker(
+                store=store,
+                adapter=adapter,
+                config=TradeLifecycleConfig(
+                    enabled=True,
+                    execution_mode="demo",
+                    risk_pct=0.5,
+                    max_entry_drift_r=0.2,
+                ),
+                now_fn=lambda: NOW,
+            )
+
+            self.assertEqual(worker.run_once(), (1, 0, 0))
+
+            self.assertEqual(worker.config.execution_mode, "off")
+            self.assertEqual(worker.config.risk_pct, 0.25)
+            self.assertEqual(adapter.send_count, 0)
+
     def test_expired_signal_is_persisted_and_not_sent(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             store, adapter = self._fixture(Path(tmpdir))

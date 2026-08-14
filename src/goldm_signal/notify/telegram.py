@@ -62,6 +62,9 @@ class TelegramBotClient:
                     {"command": "watch", "description": "Kandidat terakhir"},
                     {"command": "history", "description": "5 event terbaru"},
                     {"command": "health", "description": "Kesehatan worker dan antrean"},
+                    {"command": "control", "description": "Panel akun, entry, dan risiko (admin)"},
+                    {"command": "account", "description": "Akun MT5 aktif (admin)"},
+                    {"command": "users", "description": "User penerima notifikasi (admin)"},
                     {"command": "stop", "description": "Berhenti menerima notifikasi"},
                     {"command": "pending", "description": "Daftar permintaan (admin)"},
                 ]

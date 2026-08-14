@@ -62,10 +62,18 @@ class GoldMTelegramApprovalTests(unittest.TestCase):
         self.store = SignalStore(Path(self.tempdir.name) / "signal.db")
         self.store.initialize()
         self.client = FakeTelegramClient()
+        self.account = {
+            "login": "108098316",
+            "server": "XMGlobal-MT5",
+            "broker": "XM Global Limited",
+            "is_live": False,
+            "trade_allowed": True,
+        }
         self.worker = TelegramApprovalWorker(
             store=self.store,
             client=self.client,  # type: ignore[arg-type]
             admin_chat_ids={"100"},
+            account_probe=lambda: dict(self.account),
         )
 
     def test_start_is_pending_until_admin_approves_callback(self) -> None:
@@ -183,6 +191,107 @@ class GoldMTelegramApprovalTests(unittest.TestCase):
         self.assertEqual(len(self.client.messages), 1)
         self.assertIn("Belum ada data", self.client.messages[0]["text"])
         self.assertEqual(self.store.recent_events(), [])
+
+    def test_control_panel_is_root_admin_only(self) -> None:
+        self.worker.process_update(self._message_update(1, "100", "/control"))
+        self.assertIn("CONTROL PANEL GOLDM", self.client.messages[-1]["text"])
+        self.assertIsNotNone(self.client.messages[-1]["reply_markup"])
+
+        self.worker.process_update(self._message_update(2, "200", "/control"))
+        self.assertIn("khusus root admin", self.client.messages[-1]["text"])
+
+    def test_users_can_be_revoked_with_admin_button(self) -> None:
+        self.worker.process_update(self._message_update(1, "200", "/start"))
+        self.worker.process_update(self._callback_update(2, "100", "approve:200"))
+
+        self.worker.process_update(self._message_update(3, "100", "/users"))
+
+        keyboard = self.client.messages[-1]["reply_markup"]["inline_keyboard"]
+        revoke = next(
+            button["callback_data"]
+            for row in keyboard
+            for button in row
+            if button["callback_data"] == "reject:200"
+        )
+        self.worker.process_update(self._callback_update(4, "100", revoke))
+        subscribers = self.store.telegram_subscribers(status="REJECTED")
+        self.assertEqual([item["chat_id"] for item in subscribers], ["200"])
+
+    def test_demo_mode_requires_two_clicks_and_binds_current_account(self) -> None:
+        self.worker.process_update(self._callback_update(1, "100", "ctl:mode:demo"))
+        self.assertEqual(self.store.runtime_settings(prefix="trade."), {})
+        confirm_data = self.client.messages[-1]["reply_markup"]["inline_keyboard"][0][0][
+            "callback_data"
+        ]
+
+        self.worker.process_update(self._callback_update(2, "100", confirm_data))
+
+        settings = self.store.runtime_settings(prefix="trade.")
+        self.assertEqual(settings["trade.execution_mode"], "demo")
+        self.assertEqual(settings["trade.expected_login"], "108098316")
+        self.assertEqual(settings["trade.expected_server"], "XMGlobal-MT5")
+        self.assertEqual(settings["trade.live_consent"], "")
+
+    def test_live_mode_requires_real_account_and_explicit_second_click(self) -> None:
+        self.worker.process_update(self._callback_update(1, "100", "ctl:mode:live"))
+        self.assertTrue(self.client.callback_answers[-1]["show_alert"])
+        self.assertEqual(self.store.runtime_settings(prefix="trade."), {})
+
+        self.account["is_live"] = True
+        self.worker.process_update(self._callback_update(2, "100", "ctl:mode:live"))
+        confirm_data = self.client.messages[-1]["reply_markup"]["inline_keyboard"][0][0][
+            "callback_data"
+        ]
+        self.assertEqual(self.store.runtime_settings(prefix="trade."), {})
+        self.worker.process_update(self._callback_update(3, "100", confirm_data))
+
+        settings = self.store.runtime_settings(prefix="trade.")
+        self.assertEqual(settings["trade.execution_mode"], "live")
+        self.assertEqual(settings["trade.live_consent"], "I_UNDERSTAND_LIVE_ORDERS")
+
+    def test_account_change_between_stage_and_confirm_is_rejected(self) -> None:
+        self.worker.process_update(self._callback_update(1, "100", "ctl:mode:demo"))
+        confirm_data = self.client.messages[-1]["reply_markup"]["inline_keyboard"][0][0][
+            "callback_data"
+        ]
+        self.account["login"] = "999999"
+
+        self.worker.process_update(self._callback_update(2, "100", confirm_data))
+
+        self.assertEqual(self.store.runtime_settings(prefix="trade."), {})
+        self.assertTrue(self.client.callback_answers[-1]["show_alert"])
+
+    def test_expired_control_confirmation_is_rejected(self) -> None:
+        self.store.stage_admin_action(
+            token="expired",
+            action_type="risk_change",
+            payload={"settings": {"trade.risk_pct": 1.0}},
+            requested_by="100",
+            expires_at=datetime(2000, 1, 1, tzinfo=timezone.utc),
+        )
+
+        self.worker.process_update(
+            self._callback_update(1, "100", "ctl:confirm:expired")
+        )
+
+        self.assertEqual(self.store.runtime_settings(prefix="trade."), {})
+        self.assertIn("EXPIRED", self.client.callback_answers[-1]["text"])
+        self.assertTrue(self.client.callback_answers[-1]["show_alert"])
+
+    def test_off_mode_is_an_immediate_emergency_stop(self) -> None:
+        self.store.set_runtime_settings(
+            {
+                "trade.execution_mode": "demo",
+                "trade.live_consent": "I_UNDERSTAND_LIVE_ORDERS",
+            },
+            updated_by="100",
+        )
+
+        self.worker.process_update(self._callback_update(1, "100", "ctl:mode:off"))
+
+        settings = self.store.runtime_settings(prefix="trade.")
+        self.assertEqual(settings["trade.execution_mode"], "off")
+        self.assertEqual(settings["trade.live_consent"], "")
 
     def _enqueue_signal(self) -> dict[str, Any]:
         record = SetupRecord(

@@ -50,12 +50,47 @@ class TradeLifecycleConfig:
             live_consent=os.environ.get("GOLDM_LIVE_ORDER_CONSENT", "").strip(),
         )
 
+    @classmethod
+    def from_sources(
+        cls,
+        store: SignalStore,
+        *,
+        fallback: "TradeLifecycleConfig | None" = None,
+    ) -> "TradeLifecycleConfig":
+        base = fallback or cls.from_env()
+        values = store.runtime_settings(prefix="trade.")
+        mode = str(values.get("trade.execution_mode", base.execution_mode)).lower()
+        if mode not in {"off", "demo", "live"}:
+            mode = "off"
+        return cls(
+            enabled=base.enabled,
+            execution_mode=mode,
+            risk_pct=float(values.get("trade.risk_pct", base.risk_pct)),
+            max_total_open_risk_pct=float(
+                values.get("trade.max_open_risk_pct", base.max_total_open_risk_pct)
+            ),
+            daily_loss_limit_pct=float(
+                values.get("trade.daily_loss_limit_pct", base.daily_loss_limit_pct)
+            ),
+            signal_ttl_minutes=int(
+                values.get("trade.signal_ttl_minutes", base.signal_ttl_minutes)
+            ),
+            max_entry_drift_r=float(
+                values.get("trade.max_entry_drift_r", base.max_entry_drift_r)
+            ),
+            magic=int(values.get("trade.magic", base.magic)),
+            expected_login=str(values.get("trade.expected_login", base.expected_login)),
+            expected_server=str(values.get("trade.expected_server", base.expected_server)),
+            live_consent=str(values.get("trade.live_consent", base.live_consent)),
+        )
+
 
 class TradeLifecycleWorker:
     """Size, gate, execute, and reconcile GoldM signals against the broker account.
 
-    Telegram subscription approval is deliberately absent from this class. Trading
-    authority comes only from the explicit execution-mode environment gates.
+    Telegram subscriber approval is deliberately absent from this class. Trading
+    authority comes from the execution mode, account pin, and live-consent gates;
+    their runtime overrides are written only by a root-admin control action.
     """
 
     def __init__(
@@ -73,6 +108,7 @@ class TradeLifecycleWorker:
         self.now_fn = now_fn or (lambda: datetime.now(timezone.utc))
 
     def run_once(self) -> tuple[int, int, int]:
+        self.config = TradeLifecycleConfig.from_sources(self.store, fallback=self.config)
         planned = sum(self._process_signal(row) for row in self.store.execution_candidates())
         outcomes = sum(
             self._process_model_outcome(row)

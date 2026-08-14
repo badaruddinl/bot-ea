@@ -110,6 +110,24 @@ CREATE TABLE IF NOT EXISTS trade_event_receipts (
     result TEXT NOT NULL,
     processed_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS runtime_settings (
+    setting_key TEXT PRIMARY KEY,
+    value_json TEXT NOT NULL,
+    updated_by TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS telegram_admin_actions (
+    action_token TEXT PRIMARY KEY,
+    action_type TEXT NOT NULL,
+    payload_json TEXT NOT NULL,
+    status TEXT NOT NULL CHECK(status IN ('PENDING', 'CONFIRMED', 'CANCELLED', 'EXPIRED')),
+    requested_by TEXT NOT NULL,
+    requested_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    decided_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_telegram_admin_actions_status
+    ON telegram_admin_actions(status, expires_at);
 """
 
 
@@ -524,6 +542,99 @@ class SignalStore:
                 """,
                 (str(offset),),
             )
+
+    def runtime_settings(self, *, prefix: str | None = None) -> dict[str, Any]:
+        query = "SELECT setting_key, value_json FROM runtime_settings"
+        parameters: tuple[Any, ...] = ()
+        if prefix is not None:
+            query += " WHERE setting_key LIKE ?"
+            parameters = (f"{prefix}%",)
+        with self._connect() as connection:
+            rows = connection.execute(query, parameters).fetchall()
+        return {str(row["setting_key"]): json.loads(str(row["value_json"])) for row in rows}
+
+    def set_runtime_settings(self, values: dict[str, Any], *, updated_by: str | int) -> None:
+        if not values:
+            return
+        now = _utc_now()
+        rows = [
+            (str(key), json.dumps(value, separators=(",", ":")), str(updated_by), now)
+            for key, value in values.items()
+        ]
+        with self._connect() as connection:
+            connection.executemany(
+                """
+                INSERT INTO runtime_settings (setting_key, value_json, updated_by, updated_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(setting_key) DO UPDATE SET
+                    value_json = excluded.value_json,
+                    updated_by = excluded.updated_by,
+                    updated_at = excluded.updated_at
+                """,
+                rows,
+            )
+
+    def stage_admin_action(
+        self,
+        *,
+        token: str,
+        action_type: str,
+        payload: dict[str, Any],
+        requested_by: str | int,
+        expires_at: datetime,
+    ) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO telegram_admin_actions (
+                    action_token, action_type, payload_json, status,
+                    requested_by, requested_at, expires_at
+                ) VALUES (?, ?, ?, 'PENDING', ?, ?, ?)
+                """,
+                (
+                    token,
+                    action_type,
+                    json.dumps(payload, separators=(",", ":")),
+                    str(requested_by),
+                    _utc_now(),
+                    _iso(expires_at),
+                ),
+            )
+
+    def decide_admin_action(
+        self,
+        *,
+        token: str,
+        actor_id: str | int,
+        confirm: bool,
+    ) -> dict[str, Any] | None:
+        now = datetime.now(timezone.utc)
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM telegram_admin_actions WHERE action_token = ?",
+                (token,),
+            ).fetchone()
+            if row is None or str(row["requested_by"]) != str(actor_id):
+                return None
+            result = dict(row)
+            if str(row["status"]) != "PENDING":
+                return result
+            expires_at = datetime.fromisoformat(str(row["expires_at"]).replace("Z", "+00:00"))
+            if expires_at <= now:
+                status = "EXPIRED"
+            else:
+                status = "CONFIRMED" if confirm else "CANCELLED"
+            connection.execute(
+                """
+                UPDATE telegram_admin_actions
+                SET status = ?, decided_at = ?
+                WHERE action_token = ? AND status = 'PENDING'
+                """,
+                (status, _utc_now(), token),
+            )
+            result["status"] = status
+            result["payload"] = json.loads(str(row["payload_json"]))
+            return result
 
     def mt5_log_cursor(self, log_path: str | Path) -> dict[str, Any] | None:
         with self._connect() as connection:
