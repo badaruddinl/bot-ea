@@ -467,7 +467,12 @@ class LiveMT5Adapter:
             login=str(getattr(account_info, "login", "") or ""),
             server=server,
             broker=broker,
-            is_live=self._infer_is_live(server=server, broker=broker),
+            is_live=self._account_trade_mode_is_live(
+                mt5=mt5,
+                account_info=account_info,
+                server=server,
+                broker=broker,
+            ),
         )
 
     def load_available_symbols(self) -> list[str]:
@@ -841,3 +846,25 @@ class LiveMT5Adapter:
         if any(keyword in haystack for keyword in ("demo", "test", "trial", "practice")):
             return False
         return True
+
+    @classmethod
+    def _account_trade_mode_is_live(
+        cls,
+        *,
+        mt5,
+        account_info,
+        server: str,
+        broker: str,
+    ) -> bool | None:
+        """Prefer MT5's account trade mode over broker/server naming heuristics."""
+
+        trade_mode = getattr(account_info, "trade_mode", None)
+        if trade_mode is not None:
+            real_mode = getattr(mt5, "ACCOUNT_TRADE_MODE_REAL", None)
+            demo_mode = getattr(mt5, "ACCOUNT_TRADE_MODE_DEMO", None)
+            contest_mode = getattr(mt5, "ACCOUNT_TRADE_MODE_CONTEST", None)
+            if real_mode is not None and trade_mode == real_mode:
+                return True
+            if trade_mode in {mode for mode in (demo_mode, contest_mode) if mode is not None}:
+                return False
+        return cls._infer_is_live(server=server, broker=broker)

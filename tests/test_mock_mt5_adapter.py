@@ -103,6 +103,9 @@ class MockMT5AdapterTests(unittest.TestCase):
 
 
 class FakeMT5Module:
+    ACCOUNT_TRADE_MODE_DEMO = 0
+    ACCOUNT_TRADE_MODE_CONTEST = 1
+    ACCOUNT_TRADE_MODE_REAL = 2
     ORDER_TYPE_BUY = 0
     ORDER_TYPE_SELL = 1
     ORDER_FILLING_FOK = 0
@@ -156,6 +159,10 @@ class FakeMT5Module:
 
     def account_info(self):
         return SimpleNamespace(
+            login=108098316,
+            server="XMGlobal-MT5",
+            company="XM Global Limited",
+            trade_mode=self.ACCOUNT_TRADE_MODE_DEMO,
             equity=1200.0,
             balance=1180.0,
             margin_free=950.0,
@@ -233,6 +240,25 @@ class FakeMT5Module:
 
 
 class LiveMT5AdapterTests(unittest.TestCase):
+    def test_live_adapter_uses_account_trade_mode_for_demo_fingerprint(self) -> None:
+        adapter = LiveMT5Adapter(mt5_module=FakeMT5Module())
+
+        fingerprint = adapter.load_account_fingerprint()
+
+        self.assertFalse(fingerprint.is_live)
+        self.assertEqual(fingerprint.login, "108098316")
+        self.assertEqual(fingerprint.server, "XMGlobal-MT5")
+
+    def test_live_adapter_uses_account_trade_mode_for_real_fingerprint(self) -> None:
+        class RealAccountMT5(FakeMT5Module):
+            def account_info(self):
+                account = super().account_info()
+                return SimpleNamespace(**{**vars(account), "trade_mode": self.ACCOUNT_TRADE_MODE_REAL})
+
+        adapter = LiveMT5Adapter(mt5_module=RealAccountMT5())
+
+        self.assertTrue(adapter.load_account_fingerprint().is_live)
+
     def test_live_adapter_uses_symbol_select_and_order_check(self) -> None:
         fake_mt5 = FakeMT5Module()
         adapter = LiveMT5Adapter(mt5_module=fake_mt5)
