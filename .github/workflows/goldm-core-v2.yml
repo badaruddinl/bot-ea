@@ -1,0 +1,111 @@
+name: goldm-core-v2
+
+on:
+  pull_request:
+    branches: [main, development, release/goldm-core-v2]
+  push:
+    branches: [main, development, release/goldm-core-v2]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: goldm-core-v2-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  full-python-windows:
+    name: full-python-windows
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact revision
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Install CPython 3.14
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.14"
+          cache: pip
+      - name: Install test and runtime dependencies
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          python -m pip install --disable-pip-version-check --upgrade pip
+          python -m pip install --disable-pip-version-check -e ".[desktop,live]" pytest
+      - name: Verify clean patch and compile Python
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          git diff --check
+          python -m compileall -q src tests
+      - name: Discover and run every test
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          New-Item -ItemType Directory -Path .ci-evidence -Force | Out-Null
+          python -m unittest discover -s tests -p "test_*.py" 2>&1 |
+            Tee-Object -FilePath .ci-evidence\full-unittest.txt
+          if ($LASTEXITCODE -ne 0) { throw "full unittest discovery failed" }
+      - name: Capture immutable identity evidence
+        if: always()
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          New-Item -ItemType Directory -Path .ci-evidence -Force | Out-Null
+          git rev-parse HEAD | Set-Content .ci-evidence\commit.txt -Encoding ascii
+          Get-FileHash -Algorithm SHA256 mt5\Experts\bot-ea\GoldMSniperParity.mq5 |
+            Format-List | Out-File .ci-evidence\ea-source-sha256.txt -Encoding ascii
+          python -m goldm_signal.deployment production-input-contract |
+            Set-Content .ci-evidence\production-contract.json -Encoding ascii
+      - name: Upload Python evidence
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: goldm-python-evidence-${{ github.sha }}
+          path: .ci-evidence
+          if-no-files-found: error
+          retention-days: 30
+
+  mt5-release-windows:
+    name: mt5-release-windows
+    runs-on: [self-hosted, Windows, X64, goldm-mt5]
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact revision
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Resolve sealed host prerequisites
+        id: prerequisites
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          $python = (Get-Command python.exe -ErrorAction Stop).Source
+          $metaEditor = "C:\Program Files\MetaTrader 5\MetaEditor64.exe"
+          if (-not (Test-Path -LiteralPath $metaEditor -PathType Leaf)) {
+            throw "MetaEditor64.exe is missing on the dedicated GOLDM runner"
+          }
+          "python=$python" | Out-File $env:GITHUB_OUTPUT -Encoding ascii -Append
+          "metaeditor=$metaEditor" | Out-File $env:GITHUB_OUTPUT -Encoding ascii -Append
+      - name: Run full release verification and clean MQL compile
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          New-Item -ItemType Directory -Path .ci-evidence -Force | Out-Null
+          & .\scripts\verify-goldm-release.ps1 `
+            -RepoRoot $PWD.Path `
+            -PythonExecutable '${{ steps.prerequisites.outputs.python }}' `
+            -MetaEditorPath '${{ steps.prerequisites.outputs.metaeditor }}' 2>&1 |
+              Tee-Object -FilePath .ci-evidence\release-verification.txt
+          if ($LASTEXITCODE -ne 0) { throw "release verification failed" }
+      - name: Upload MT5 release evidence
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: goldm-mt5-release-evidence-${{ github.sha }}
+          path: .ci-evidence
+          if-no-files-found: error
+          retention-days: 90
