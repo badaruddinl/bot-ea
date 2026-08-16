@@ -45,27 +45,27 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          New-Item -ItemType Directory -Path .ci-evidence -Force | Out-Null
+          New-Item -ItemType Directory -Path ci-evidence -Force | Out-Null
           python -m unittest discover -s tests -p "test_*.py" 2>&1 |
-            Tee-Object -FilePath .ci-evidence\full-unittest.txt
+            Tee-Object -FilePath ci-evidence\full-unittest.txt
           if ($LASTEXITCODE -ne 0) { throw "full unittest discovery failed" }
       - name: Capture immutable identity evidence
         if: always()
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          New-Item -ItemType Directory -Path .ci-evidence -Force | Out-Null
-          git rev-parse HEAD | Set-Content .ci-evidence\commit.txt -Encoding ascii
+          New-Item -ItemType Directory -Path ci-evidence -Force | Out-Null
+          git rev-parse HEAD | Set-Content ci-evidence\commit.txt -Encoding ascii
           Get-FileHash -Algorithm SHA256 mt5\Experts\bot-ea\GoldMSniperParity.mq5 |
-            Format-List | Out-File .ci-evidence\ea-source-sha256.txt -Encoding ascii
+            Format-List | Out-File ci-evidence\ea-source-sha256.txt -Encoding ascii
           python -m goldm_signal.deployment production-input-contract |
-            Set-Content .ci-evidence\production-contract.json -Encoding ascii
+            Set-Content ci-evidence\production-contract.json -Encoding ascii
       - name: Upload Python evidence
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: goldm-python-evidence-${{ github.sha }}
-          path: .ci-evidence
+          path: ci-evidence
           if-no-files-found: error
           retention-days: 30
 
@@ -94,18 +94,18 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference = "Stop"
-          New-Item -ItemType Directory -Path .ci-evidence -Force | Out-Null
+          New-Item -ItemType Directory -Path ci-evidence -Force | Out-Null
           & .\scripts\verify-goldm-release.ps1 `
             -RepoRoot $PWD.Path `
             -PythonExecutable '${{ steps.prerequisites.outputs.python }}' `
             -MetaEditorPath '${{ steps.prerequisites.outputs.metaeditor }}' 2>&1 |
-              Tee-Object -FilePath .ci-evidence\release-verification.txt
+              Tee-Object -FilePath ci-evidence\release-verification.txt
           if ($LASTEXITCODE -ne 0) { throw "release verification failed" }
       - name: Upload MT5 release evidence
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: goldm-mt5-release-evidence-${{ github.sha }}
-          path: .ci-evidence
+          path: ci-evidence
           if-no-files-found: error
           retention-days: 90

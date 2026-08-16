@@ -346,23 +346,28 @@ def _run_system_powershell(script: str, *arguments: str) -> list[str]:
     }
     for index, argument in enumerate(arguments):
         child_environment[f"GOLDM_RESEARCH_PROBE_ARG{index}"] = argument
-    completed = subprocess.run(
-        [
-            str(powershell),
-            "-NoLogo",
-            "-NoProfile",
-            "-NonInteractive",
-            "-Command",
-            script,
-        ],
-        check=False,
-        capture_output=True,
-        text=True,
-        encoding="utf-8-sig",
-        timeout=30,
-        env=child_environment,
-        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-    )
+    try:
+        completed = subprocess.run(
+            [
+                str(powershell),
+                "-NoLogo",
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                script,
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8-sig",
+            timeout=90,
+            env=child_environment,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise WindowsResearchSecurityError(
+            "trusted Windows PowerShell operation exceeded 90 seconds"
+        ) from exc
     if completed.returncode != 0 or completed.stderr.strip():
         raise WindowsResearchSecurityError(
             "trusted Windows PowerShell operation failed: "

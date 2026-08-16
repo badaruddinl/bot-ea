@@ -451,12 +451,20 @@ class DesktopRuntimeCoordinator:
         self._thread.start()
         return config.run_id
 
-    def stop(self, *, join_timeout: float = 5.0) -> None:
-        if self._stop_event is None:
+    def stop(self, *, join_timeout: float = 30.0) -> None:
+        stop_event = self._stop_event
+        thread = self._thread
+        if stop_event is None:
             return
-        self._stop_event.set()
-        if self._thread is not None:
-            self._thread.join(timeout=join_timeout)
+        stop_event.set()
+        if thread is None:
+            return
+        thread.join(timeout=join_timeout)
+        if thread.is_alive():
+            raise TimeoutError(
+                "desktop runtime did not stop and persist state within "
+                f"{join_timeout:.1f} seconds"
+            )
 
     def set_live_enabled(self, enabled: bool) -> None:
         self._desired_live_enabled = enabled

@@ -784,7 +784,7 @@ class DesktopRuntimeCoordinatorTests(unittest.TestCase):
             while time.time() < deadline and coordinator.run_id is None:
                 time.sleep(0.05)
             coordinator.stop()
-            time.sleep(0.1)
+            self.assertFalse(coordinator.is_running)
 
             runtime_state, last_session = self._load_persisted_state(project_root, context_path)
 
