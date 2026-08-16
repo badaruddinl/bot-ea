@@ -9,9 +9,9 @@ Execution target during this program: demo only
 
 ## 1. Objective and non-objectives
 
-The objective is to determine whether the frozen D7 channel-continuation baseline can be improved by:
+The objective is to preserve the frozen D7 channel-continuation `ALL` baseline while determining whether it can be complemented by:
 
-1. direction specialization (`ALL`, `BULL_ONLY`, `BEAR_ONLY`);
+1. independent BULL and BEAR strategy engines with separately defined entries;
 2. a small, pre-declared set of candle morphologies;
 3. isolated indicator-context ablations; and
 4. broker-realistic R-based position management.
@@ -404,12 +404,14 @@ by passing the Python tests.
 - R3 policy is full close;
 - one strategy/profile executor is active per execution account.
 
-`ALL` is a router/profile, not a third algorithm that runs beside BULL and BEAR. Running `ALL`, `BULL_ONLY`, and `BEAR_ONLY` simultaneously on one account would duplicate signals and is prohibited.
+The production `ALL` profile remains the immutable D7 baseline. It is not reconstructed by combining experimental BULL and BEAR engines, and experimental engines cannot replace it without their own promotion evidence. Running overlapping engines on one execution account remains prohibited.
 
-Executable `BULL_ONLY` and `BEAR_ONLY` runs need not sum to `ALL`, because the EA currently has one active setup state. Disabling one direction can free state for a later setup in the other direction. Reports must distinguish:
+Legacy executable `BULL_ONLY` and `BEAR_ONLY` D7 runs need not sum to `ALL`, because the EA currently has one active setup state. Disabling one direction can free state for a later setup in the other direction. They are attribution/control runs only and do not satisfy the independent-engine requirement. Reports must distinguish:
 
 - attribution: BUY/SELL subsets of the same `ALL` run; and
 - executable profiles: independent reruns with one direction disabled.
+
+An independent directional engine must have a distinct candidate ID, entry family, parameter set, side-locked signal function, and evidence lineage. A BUY/SELL permission filter over D7 is not a directional algorithm.
 
 ## 5. Candidate budget
 
@@ -420,6 +422,8 @@ Executable `BULL_ONLY` and `BEAR_ONLY` runs need not sum to `ALL`, because the E
 | `A0` | Frozen D7 channel continuation | ALL | Existing model M1 |
 | `A1` | Frozen D7 channel continuation | BULL_ONLY | Existing model M1 |
 | `A2` | Frozen D7 channel continuation | BEAR_ONLY | Existing model M1 |
+
+`A1` and `A2` are frozen D7 controls. New directional discovery runs through the separately registered GoldI candidate plan and may not mutate `A0`/production `ALL`.
 
 The new EA in `A0` must reproduce the prior baseline's setup IDs, side, entry, exit reason, total trades, total R, R1/R2/R3 counts, MFE, and MAE on identical safe development segments. A direction-only code change is rejected if parity fails.
 

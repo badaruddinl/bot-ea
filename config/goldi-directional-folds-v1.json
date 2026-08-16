@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "plan_id": "goldi-directional-dev-folds-v1",
+  "registered_at": "2026-08-17T08:00:00Z",
+  "purpose": "Development",
+  "statistical_classification": "DEVELOPMENT_SELECTION",
+  "from_inclusive": "2022-02-28",
+  "to_exclusive": "2023-03-28",
+  "folds": [
+    {
+      "name": "train",
+      "role": "SELECTION",
+      "from_inclusive": "2022-02-28",
+      "to_exclusive": "2022-08-01"
+    },
+    {
+      "name": "validation_1",
+      "role": "INTERNAL_VALIDATION",
+      "from_inclusive": "2022-08-01",
+      "to_exclusive": "2022-12-01"
+    },
+    {
+      "name": "validation_2",
+      "role": "INTERNAL_VALIDATION",
+      "from_inclusive": "2022-12-01",
+      "to_exclusive": "2023-03-28"
+    }
+  ],
+  "plan_sha256": "e07339595ddfcb239905c855b16c99861e0c6119825766a05a33ffce594ab625"
+}

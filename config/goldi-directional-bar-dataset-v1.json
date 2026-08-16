@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "dataset_id": "goldi-directional-epsoft-m5-dev-v1",
+  "registered_at": "2026-08-17T08:00:00Z",
+  "purpose": "Development",
+  "statistical_classification": "DEVELOPMENT_SELECTION",
+  "source_repository": "https://github.com/EPSOFT/Database-Currency-Pair",
+  "source_commit": "d34d6497b2fcf9e2f1b6ea13fd2ed22f4ad708ea",
+  "archive_path": "../data/research/external_safe/epsoft_d34d6497/XAUUSD_5M_2007-2023.zip",
+  "archive_sha256": "8c1e92dc97eed9495cb3b4c44903ee8bce0b3ae47dcf85ddcb49f91ee3c210c6",
+  "source_symbol": "XAUUSD",
+  "target_symbol": "GOLD.i#",
+  "format": "EPSOFT_XAUUSD_BID_M5_V1",
+  "time_semantics": "SOURCE_ROW_EXPLICIT_GMT_OFFSET_TO_UTC_HALF_OPEN",
+  "bar_model_classification": "EXPLORATORY_BAR_MODEL_NOT_MT5_TICKS",
+  "warmup_from_inclusive": "2021-01-01",
+  "run_from_inclusive": "2022-02-28",
+  "to_exclusive": "2023-03-28",
+  "files": [
+    {
+      "path": "../data/research/external_safe/epsoft_d34d6497/extracted/5M/XAUUSD_Candlestick_5_M_BID_01.01.2020-31.12.2020.csv",
+      "sha256": "f38441cff03556466a57f1ad8cd5b616526bbe0b008ab7be6209ce01fae01232"
+    },
+    {
+      "path": "../data/research/external_safe/epsoft_d34d6497/extracted/5M/XAUUSD_Candlestick_5_M_BID_01.01.2021-31.12.2021.csv",
+      "sha256": "dd12105a587a16117387412411bff0739d63b2b123c720e86002d2240f2fa9f0"
+    },
+    {
+      "path": "../data/research/external_safe/epsoft_d34d6497/extracted/5M/XAUUSD_Candlestick_5_M_BID_01.01.2022-31.12.2022.csv",
+      "sha256": "8ab36af70aeaf96418aa82bb89335e5a3fb3dcd4d047001f6e20c294d5275af1"
+    },
+    {
+      "path": "../data/research/external_safe/epsoft_d34d6497/extracted/5M/XAUUSD_Candlestick_5_M_BID_01.01.2023-03.04.2023.csv",
+      "sha256": "ef54d283e8688fc9b96423e84211581f386539f8cd502fc9cdb4bc8a5af00653"
+    }
+  ],
+  "cost_model": {
+    "round_trip_quote": 0.3,
+    "same_bar_collision": "STOP_FIRST_CONSERVATIVE"
+  },
+  "manifest_sha256": "ebfb4c54286af8500183f843871d3b25b520f95241dd7a458948f0acb129a935"
+}
