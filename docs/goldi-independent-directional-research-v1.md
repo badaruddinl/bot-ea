@@ -38,7 +38,9 @@ The source is an immutable EPSOFT archive at commit `d34d6497b2fcf9e2f1b6ea13fd2
 | BULL | `BULL_SQUEEZE_EXPANSION_SESSION_A__T05` | 11 trades, +0.324R expectancy, PF 2.50 | 3 trades, +0.323R expectancy, PF 4.61 | 10 trades, +0.051R expectancy, PF 1.18 | rejected: minimum sample gates failed |
 | BEAR | `BEAR_SQUEEZE_EXPANSION_SESSION_A__T05` | 3 trades, +0.418R expectancy | 2 trades, -0.489R expectancy, PF 0.16 | 5 trades, -0.250R expectancy, PF 0.48 | rejected: performance and sample gates failed |
 
-Immutable local report SHA-256: `c321846810867f1d6baae863051e3d9033819869187a57a9b4805f23f5f0200b`.
+Canonical report-payload digest (the report's `report_sha256` field): `c321846810867f1d6baae863051e3d9033819869187a57a9b4805f23f5f0200b`.
+
+Serialized local report-file SHA-256: `d2b220a5da0b4255d7ca79e5f0ed4d1e9c9a658a0347cad1f0b7290779c8b8dd`.
 
 No candidate is promoted. BULL is promising only as a low-sample lead; BEAR is rejected in this form. Neither is added to the production `StrategyEngine` enum or deployed.
 
