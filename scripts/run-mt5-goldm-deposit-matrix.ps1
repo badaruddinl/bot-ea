@@ -11,11 +11,16 @@ param(
     [string]$ExtraSetPath = "",
     [string]$ExtraVariantName = "",
     [string]$ResultName = "stress_2024_deposit_matrix",
+    [ValidateSet('Development', 'Validation', 'Diagnostic', 'BlindOos')]
+    [string]$ResearchPurpose = 'Diagnostic',
     [switch]$ForceRerun,
     [switch]$CloseRunningTerminal
 )
 
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot 'goldm-research-guard.ps1')
+
+Assert-GoldMResearchRange -FromDate $FromDate -ToDate $ToDate -Purpose $ResearchPurpose -Label $ResultName
 
 function New-TesterConfig {
     param(

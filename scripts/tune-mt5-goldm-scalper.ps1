@@ -20,6 +20,12 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot 'goldm-research-guard.ps1')
+
+Assert-GoldMResearchRange -FromDate $ScreenFrom -ToDate $ScreenTo -Purpose Diagnostic -Label 'legacy tuning/screen'
+Assert-GoldMResearchRange -FromDate $InSampleFrom -ToDate $InSampleTo -Purpose Diagnostic -Label 'legacy tuning/in-sample'
+Assert-GoldMResearchRange -FromDate $OosFrom -ToDate $OosTo -Purpose Diagnostic -Label 'legacy tuning/oos'
+Assert-GoldMResearchRange -FromDate $LatestFrom -ToDate $LatestTo -Purpose Diagnostic -Label 'legacy tuning/latest'
 
 function Resolve-TerminalDataPath {
     param([string]$ExplicitPath)
@@ -184,6 +190,8 @@ function Invoke-Mt5Backtest {
         [string]$ConfigPath,
         [string]$TesterLogPath
     )
+
+    Assert-GoldMResearchRange -FromDate $FromDate -ToDate $ToDate -Purpose Diagnostic -Label "$Stage/$VariantName"
 
     $beforeLines = 0
     if (Test-Path -LiteralPath $TesterLogPath) {

@@ -1,11 +1,30 @@
 import argparse
 import json
 import math
+import sys
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 
-import MetaTrader5 as mt5
+REPO_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO_ROOT / "src"))
+
+from goldm_signal.research_dataset import (  # noqa: E402
+    RegisteredTickDataset,
+    load_registered_tick_dataset,
+)
+from goldm_signal.research_policy import (  # noqa: E402
+    ResearchPurpose,
+    StatisticalClassification,
+    assert_research_range,
+    parse_research_date,
+)
+from goldm_signal.research_folds import (  # noqa: E402
+    RegisteredFoldPlan,
+    load_registered_fold_plan,
+    partition_registered_timestamps,
+)
+
 import numpy as np
 import pandas as pd
 
@@ -23,46 +42,67 @@ class EvalResult:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Mine raw GOLDm# M1 candle patterns from MT5 history.")
-    parser.add_argument("--symbol", default="GOLDm#")
-    parser.add_argument("--terminal", default=r"C:\Program Files\MetaTrader 5\terminal64.exe")
-    parser.add_argument("--from-date", default="2024-05-17")
-    parser.add_argument("--to-date", default=None)
+    parser = argparse.ArgumentParser(
+        description=(
+            "Mine GOLD M1 candle patterns from a hashed, bounded offline tick "
+            "dataset. Direct broker/MT5 history access is intentionally unsupported."
+        )
+    )
+    parser.add_argument(
+        "--dataset-manifest",
+        type=Path,
+        required=True,
+        help="Canonical absolute path to a registered offline tick-dataset manifest.",
+    )
+    parser.add_argument("--from-date", required=True)
+    parser.add_argument("--to-date", required=True)
+    parser.add_argument(
+        "--purpose",
+        required=True,
+        choices=[item.value for item in ResearchPurpose],
+    )
+    parser.add_argument(
+        "--statistical-classification",
+        required=True,
+        choices=[item.value for item in StatisticalClassification],
+    )
+    parser.add_argument(
+        "--fold-plan",
+        type=Path,
+        required=True,
+        help="Canonical absolute path to a hashed, pre-registered fold plan.",
+    )
     parser.add_argument("--point", type=float, default=0.01)
     parser.add_argument("--min-count", type=int, default=80)
     parser.add_argument("--out-dir", default=r"data\research\goldm_candle_mining")
     return parser.parse_args()
 
 
-def utc_date(value: str) -> datetime:
-    return datetime.fromisoformat(value).replace(tzinfo=timezone.utc)
-
-
-def initialize_mt5(terminal: str, symbol: str) -> None:
-    if not mt5.initialize(path=terminal):
-        raise RuntimeError(f"MT5 initialize failed: {mt5.last_error()}")
-    if not mt5.symbol_select(symbol, True):
-        raise RuntimeError(f"Failed to select symbol {symbol}: {mt5.last_error()}")
-
-
-def fetch_rates(symbol: str, start: datetime, end: datetime) -> pd.DataFrame:
-    chunks = []
-    cursor = pd.Timestamp(start)
-    end_ts = pd.Timestamp(end)
-    while cursor < end_ts:
-        chunk_end = min(cursor + pd.Timedelta(days=31), end_ts)
-        rates = mt5.copy_rates_range(symbol, mt5.TIMEFRAME_M1, cursor.to_pydatetime(), chunk_end.to_pydatetime())
-        if rates is not None and len(rates) > 0:
-            chunks.append(pd.DataFrame(rates))
-        cursor = chunk_end
-
-    if not chunks:
-        raise RuntimeError(f"No M1 rates returned for {symbol}")
-
-    frame = pd.concat(chunks, ignore_index=True)
-    frame = frame.drop_duplicates(subset=["time"]).sort_values("time").reset_index(drop=True)
-    frame["time"] = pd.to_datetime(frame["time"], unit="s", utc=True)
-    return frame
+def ticks_to_m1(dataset: RegisteredTickDataset, point: float) -> pd.DataFrame:
+    if not math.isfinite(point) or point <= 0:
+        raise ValueError("point must be finite and positive")
+    ticks = pd.DataFrame(
+        {
+            "time": pd.to_datetime(
+                [row.time_msc for row in dataset.rows], unit="ms", utc=True
+            ),
+            "bid": [row.bid for row in dataset.rows],
+            "ask": [row.ask for row in dataset.rows],
+            "volume_real": [row.volume_real for row in dataset.rows],
+        }
+    )
+    ticks["spread"] = (ticks["ask"] - ticks["bid"]) / point
+    ticks = ticks.set_index("time")
+    prices = ticks["bid"].resample("1min", closed="left", label="left").ohlc()
+    bars = prices.join(
+        ticks.resample("1min", closed="left", label="left").agg(
+            tick_volume=("bid", "count"),
+            real_volume=("volume_real", "sum"),
+            spread=("spread", "last"),
+        )
+    )
+    bars = bars.dropna(subset=["open", "high", "low", "close", "spread"])
+    return bars.reset_index()
 
 
 def ema(series: pd.Series, span: int) -> pd.Series:
@@ -195,12 +235,16 @@ def result_dict(result: EvalResult) -> dict:
     }
 
 
-def split_masks(df: pd.DataFrame) -> dict[str, pd.Series]:
+def split_masks(
+    df: pd.DataFrame, plan: RegisteredFoldPlan
+) -> dict[str, pd.Series]:
+    raw = partition_registered_timestamps(
+        (value.to_pydatetime() for value in df["time"]),
+        plan,
+    )
     return {
-        "train": df["time"] < pd.Timestamp("2026-04-01", tz="UTC"),
-        "oos_april": (df["time"] >= pd.Timestamp("2026-04-01", tz="UTC"))
-        & (df["time"] < pd.Timestamp("2026-05-01", tz="UTC")),
-        "latest": df["time"] >= pd.Timestamp("2026-05-01", tz="UTC"),
+        name: pd.Series(values, index=df.index, dtype=bool)
+        for name, values in raw.items()
     }
 
 
@@ -298,8 +342,8 @@ def evaluate_rules(df: pd.DataFrame, masks: dict[str, pd.Series], min_count: int
                 rows.append(row)
     rows.sort(
         key=lambda item: (
-            item["oos_april"]["mean"],
-            item["oos_april"]["profit_factor"],
+            item["validation_1"]["mean"],
+            item["validation_1"]["profit_factor"],
             item["train"]["count"],
         ),
         reverse=True,
@@ -389,9 +433,9 @@ def evaluate_barrier_rules(df: pd.DataFrame, masks: dict[str, pd.Series], min_co
 
     rows.sort(
         key=lambda item: (
-            item["oos_april"]["profit_factor"],
-            item["oos_april"]["mean"],
-            item["latest"]["profit_factor"],
+            item["validation_1"]["profit_factor"],
+            item["validation_1"]["mean"],
+            item["validation_2"]["profit_factor"],
             item["train"]["profit_factor"],
         ),
         reverse=True,
@@ -399,24 +443,35 @@ def evaluate_barrier_rules(df: pd.DataFrame, masks: dict[str, pd.Series], min_co
     return rows
 
 
-def write_markdown(path: Path, symbol: str, df: pd.DataFrame, raw: list[dict], rules: list[dict], barriers: list[dict]) -> None:
+def write_markdown(
+    path: Path,
+    symbol: str,
+    df: pd.DataFrame,
+    raw: list[dict],
+    rules: list[dict],
+    barriers: list[dict],
+    fold_plan: RegisteredFoldPlan,
+    tick_dataset: RegisteredTickDataset,
+) -> None:
     lines = [
         f"# {symbol} Raw Candle Pattern Mining",
         "",
         f"Bars: `{len(df):,}`",
         f"Range: `{df['time'].min()}` to `{df['time'].max()}`",
+        f"Fold plan: `{fold_plan.plan_id}` (`{fold_plan.plan_sha256}`)",
+        f"Offline dataset: `{tick_dataset.dataset_id}` (`{tick_dataset.dataset_sha256}`)",
         "",
         "Returns are measured from next M1 open to 10/20 candles forward, net of one entry spread approximation.",
         "",
         "## Top Raw Patterns By Train Expectancy",
         "",
-        "| Pattern | Side | H | Train n | Train mean | Train PF | OOS n | OOS mean | OOS PF | Latest n | Latest mean | Latest PF |",
+        "| Pattern | Side | H | Train n | Train mean | Train PF | Validation 1 n | Validation 1 mean | Validation 1 PF | Validation 2 n | Validation 2 mean | Validation 2 PF |",
         "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for item in raw[:30]:
         train = item["train"]
-        oos = item["oos_april"]
-        latest = item["latest"]
+        oos = item["validation_1"]
+        latest = item["validation_2"]
         lines.append(
             f"| `{item['column']}={item['pattern']}` | {train['side']} | {train['horizon']} | "
             f"{train['count']} | {train['mean']} | {train['profit_factor']} | "
@@ -427,13 +482,13 @@ def write_markdown(path: Path, symbol: str, df: pd.DataFrame, raw: list[dict], r
         "",
         "## Indicator Rule Checks",
         "",
-        "| Rule | Side | H | Train n | Train mean | Train PF | OOS n | OOS mean | OOS PF | Latest n | Latest mean | Latest PF |",
+        "| Rule | Side | H | Train n | Train mean | Train PF | Validation 1 n | Validation 1 mean | Validation 1 PF | Validation 2 n | Validation 2 mean | Validation 2 PF |",
         "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for item in rules:
         train = item["train"]
-        oos = item["oos_april"]
-        latest = item["latest"]
+        oos = item["validation_1"]
+        latest = item["validation_2"]
         lines.append(
             f"| `{item['rule']}` | {item['side']} | {item['horizon']} | "
             f"{train['count']} | {train['mean']} | {train['profit_factor']} | "
@@ -446,13 +501,13 @@ def write_markdown(path: Path, symbol: str, df: pd.DataFrame, raw: list[dict], r
         "",
         "Barrier checks approximate MT5 execution by entering on the next M1 open and charging one spread. If TP and SL are both inside the same candle, the SL is counted first.",
         "",
-        "| Rule | Side | H | TP | SL | Train n | Train mean | Train PF | OOS n | OOS mean | OOS PF | Latest n | Latest mean | Latest PF |",
+        "| Rule | Side | H | TP | SL | Train n | Train mean | Train PF | Validation 1 n | Validation 1 mean | Validation 1 PF | Validation 2 n | Validation 2 mean | Validation 2 PF |",
         "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for item in barriers[:40]:
         train = item["train"]
-        oos = item["oos_april"]
-        latest = item["latest"]
+        oos = item["validation_1"]
+        latest = item["validation_2"]
         lines.append(
             f"| `{item['rule']}` | {item['side']} | {item['horizon']} | "
             f"{item['tp']} | {item['sl']} | "
@@ -465,40 +520,72 @@ def write_markdown(path: Path, symbol: str, df: pd.DataFrame, raw: list[dict], r
 
 def main() -> None:
     args = parse_args()
+    start = parse_research_date(args.from_date, field="from_date")
+    end = parse_research_date(args.to_date, field="to_date")
+    approved_range = assert_research_range(
+        start,
+        end,
+        purpose=args.purpose,
+        statistical_classification=args.statistical_classification,
+        label="candle pattern mining",
+    )
+    fold_plan = load_registered_fold_plan(
+        args.fold_plan,
+        expected_start=approved_range.start,
+        expected_end=approved_range.end,
+        expected_purpose=approved_range.purpose,
+        expected_classification=approved_range.statistical_classification,
+        require_source_evidence=True,
+    )
+    tick_dataset = load_registered_tick_dataset(
+        args.dataset_manifest,
+        expected_run_start=approved_range.start,
+        expected_end=approved_range.end,
+        expected_purpose=approved_range.purpose,
+        expected_classification=approved_range.statistical_classification,
+    )
+
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    start = utc_date(args.from_date)
-    end = datetime.now(timezone.utc) if args.to_date is None else utc_date(args.to_date)
+    rates = ticks_to_m1(tick_dataset, args.point)
+    features = add_features(rates, args.point)
+    dataset = add_forward_returns(features, [10, 20])
+    dataset = dataset[
+        (dataset["time"] >= approved_range.start)
+        & (dataset["time"] < approved_range.end)
+    ].dropna().reset_index(drop=True)
+    masks = split_masks(dataset, fold_plan)
 
-    initialize_mt5(args.terminal, args.symbol)
-    try:
-        rates = fetch_rates(args.symbol, start, end)
-        features = add_features(rates, args.point)
-        dataset = add_forward_returns(features, [10, 20]).dropna().reset_index(drop=True)
-        masks = split_masks(dataset)
+    raw = mine_raw_patterns(dataset, masks, args.min_count)
+    rules = evaluate_rules(dataset, masks, args.min_count)
+    barriers = evaluate_barrier_rules(dataset, masks, args.min_count)
 
-        raw = mine_raw_patterns(dataset, masks, args.min_count)
-        rules = evaluate_rules(dataset, masks, args.min_count)
-        barriers = evaluate_barrier_rules(dataset, masks, args.min_count)
+    symbol_slug = tick_dataset.custom_symbol.replace("#", "hash")
+    rates_path = out_dir / f"{symbol_slug}_m1_features.parquet"
+    dataset.to_parquet(rates_path, index=False)
+    (out_dir / "raw_patterns.json").write_text(json.dumps(raw, indent=2), encoding="utf-8")
+    (out_dir / "indicator_rules.json").write_text(json.dumps(rules, indent=2), encoding="utf-8")
+    (out_dir / "barrier_rules.json").write_text(json.dumps(barriers, indent=2), encoding="utf-8")
+    pd.DataFrame(barriers).to_csv(out_dir / "barrier_rules.csv", index=False)
+    write_markdown(
+        out_dir / "summary.md",
+        tick_dataset.custom_symbol,
+        dataset,
+        raw,
+        rules,
+        barriers,
+        fold_plan,
+        tick_dataset,
+    )
 
-        rates_path = out_dir / f"{args.symbol.replace('#', 'hash')}_m1_features.parquet"
-        dataset.to_parquet(rates_path, index=False)
-        (out_dir / "raw_patterns.json").write_text(json.dumps(raw, indent=2), encoding="utf-8")
-        (out_dir / "indicator_rules.json").write_text(json.dumps(rules, indent=2), encoding="utf-8")
-        (out_dir / "barrier_rules.json").write_text(json.dumps(barriers, indent=2), encoding="utf-8")
-        pd.DataFrame(barriers).to_csv(out_dir / "barrier_rules.csv", index=False)
-        write_markdown(out_dir / "summary.md", args.symbol, dataset, raw, rules, barriers)
-
-        print(f"bars={len(dataset)}")
-        print(f"range={dataset['time'].min()}..{dataset['time'].max()}")
-        print(f"summary={out_dir / 'summary.md'}")
-        print(f"raw_patterns={out_dir / 'raw_patterns.json'}")
-        print(f"indicator_rules={out_dir / 'indicator_rules.json'}")
-        print(f"barrier_rules={out_dir / 'barrier_rules.json'}")
-        print(f"features={rates_path}")
-    finally:
-        mt5.shutdown()
+    print(f"bars={len(dataset)}")
+    print(f"range={dataset['time'].min()}..{dataset['time'].max()}")
+    print(f"summary={out_dir / 'summary.md'}")
+    print(f"raw_patterns={out_dir / 'raw_patterns.json'}")
+    print(f"indicator_rules={out_dir / 'indicator_rules.json'}")
+    print(f"barrier_rules={out_dir / 'barrier_rules.json'}")
+    print(f"features={rates_path}")
 
 
 if __name__ == "__main__":

@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "range_semantics": "half-open [from, to)",
+  "development": {
+    "warmup_from": "2021-01-01",
+    "from": "2022-02-28",
+    "to": "2024-02-28"
+  },
+  "validation": {
+    "from": "2024-02-28",
+    "to": "2026-02-28",
+    "classification": "locked-legacy-validation-not-blind"
+  },
+  "quarantine": {
+    "from": "2026-02-28",
+    "to": "2026-07-01"
+  },
+  "known_exposure": {
+    "from": "2026-07-01",
+    "to": "2026-08-12",
+    "classification": "diagnostic-only"
+  }
+}

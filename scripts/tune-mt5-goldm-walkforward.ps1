@@ -21,6 +21,23 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot 'goldm-research-guard.ps1')
+
+# Fail before terminal/profile mutations while this legacy matrix still contains protected windows.
+$declaredResearchWindows = @(
+    @{ Label = 'screen/s2025_01'; From = '2025.01.01'; To = '2025.02.01' },
+    @{ Label = 'screen/s2025_03'; From = '2025.03.01'; To = '2025.04.01' },
+    @{ Label = 'screen/s2025_08'; From = '2025.08.01'; To = '2025.09.01' },
+    @{ Label = 'validation/v2025_02'; From = '2025.02.01'; To = '2025.03.01' },
+    @{ Label = 'validation/v2025_04'; From = '2025.04.01'; To = '2025.05.01' },
+    @{ Label = 'validation/v2025_09'; From = '2025.09.01'; To = '2025.10.01' },
+    @{ Label = 'oos/oos2025_11'; From = '2025.11.01'; To = '2025.12.01' },
+    @{ Label = 'oos/oos2026_q1'; From = '2026.01.01'; To = '2026.04.01' },
+    @{ Label = 'oos/oos2026_apr'; From = '2026.04.01'; To = '2026.05.06' }
+)
+foreach ($window in $declaredResearchWindows) {
+    Assert-GoldMResearchRange -FromDate $window.From -ToDate $window.To -Purpose Diagnostic -Label "legacy walk-forward/$($window.Label)"
+}
 
 function New-TesterConfig {
     param(
@@ -185,6 +202,8 @@ function Invoke-Mt5Backtest {
         [string]$FromDate,
         [string]$ToDate
     )
+
+    Assert-GoldMResearchRange -FromDate $FromDate -ToDate $ToDate -Purpose Diagnostic -Label "$Stage/$Sample/$($Candidate.Name)"
 
     $key = "$Stage|$Sample|$($Candidate.Name)|$($Candidate.SetHash)"
     if($completed.ContainsKey($key)) {

@@ -13,10 +13,18 @@ param(
     [string]$OosFrom = "2026.08.01",
     [string]$OosTo = "2026.08.12",
     [string]$OosName = "oos_2026_aug_01_11",
+    [ValidateSet('Development', 'Validation', 'Diagnostic', 'BlindOos')]
+    [string]$BacktestPurpose = 'Diagnostic',
+    [ValidateSet('Development', 'Validation', 'Diagnostic', 'BlindOos')]
+    [string]$OosPurpose = 'Diagnostic',
     [switch]$CloseRunningTerminal
 )
 
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot 'goldm-research-guard.ps1')
+
+Assert-GoldMResearchRange -FromDate $BacktestFrom -ToDate $BacktestTo -Purpose $BacktestPurpose -Label $BacktestName
+Assert-GoldMResearchRange -FromDate $OosFrom -ToDate $OosTo -Purpose $OosPurpose -Label $OosName
 
 function Resolve-TerminalDataPath {
     param([string]$ExplicitPath)

@@ -13,6 +13,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot 'goldm-research-guard.ps1')
 
 function Get-AgentLog {
     $terminalRoot = Join-Path $env:APPDATA "MetaQuotes\Terminal"
@@ -45,16 +46,6 @@ function Convert-PerformanceLine {
     return $values
 }
 
-function Assert-OutsideQuarantine {
-    param([datetime]$From, [datetime]$To)
-
-    $quarantineFrom = [datetime]'2026-02-28'
-    $quarantineTo = [datetime]'2026-07-01'
-    if ($From -lt $quarantineTo -and $To -gt $quarantineFrom) {
-        throw "Test range $From to $To intersects quarantine 2026-02-28 through 2026-07-01."
-    }
-}
-
 $segments = if ($PeriodSet -eq 'Validation') {
     @(
         @{ Name = 'v1'; From = '2024.02.28'; To = '2024.06.28' },
@@ -82,13 +73,14 @@ foreach ($candidate in $CandidateNames) {
     for ($index = 0; $index -lt $segments.Count; $index += 2) {
         $first = $segments[$index]
         $second = $segments[$index + 1]
-        Assert-OutsideQuarantine -From ([datetime]$first.From) -To ([datetime]$first.To)
-        Assert-OutsideQuarantine -From ([datetime]$second.From) -To ([datetime]$second.To)
+        Assert-GoldMResearchRange -FromDate $first.From -ToDate $first.To -Purpose $PeriodSet -Label "$candidateId/$($first.Name)"
+        Assert-GoldMResearchRange -FromDate $second.From -ToDate $second.To -Purpose $PeriodSet -Label "$candidateId/$($second.Name)"
 
         Write-Output "candidate=$candidateId segments=$($first.Name),$($second.Name)"
         & $runner -RepoRoot $RepoRoot -CloseRunningTerminal -ExpertParameters $candidate `
             -BacktestFrom $first.From -BacktestTo $first.To -BacktestName "dev_${candidateId}_$($first.Name)" `
-            -OosFrom $second.From -OosTo $second.To -OosName "dev_${candidateId}_$($second.Name)" |
+            -OosFrom $second.From -OosTo $second.To -OosName "dev_${candidateId}_$($second.Name)" `
+            -BacktestPurpose $PeriodSet -OosPurpose $PeriodSet |
             ForEach-Object { Write-Output "runner:$_" }
 
         $agentLog = Get-AgentLog
