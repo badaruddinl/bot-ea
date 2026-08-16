@@ -21,6 +21,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot 'goldm-research-guard.ps1')
+Stop-GoldMLegacyTerminalResearch -Label 'tune-mt5-goldm-scalper.ps1'
 
 Assert-GoldMResearchRange -FromDate $ScreenFrom -ToDate $ScreenTo -Purpose Diagnostic -Label 'legacy tuning/screen'
 Assert-GoldMResearchRange -FromDate $InSampleFrom -ToDate $InSampleTo -Purpose Diagnostic -Label 'legacy tuning/in-sample'

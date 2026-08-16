@@ -22,6 +22,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot 'goldm-research-guard.ps1')
+Stop-GoldMLegacyTerminalResearch -Label 'run-mt5-goldm-sniper-backtests.ps1'
 
 Assert-GoldMResearchRange -FromDate $BacktestFrom -ToDate $BacktestTo -Purpose $BacktestPurpose -Label $BacktestName
 Assert-GoldMResearchRange -FromDate $OosFrom -ToDate $OosTo -Purpose $OosPurpose -Label $OosName

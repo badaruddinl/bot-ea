@@ -19,6 +19,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot 'goldm-research-guard.ps1')
+Stop-GoldMLegacyTerminalResearch -Label 'run-mt5-goldm-deposit-matrix.ps1'
 
 Assert-GoldMResearchRange -FromDate $FromDate -ToDate $ToDate -Purpose $ResearchPurpose -Label $ResultName
 

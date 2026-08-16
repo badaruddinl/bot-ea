@@ -28,6 +28,15 @@ function Get-GoldMResearchPolicy {
     return $policy
 }
 
+function Stop-GoldMLegacyTerminalResearch {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Label
+    )
+
+    throw "$Label is disabled: direct MT5 terminal/tester history is not a registered dataset. Use scripts/run-goldm-research-safe.py with an approved --dataset-manifest and registered run/fold evidence."
+}
+
 function Assert-GoldMResearchRange {
     [CmdletBinding()]
     param(

@@ -150,21 +150,27 @@ class GoldMResearchPolicyTests(unittest.TestCase):
         self.assertIn("known-exposure", powershell_guard)
 
     def test_every_terminal_research_runner_guards_before_process_start(self) -> None:
-        runner_names = (
-            "run-mt5-goldm-backtests.ps1",
-            "run-mt5-goldm-deposit-matrix.ps1",
-            "run-mt5-goldm-sniper-backtests.ps1",
-            "tune-mt5-goldm-scalper.ps1",
-            "tune-mt5-goldm-walkforward.ps1",
+        scripts_root = REPO_ROOT / "scripts"
+        direct_runner_names = {
+            path.name
+            for path in scripts_root.glob("*.ps1")
+            if "Start-Process" in path.read_text(encoding="utf-8")
+            and "/config:" in path.read_text(encoding="utf-8")
+        }
+        self.assertTrue(direct_runner_names, "direct MT5 runner inventory unexpectedly empty")
+        runner_names = sorted(
+            direct_runner_names | {"run-mt5-goldm-candidate-development.ps1"}
         )
         for name in runner_names:
             with self.subTest(name=name):
-                source = (REPO_ROOT / "scripts" / name).read_text(encoding="utf-8")
+                source = (scripts_root / name).read_text(encoding="utf-8")
                 self.assertIn("goldm-research-guard.ps1", source)
-                self.assertLess(
-                    source.index("Assert-GoldMResearchRange"),
-                    source.index("Start-Process"),
-                )
+                stop_index = source.index("Stop-GoldMLegacyTerminalResearch")
+                self.assertLess(stop_index, source.index("Assert-GoldMResearchRange"))
+                if "Start-Process" in source:
+                    self.assertLess(stop_index, source.index("Start-Process"))
+                else:
+                    self.assertLess(stop_index, source.index("$runner ="))
 
     def test_repository_contains_no_static_executable_mt5_tester_ini(self) -> None:
         config_root = REPO_ROOT / "mt5" / "tester_configs"
@@ -206,6 +212,27 @@ class GoldMResearchPolicyTests(unittest.TestCase):
         )
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("protected quarantine", result.stderr + result.stdout)
+
+    @unittest.skipUnless(os.name == "nt" and shutil.which("powershell"), "Windows PowerShell required")
+    def test_legacy_terminal_runner_is_explicitly_disabled_before_host_access(self) -> None:
+        runner = REPO_ROOT / "scripts" / "run-mt5-goldm-backtests.ps1"
+        result = subprocess.run(
+            [
+                "powershell",
+                "-NoProfile",
+                "-NonInteractive",
+                "-File",
+                str(runner),
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        output = result.stderr + result.stdout
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("direct MT5 terminal/tester history is not a registered dataset", output)
+        self.assertIn("run-goldm-research-safe.py", output)
+        self.assertNotIn("Terminal not found", output)
 
     @unittest.skipUnless(os.name == "nt" and shutil.which("powershell"), "Windows PowerShell required")
     def test_powershell_guard_rejects_diagnostic_bypass_and_bad_classification(self) -> None:

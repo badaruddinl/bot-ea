@@ -22,6 +22,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot 'goldm-research-guard.ps1')
+Stop-GoldMLegacyTerminalResearch -Label 'tune-mt5-goldm-walkforward.ps1'
 
 # Fail before terminal/profile mutations while this legacy matrix still contains protected windows.
 $declaredResearchWindows = @(

@@ -14,6 +14,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot 'goldm-research-guard.ps1')
+Stop-GoldMLegacyTerminalResearch -Label 'run-mt5-goldm-candidate-development.ps1'
 
 function Get-AgentLog {
     $terminalRoot = Join-Path $env:APPDATA "MetaQuotes\Terminal"
