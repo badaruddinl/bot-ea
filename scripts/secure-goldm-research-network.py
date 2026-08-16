@@ -64,15 +64,20 @@ def main(argv: list[str] | None = None) -> int:
         )
         if args.command == "install":
             names = expected_firewall_rule_names(clone)
-            specifications = tuple(
-                (
-                    name,
-                    f"GoldM Research Offline - {binary_name}",
-                    clone.destination_root / binary_name,
+            specifications = []
+            for name, binary_name in zip(names, _BINARY_NAMES, strict=True):
+                # Preserve the on-disk filename casing. Windows resolves
+                # metaeditor64.exe to MetaEditor64.exe, and the sealed rule
+                # identity intentionally includes that exact display name.
+                program = (clone.destination_root / binary_name).resolve(strict=True)
+                specifications.append(
+                    (
+                        name,
+                        f"GoldM Research Offline - {program.name}",
+                        program,
+                    )
                 )
-                for name, binary_name in zip(names, _BINARY_NAMES, strict=True)
-            )
-            installed = install_exact_outbound_block_rules(specifications)
+            installed = install_exact_outbound_block_rules(tuple(specifications))
             try:
                 evidence = build_firewall_isolation_evidence(
                     clone=clone,

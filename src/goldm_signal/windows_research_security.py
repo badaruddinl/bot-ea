@@ -147,6 +147,8 @@ $service = @(Get-NetFirewallServiceFilter -AssociatedNetFirewallRule $rule[0])
 if ($app.Count -ne 1 -or $protocol.Count -ne 1 -or $address.Count -ne 1 -or $service.Count -ne 1) {
   throw 'firewall rule filters are missing or ambiguous'
 }
+$interfaceType = [string]$rule[0].InterfaceType
+if ([string]::IsNullOrWhiteSpace($interfaceType)) { $interfaceType = 'Any' }
 [ordered]@{
   name = [string]$rule[0].Name
   display_name = [string]$rule[0].DisplayName
@@ -161,7 +163,8 @@ if ($app.Count -ne 1 -or $protocol.Count -ne 1 -or $address.Count -ne 1 -or $ser
   local_ports = @($protocol[0].LocalPort)
   remote_ports = @($protocol[0].RemotePort)
   service = [string]$service[0].Service
-  interface_type = [string]$rule[0].InterfaceType
+  # ActiveStore serializes an unrestricted InterfaceType as an empty value.
+  interface_type = $interfaceType
   policy_store_source_type = [string]$rule[0].PolicyStoreSourceType
 } | ConvertTo-Json -Compress -Depth 4
 """
