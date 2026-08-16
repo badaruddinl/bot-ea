@@ -327,25 +327,28 @@ class DesktopRuntimeCoordinatorTests(unittest.TestCase):
             )
 
             run_id = coordinator.start(config)
-            deadline = time.time() + 3.0
-            seen_kinds: set[str] = set()
-            last_cycle_payload = None
-            while time.time() < deadline and "runtime_cycle" not in seen_kinds:
-                for event in coordinator.drain_events():
-                    seen_kinds.add(event.kind)
-                    if event.kind == "runtime_cycle":
-                        last_cycle_payload = event.payload
+            deadline = time.monotonic() + 10.0
+            events = []
+            while time.monotonic() < deadline and not any(
+                event.kind == "runtime_cycle" for event in events
+            ):
+                events.extend(coordinator.drain_events())
                 time.sleep(0.05)
             coordinator.set_live_enabled(True)
             coordinator.stop()
-            time.sleep(0.1)
-            for event in coordinator.drain_events():
-                seen_kinds.add(event.kind)
+            events.extend(coordinator.drain_events())
+
+            seen_kinds = {event.kind for event in events}
+            last_cycle_payload = next(
+                (event.payload for event in reversed(events) if event.kind == "runtime_cycle"),
+                None,
+            )
 
             self.assertTrue(run_id)
             self.assertIn("runtime_started", seen_kinds)
             self.assertIn("runtime_cycle", seen_kinds)
             self.assertIn("runtime_stopped", seen_kinds)
+            self.assertNotIn("runtime_error", seen_kinds)
             self.assertFalse(coordinator.is_running)
             self.assertFalse(coordinator.live_enabled)
             assert last_cycle_payload is not None
