@@ -1,7 +1,15 @@
 #property copyright "bot-ea"
-#property version   "1.71"
+#property version   "1.72"
 #property strict
 #property description "Signal-only parity backtester for HTF-aligned GOLD breakout-retest continuation."
+
+#define SNIPER_STRATEGY_ID      "GOLDM_SNIPER_PARITY"
+#define SNIPER_STRATEGY_VERSION "1.72"
+#define GOLDM_PRODUCTION_INPUT_CONTRACT_SHA256 "fe3af5d9299c16c31d3c23ff84de1dffdb49d738fd961bc3450b85b3bfe2f800"
+#define GOLDM_RUNTIME_SESSION_FILE "goldm_runtime_session.txt"
+#define GOLDM_MIN_RESEARCH_RUN_ID_LENGTH 8
+#define GOLDM_MIN_RUNTIME_SESSION_ID_LENGTH 16
+#define GOLDM_MAX_RUN_ID_LENGTH 96
 
 enum SetupSide
 {
@@ -69,6 +77,7 @@ input bool   InpEnablePre1RAdverseExit = false;
 input int    InpPre1RAdverseBars = 2;
 input double InpPre1RAdverseThresholdR = 0.25;
 input int    InpStrategyMode = 0;
+input string InpResearchRunId = "";
 input double InpM15ReversalRSIThreshold = 42.0;
 input double InpM15ReversalStochThreshold = 30.0;
 input double InpMinimumM15TrendSeparationATR = 0.0;
@@ -118,12 +127,19 @@ double g_breakoutRelativeVolume = 0.0;
 double g_fibImpulseStart = 0.0;
 double g_fibImpulseEnd = 0.0;
 string g_candidateId = "";
+string g_candidateAccountScope = "unknown";
+long g_candidateAccountLogin = 0;
+string g_candidateServerB64 = "";
+long g_candidateSetupUtcEpoch = 0;
 bool g_earlyCandidateAlerted = false;
 bool g_earlyCandidatePromoted = false;
 int g_earlyCandidateConfidence = 0;
 
 bool g_active = false;
 string g_activeCandidateId = "";
+string g_activeAccountScope = "unknown";
+long g_activeAccountLogin = 0;
+string g_activeServerB64 = "";
 long g_activeSetupUtcEpoch = 0;
 SetupSide g_activeSide = SETUP_NONE;
 double g_entry = 0.0;
@@ -147,6 +163,7 @@ datetime g_lastM15Open = 0;
 datetime g_lastM5Open = 0;
 datetime g_lastM1Open = 0;
 bool g_summaryPrinted = false;
+string g_effectiveRunId = "UNSET";
 
 long g_ticks = 0;
 int g_breakouts = 0;
@@ -192,6 +209,135 @@ double g_totalMaeR = 0.0;
 double g_totalProjectedR = 0.0;
 double g_totalScore = 0.0;
 
+string EngineLineageProfile()
+{
+   // Protocol compatibility field only. The production strategy engine is
+   // immutable and never filters BUY/SELL candidates inside the EA.
+   return "ALL";
+}
+
+string ResearchRunId()
+{
+   return g_effectiveRunId;
+}
+
+string CurrentAccountScope()
+{
+   const ENUM_ACCOUNT_TRADE_MODE tradeMode =
+      (ENUM_ACCOUNT_TRADE_MODE)AccountInfoInteger(ACCOUNT_TRADE_MODE);
+   if(tradeMode == ACCOUNT_TRADE_MODE_DEMO)
+      return "demo";
+   if(tradeMode == ACCOUNT_TRADE_MODE_REAL)
+      return "live";
+   if(tradeMode == ACCOUNT_TRADE_MODE_CONTEST)
+      return "contest";
+   return "unknown";
+}
+
+string CurrentAccountServerB64()
+{
+   string server = AccountInfoString(ACCOUNT_SERVER);
+   StringTrimLeft(server);
+   StringTrimRight(server);
+   if(StringLen(server) == 0)
+      return "";
+
+   uchar bytes[];
+   const int copied = StringToCharArray(server, bytes, 0, WHOLE_ARRAY, CP_UTF8);
+   const int length = copied > 0 ? copied - 1 : 0;
+   if(length <= 0)
+      return "";
+
+   const string alphabet =
+      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+   string encoded = "";
+   for(int index = 0; index < length; index += 3)
+   {
+      const int first = (int)bytes[index];
+      const bool hasSecond = index + 1 < length;
+      const bool hasThird = index + 2 < length;
+      const int second = hasSecond ? (int)bytes[index + 1] : 0;
+      const int third = hasThird ? (int)bytes[index + 2] : 0;
+      encoded += StringSubstr(alphabet, first >> 2, 1);
+      encoded += StringSubstr(alphabet, ((first & 3) << 4) | (second >> 4), 1);
+      if(hasSecond)
+         encoded += StringSubstr(alphabet, ((second & 15) << 2) | (third >> 6), 1);
+      if(hasThird)
+         encoded += StringSubstr(alphabet, third & 63, 1);
+   }
+   return encoded;
+}
+
+void CaptureCandidateAccountOrigin()
+{
+   g_candidateAccountScope = CurrentAccountScope();
+   g_candidateAccountLogin = AccountInfoInteger(ACCOUNT_LOGIN);
+   g_candidateServerB64 = CurrentAccountServerB64();
+   // Freeze the complete setup lineage at candidate creation. Recomputing the
+   // UTC epoch after a server/account/DST offset change would make later events
+   // with the same setup id fail immutable identity validation.
+   g_candidateSetupUtcEpoch = ServerTimeToUtcEpoch(g_breakoutTime);
+}
+
+bool IsStructuredToken(const string value)
+{
+   for(int index = 0; index < StringLen(value); index++)
+   {
+      const ushort character = StringGetCharacter(value, index);
+      if(character <= 32 || character == '=')
+         return false;
+   }
+   return true;
+}
+
+bool InitializeRunId()
+{
+   string value = "";
+   const bool tester = (bool)MQLInfoInteger(MQL_TESTER);
+   if(tester)
+   {
+      value = InpResearchRunId;
+   }
+   else
+   {
+      ResetLastError();
+      const int handle = FileOpen(
+         GOLDM_RUNTIME_SESSION_FILE,
+         FILE_READ | FILE_TXT | FILE_ANSI
+      );
+      if(handle == INVALID_HANDLE)
+      {
+         PrintFormat(
+            "SNIPER_SESSION_ERROR reason=RUNTIME_SESSION_FILE_UNAVAILABLE file=%s error=%d",
+            GOLDM_RUNTIME_SESSION_FILE,
+            GetLastError()
+         );
+         return false;
+      }
+      value = FileReadString(handle);
+      FileClose(handle);
+      StringTrimLeft(value);
+      StringTrimRight(value);
+   }
+
+   const int minimumLength = tester
+      ? GOLDM_MIN_RESEARCH_RUN_ID_LENGTH
+      : GOLDM_MIN_RUNTIME_SESSION_ID_LENGTH;
+   const int length = StringLen(value);
+   if(length < minimumLength || length > GOLDM_MAX_RUN_ID_LENGTH ||
+      !IsStructuredToken(value))
+   {
+      PrintFormat(
+         "SNIPER_SESSION_ERROR reason=INVALID_%s_SESSION length=%d",
+         tester ? "RESEARCH" : "RUNTIME",
+         length
+      );
+      return false;
+   }
+   g_effectiveRunId = value;
+   return true;
+}
+
 int OnInit()
 {
    if(_Symbol != InpExpectedSymbol)
@@ -228,6 +374,8 @@ int OnInit()
    if(InpBreakoutChannelBars < 2 || InpBreakoutChannelBars > 96)
       return INIT_PARAMETERS_INCORRECT;
    if(InpMinimumEarlyCandidateConfidence < 0.0 || InpMinimumEarlyCandidateConfidence >= 100.0)
+      return INIT_PARAMETERS_INCORRECT;
+   if(!InitializeRunId())
       return INIT_PARAMETERS_INCORRECT;
 
    g_d1EmaFast = iMA(_Symbol, PERIOD_D1, InpEmaContextFast, 0, MODE_EMA, PRICE_CLOSE);
@@ -270,8 +418,51 @@ int OnInit()
    }
 
    PrintFormat(
-      "SNIPER_CONFIG symbol=%s signalOnly=true level=PDH_PDL_PWH_PWL_H1_M15_PSYCH setupTF=M15 riskTF=M15 confirmTF=M5 refineTF=M1 RSI=%d STOCH=%d,%d,%d BB=%d,%.1f dojiRatio=%.2f FIB=23.6,38.2,50,61.8,78.6_EXT=127.2,161.8,200 lookback=%d tolerance=%.2f maxFibDelayM1=%d fibVote=%s fibScore=%s fibDelay=%s minM5Votes=%d maxM5Votes=%d minContextVotes=%d vwap=%s tradeWindow=%d-%d pre1RExit=%s,%d,%.2f strategyMode=%d channelBars=%d earlyAlert=%s,>%.1f reversalRSI=%.1f reversalStoch=%.1f trendSepATR=%.2f slowSlopeATR=%.2f partial=%s,%.2f,%.2f post1RLock=%.2f post2RLock=%.2f maxRetestBars=%d maxEntryDistanceATR=%.2f structuralStopBufferATR=%.2f minProjectedR=%.2f score=%d outcomeHorizonM15=%d signalValidityMinutes=%d",
-      _Symbol, InpRSIPeriod, InpStochK, InpStochD, InpStochSlowing,
+      "SNIPER_PRODUCTION_INPUTS schema=1 part=1/2 contractSha256=%s InpExpectedSymbol=%s InpEmaContextFast=%d InpEmaContextSlow=%d InpATRPeriod=%d InpRSIPeriod=%d InpStochK=%d InpStochD=%d InpStochSlowing=%d InpBollingerPeriod=%d InpBollingerDeviation=%.8f InpDojiMaximumBodyRatio=%.8f InpFibonacciLookbackM15=%d InpFibonacciTolerance=%.8f InpMaximumFibonacciDelayBars=%d InpMaximumSpreadATR=%.8f InpMinimumATRRegimeRatio=%.8f InpMaximumATRRegimeRatio=%.8f InpMinimumBreakoutBody=%.8f InpMinimumBreakoutATR=%.8f InpMaximumBreakoutATR=%.8f InpMaximumBreakoutWick=%.8f InpMinimumRelativeTickVolume=%.8f InpMaximumRetestBars=%d InpMaximumRetestDistanceATR=%.8f InpMaximumRetestPenetrationATR=%.8f InpMaximumM5TriggerBars=%d InpMaximumM1EntryBars=%d InpM1RSIPeriod=%d InpM1ManagementEMA=%d InpPost1RLockR=%.8f InpPost2RLockR=%.8f",
+      GOLDM_PRODUCTION_INPUT_CONTRACT_SHA256,
+      InpExpectedSymbol, InpEmaContextFast, InpEmaContextSlow, InpATRPeriod,
+      InpRSIPeriod, InpStochK, InpStochD, InpStochSlowing,
+      InpBollingerPeriod, InpBollingerDeviation, InpDojiMaximumBodyRatio,
+      InpFibonacciLookbackM15, InpFibonacciTolerance,
+      InpMaximumFibonacciDelayBars, InpMaximumSpreadATR,
+      InpMinimumATRRegimeRatio, InpMaximumATRRegimeRatio,
+      InpMinimumBreakoutBody, InpMinimumBreakoutATR,
+      InpMaximumBreakoutATR, InpMaximumBreakoutWick,
+      InpMinimumRelativeTickVolume, InpMaximumRetestBars,
+      InpMaximumRetestDistanceATR, InpMaximumRetestPenetrationATR,
+      InpMaximumM5TriggerBars, InpMaximumM1EntryBars, InpM1RSIPeriod,
+      InpM1ManagementEMA, InpPost1RLockR, InpPost2RLockR
+   );
+   PrintFormat(
+      "SNIPER_PRODUCTION_INPUTS schema=1 part=2/2 contractSha256=%s InpMaximumEntryDistanceATR=%.8f InpM15StructuralStopBufferATR=%.8f InpPsychologicalStep=%.8f InpMinimumProjectedR=%.8f InpMinimumSetupScore=%d InpOutcomeHorizonM15Bars=%d InpSignalValidityMinutes=%d InpTradeWindowStartMinute=%d InpTradeWindowEndMinute=%d InpMinimumContextVotes=%d InpMinimumM5ConfluenceVotes=%d InpMaximumM5ConfluenceVotes=%d InpUseFibonacciConfluenceVote=%s InpUseFibonacciScore=%s InpUseFibonacciEntryDelay=%s InpRequireIntradayVwapAlignment=%s InpEnablePre1RAdverseExit=%s InpPre1RAdverseBars=%d InpPre1RAdverseThresholdR=%.8f InpStrategyMode=%d InpM15ReversalRSIThreshold=%.8f InpM15ReversalStochThreshold=%.8f InpMinimumM15TrendSeparationATR=%.8f InpMinimumM15SlowSlopeATR=%.8f InpEnablePartialTake=%s InpPartialTakeR=%.8f InpPartialFraction=%.8f InpBreakoutChannelBars=%d InpEnableEarlyCandidateAlerts=%s InpMinimumEarlyCandidateConfidence=%.8f",
+      GOLDM_PRODUCTION_INPUT_CONTRACT_SHA256,
+      InpMaximumEntryDistanceATR, InpM15StructuralStopBufferATR,
+      InpPsychologicalStep, InpMinimumProjectedR, InpMinimumSetupScore,
+      InpOutcomeHorizonM15Bars, InpSignalValidityMinutes,
+      InpTradeWindowStartMinute, InpTradeWindowEndMinute,
+      InpMinimumContextVotes, InpMinimumM5ConfluenceVotes,
+      InpMaximumM5ConfluenceVotes,
+      InpUseFibonacciConfluenceVote ? "true" : "false",
+      InpUseFibonacciScore ? "true" : "false",
+      InpUseFibonacciEntryDelay ? "true" : "false",
+      InpRequireIntradayVwapAlignment ? "true" : "false",
+      InpEnablePre1RAdverseExit ? "true" : "false",
+      InpPre1RAdverseBars, InpPre1RAdverseThresholdR, InpStrategyMode,
+      InpM15ReversalRSIThreshold,
+      InpM15ReversalStochThreshold, InpMinimumM15TrendSeparationATR,
+      InpMinimumM15SlowSlopeATR,
+      InpEnablePartialTake ? "true" : "false", InpPartialTakeR,
+      InpPartialFraction, InpBreakoutChannelBars,
+      InpEnableEarlyCandidateAlerts ? "true" : "false",
+      InpMinimumEarlyCandidateConfidence
+   );
+   PrintFormat(
+      "SNIPER_CONFIG symbol=%s strategy=%s strategyVersion=%s productionContractVersion=1 productionContractSha256=%s directionProfile=%s runId=%s accountScope=%s accountLogin=%I64d originServerB64=%s signalOnly=true level=PDH_PDL_PWH_PWL_H1_M15_PSYCH setupTF=M15 riskTF=M15 confirmTF=M5 refineTF=M1 RSI=%d STOCH=%d,%d,%d BB=%d,%.1f dojiRatio=%.2f FIB=23.6,38.2,50,61.8,78.6_EXT=127.2,161.8,200 lookback=%d tolerance=%.2f maxFibDelayM1=%d fibVote=%s fibScore=%s fibDelay=%s minM5Votes=%d maxM5Votes=%d minContextVotes=%d vwap=%s tradeWindow=%d-%d pre1RExit=%s,%d,%.2f strategyMode=%d channelBars=%d earlyAlert=%s,>%.1f reversalRSI=%.1f reversalStoch=%.1f trendSepATR=%.2f slowSlopeATR=%.2f partial=%s,%.2f,%.2f post1RLock=%.2f post2RLock=%.2f maxRetestBars=%d maxEntryDistanceATR=%.2f structuralStopBufferATR=%.2f minProjectedR=%.2f score=%d outcomeHorizonM15=%d signalValidityMinutes=%d",
+      _Symbol, SNIPER_STRATEGY_ID, SNIPER_STRATEGY_VERSION,
+      GOLDM_PRODUCTION_INPUT_CONTRACT_SHA256, EngineLineageProfile(), ResearchRunId(),
+      CurrentAccountScope(), AccountInfoInteger(ACCOUNT_LOGIN),
+      CurrentAccountServerB64(),
+      InpRSIPeriod, InpStochK, InpStochD, InpStochSlowing,
       InpBollingerPeriod, InpBollingerDeviation, InpDojiMaximumBodyRatio,
       InpFibonacciLookbackM15, InpFibonacciTolerance, InpMaximumFibonacciDelayBars,
       InpUseFibonacciConfluenceVote ? "true" : "false",
@@ -295,7 +486,9 @@ int OnInit()
       InpOutcomeHorizonM15Bars, InpSignalValidityMinutes
    );
    PrintFormat(
-      "SNIPER_SYMBOL minLot=%.4f maxLot=%.4f lotStep=%.4f contract=%.2f tickSize=%.5f tickValue=%.5f point=%.5f stops=%d",
+      "SNIPER_SYMBOL accountScope=%s accountLogin=%I64d originServerB64=%s minLot=%.4f maxLot=%.4f lotStep=%.4f contract=%.2f tickSize=%.5f tickValue=%.5f point=%.5f stops=%d",
+      CurrentAccountScope(), AccountInfoInteger(ACCOUNT_LOGIN),
+      CurrentAccountServerB64(),
       SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN),
       SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MAX),
       SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP),
@@ -1064,6 +1257,7 @@ void ProcessClosedM5(const MqlTick &tick)
       g_m5ConfluenceVotes = confluenceVotes;
       g_m5PatternName = patternName;
       g_candidateId = BuildCandidateId();
+      CaptureCandidateAccountOrigin();
       EmitEarlyCandidateIfEligible(tick, strongPattern, starPattern);
       g_phase = PHASE_WAITING_M1_TRIGGER;
       g_m1EntryBars = 0;
@@ -1143,13 +1337,17 @@ void EmitEarlyCandidateIfEligible(
    g_earlyCandidateAlerted = true;
    g_earlyCandidateAlerts++;
    PrintFormat(
-      "SNIPER_EARLY_CANDIDATE id=%s status=WATCH_ONLY autoEntry=false side=%s level=%.2f watchPrice=%.2f invalidation=%.2f confidence=%d threshold=>%.1f m5Votes=%d pattern=%s fibonacciReaction=%.2f next=M1_AND_FINAL_RISK_CHECK setupUtcEpoch=%I64d generatedUtcEpoch=%I64d serverUtcOffsetMinutes=%d",
+      "SNIPER_EARLY_CANDIDATE id=%s status=WATCH_ONLY strategy=%s strategyVersion=%s directionProfile=%s runId=%s accountScope=%s accountLogin=%I64d originServerB64=%s strategyMode=%d autoEntry=false side=%s level=%.2f watchPrice=%.2f invalidation=%.2f confidence=%d threshold=>%.1f m5Votes=%d pattern=%s fibonacciReaction=%.2f next=M1_AND_FINAL_RISK_CHECK setupUtcEpoch=%I64d generatedUtcEpoch=%I64d serverUtcOffsetMinutes=%d",
       g_candidateId,
+      SNIPER_STRATEGY_ID, SNIPER_STRATEGY_VERSION,
+      EngineLineageProfile(), ResearchRunId(),
+      g_candidateAccountScope, g_candidateAccountLogin,
+      g_candidateServerB64, InpStrategyMode,
       g_side == SETUP_BUY ? "BUY" : "SELL",
       g_level, watchPrice, invalidation, g_earlyCandidateConfidence,
       InpMinimumEarlyCandidateConfidence, g_m5ConfluenceVotes,
       g_m5PatternName, fibonacciReaction,
-      ServerTimeToUtcEpoch(g_breakoutTime), GeneratedUtcEpoch(),
+      g_candidateSetupUtcEpoch, GeneratedUtcEpoch(),
       (int)(ServerUtcOffsetSeconds() / 60)
    );
 }
@@ -1386,10 +1584,16 @@ void CreateTechnicalSignal(
    }
 
    if(g_candidateId == "")
+   {
       g_candidateId = BuildCandidateId();
+      CaptureCandidateAccountOrigin();
+   }
    g_active = true;
    g_activeCandidateId = g_candidateId;
-   g_activeSetupUtcEpoch = ServerTimeToUtcEpoch(g_breakoutTime);
+   g_activeAccountScope = g_candidateAccountScope;
+   g_activeAccountLogin = g_candidateAccountLogin;
+   g_activeServerB64 = g_candidateServerB64;
+   g_activeSetupUtcEpoch = g_candidateSetupUtcEpoch;
    g_activeSide = g_side;
    g_entry = entry;
    g_stop = stop;
@@ -1419,22 +1623,30 @@ void CreateTechnicalSignal(
       g_earlyCandidatePromoted = true;
       g_earlyCandidatePromotions++;
       PrintFormat(
-         "SNIPER_EARLY_PROMOTED id=%s status=ENTRY_READY confidenceEarly=%d scoreFinal=%d setupUtcEpoch=%I64d generatedUtcEpoch=%I64d serverUtcOffsetMinutes=%d",
-         g_candidateId, g_earlyCandidateConfidence, score,
-         ServerTimeToUtcEpoch(g_breakoutTime), GeneratedUtcEpoch(),
+         "SNIPER_EARLY_PROMOTED id=%s status=ENTRY_READY strategy=%s strategyVersion=%s directionProfile=%s runId=%s accountScope=%s accountLogin=%I64d originServerB64=%s strategyMode=%d confidenceEarly=%d scoreFinal=%d setupUtcEpoch=%I64d generatedUtcEpoch=%I64d serverUtcOffsetMinutes=%d",
+         g_candidateId, SNIPER_STRATEGY_ID, SNIPER_STRATEGY_VERSION,
+         EngineLineageProfile(), ResearchRunId(),
+         g_candidateAccountScope, g_candidateAccountLogin,
+         g_candidateServerB64, InpStrategyMode,
+         g_earlyCandidateConfidence, score,
+         g_candidateSetupUtcEpoch, GeneratedUtcEpoch(),
          (int)(ServerUtcOffsetSeconds() / 60)
       );
    }
 
    PrintFormat(
-      "SNIPER_SIGNAL id=%s status=ENTRY_READY autoEntryEligible=true side=%s level=%.2f entry=%.2f stop=%.2f target=%.2f riskTF=M15 entryDistanceATR=%.3f stopDistanceATR=%.3f projectedR=%.3f score=%d m5Votes=%d pattern=%s fibonacciAligned=%s fibonacciReaction=%.2f m1Confirmed=%s retestBars=%d setupUtcEpoch=%I64d generatedUtcEpoch=%I64d serverUtcOffsetMinutes=%d validUntilUtcEpoch=%I64d maxHoldingMinutes=%d",
+      "SNIPER_SIGNAL id=%s status=ENTRY_READY strategy=%s strategyVersion=%s directionProfile=%s runId=%s accountScope=%s accountLogin=%I64d originServerB64=%s strategyMode=%d autoEntryEligible=true side=%s level=%.2f entry=%.2f stop=%.2f target=%.2f riskTF=M15 entryDistanceATR=%.3f stopDistanceATR=%.3f projectedR=%.3f score=%d m5Votes=%d pattern=%s fibonacciAligned=%s fibonacciReaction=%.2f m1Confirmed=%s retestBars=%d setupUtcEpoch=%I64d generatedUtcEpoch=%I64d serverUtcOffsetMinutes=%d validUntilUtcEpoch=%I64d maxHoldingMinutes=%d",
       g_candidateId,
+      SNIPER_STRATEGY_ID, SNIPER_STRATEGY_VERSION,
+      EngineLineageProfile(), ResearchRunId(),
+      g_activeAccountScope, g_activeAccountLogin,
+      g_activeServerB64, InpStrategyMode,
       g_side == SETUP_BUY ? "BUY" : "SELL",
       g_level, g_entry, g_stop, g_target, entryDistanceAtr, risk / atr,
       projectedR, score, g_m5ConfluenceVotes, g_m5PatternName,
       fibonacciAligned ? "true" : "false", g_activeFibReaction,
       m1Confirmed ? "true" : "false", g_retestBars,
-      ServerTimeToUtcEpoch(g_breakoutTime), GeneratedUtcEpoch(),
+      g_activeSetupUtcEpoch, GeneratedUtcEpoch(),
       (int)(ServerUtcOffsetSeconds() / 60),
       GeneratedUtcEpoch() + (long)InpSignalValidityMinutes * 60,
       InpOutcomeHorizonM15Bars * 15
@@ -1529,8 +1741,12 @@ void CompleteSignal(const double outcomeR, const string reason)
    g_totalMfeR += g_activeMfeR;
    g_totalMaeR += g_activeMaeR;
    PrintFormat(
-      "SNIPER_OUTCOME id=%s status=CLOSED side=%s result=%s outcomeR=%.4f entry=%.2f exitPrice=%.2f stop=%.2f target=%.2f projectedR=%.4f hit1R=%s hit2R=%s hit3R=%s mfeR=%.4f maeR=%.4f durationMinutes=%d setupUtcEpoch=%I64d generatedUtcEpoch=%I64d serverUtcOffsetMinutes=%d source=MODEL_SIMULATION",
+      "SNIPER_OUTCOME id=%s status=CLOSED strategy=%s strategyVersion=%s directionProfile=%s runId=%s accountScope=%s accountLogin=%I64d originServerB64=%s strategyMode=%d side=%s result=%s outcomeR=%.4f entry=%.2f exitPrice=%.2f stop=%.2f target=%.2f projectedR=%.4f hit1R=%s hit2R=%s hit3R=%s mfeR=%.4f maeR=%.4f durationMinutes=%d setupUtcEpoch=%I64d generatedUtcEpoch=%I64d serverUtcOffsetMinutes=%d source=MODEL_SIMULATION",
       g_activeCandidateId,
+      SNIPER_STRATEGY_ID, SNIPER_STRATEGY_VERSION,
+      EngineLineageProfile(), ResearchRunId(),
+      g_activeAccountScope, g_activeAccountLogin,
+      g_activeServerB64, InpStrategyMode,
       g_activeSide == SETUP_BUY ? "BUY" : "SELL", reason, outcomeR,
       g_entry,
       g_activeSide == SETUP_BUY ? SymbolInfoDouble(_Symbol, SYMBOL_BID) : SymbolInfoDouble(_Symbol, SYMBOL_ASK),
@@ -1543,6 +1759,9 @@ void CompleteSignal(const double outcomeR, const string reason)
    g_active = false;
    g_activeSide = SETUP_NONE;
    g_activeCandidateId = "";
+   g_activeAccountScope = "unknown";
+   g_activeAccountLogin = 0;
+   g_activeServerB64 = "";
    g_activeSetupUtcEpoch = 0;
    g_activeFibReaction = 0.0;
 }
@@ -1839,9 +2058,13 @@ void ResetSetup(const string reason = "SETUP_RESET")
    {
       g_earlyCandidateCancellations++;
       PrintFormat(
-         "SNIPER_EARLY_CANCELLED id=%s status=CANCELLED autoEntry=false confidenceEarly=%d reason=%s setupUtcEpoch=%I64d generatedUtcEpoch=%I64d serverUtcOffsetMinutes=%d",
-         g_candidateId, g_earlyCandidateConfidence, reason,
-         ServerTimeToUtcEpoch(g_breakoutTime), GeneratedUtcEpoch(),
+         "SNIPER_EARLY_CANCELLED id=%s status=CANCELLED strategy=%s strategyVersion=%s directionProfile=%s runId=%s accountScope=%s accountLogin=%I64d originServerB64=%s strategyMode=%d autoEntry=false confidenceEarly=%d reason=%s setupUtcEpoch=%I64d generatedUtcEpoch=%I64d serverUtcOffsetMinutes=%d",
+         g_candidateId, SNIPER_STRATEGY_ID, SNIPER_STRATEGY_VERSION,
+         EngineLineageProfile(), ResearchRunId(),
+         g_candidateAccountScope, g_candidateAccountLogin,
+         g_candidateServerB64, InpStrategyMode,
+         g_earlyCandidateConfidence, reason,
+         g_candidateSetupUtcEpoch, GeneratedUtcEpoch(),
          (int)(ServerUtcOffsetSeconds() / 60)
       );
    }
@@ -1866,6 +2089,10 @@ void ResetSetup(const string reason = "SETUP_RESET")
    g_fibImpulseStart = 0.0;
    g_fibImpulseEnd = 0.0;
    g_candidateId = "";
+   g_candidateAccountScope = "unknown";
+   g_candidateAccountLogin = 0;
+   g_candidateServerB64 = "";
+   g_candidateSetupUtcEpoch = 0;
    g_earlyCandidateAlerted = false;
    g_earlyCandidatePromoted = false;
    g_earlyCandidateConfidence = 0;
@@ -1885,7 +2112,11 @@ void PrintSummary()
    const double averageCandidateRoom = roomCandidates > 0 ? g_roomCandidateTotalR / roomCandidates : 0.0;
    const double minimumCandidateRoom = roomCandidates > 0 ? g_roomCandidateMinimumR : 0.0;
    PrintFormat(
-      "SNIPER_DIAGNOSTIC ticks=%I64d breakouts=%d contextRejects=%d healthRejects=%d retests=%d invalidated=%d retestExpired=%d triggerCandidates=%d m5ConfluenceRejects=%d triggerExpired=%d m1EntryExpired=%d m1FallbackEntries=%d fibDelayedBars=%d fibAlignedSignals=%d entryDistanceRejects=%d roomRejects=%d scoreRejects=%d earlyCandidates=%d earlyPromoted=%d earlyCancelled=%d signals=%d buy=%d sell=%d",
+      "SNIPER_DIAGNOSTIC strategy=%s strategyVersion=%s directionProfile=%s runId=%s accountScope=%s accountLogin=%I64d originServerB64=%s strategyMode=%d ticks=%I64d breakouts=%d contextRejects=%d healthRejects=%d retests=%d invalidated=%d retestExpired=%d triggerCandidates=%d m5ConfluenceRejects=%d triggerExpired=%d m1EntryExpired=%d m1FallbackEntries=%d fibDelayedBars=%d fibAlignedSignals=%d entryDistanceRejects=%d roomRejects=%d scoreRejects=%d earlyCandidates=%d earlyPromoted=%d earlyCancelled=%d signals=%d buy=%d sell=%d",
+      SNIPER_STRATEGY_ID, SNIPER_STRATEGY_VERSION,
+      EngineLineageProfile(), ResearchRunId(),
+      CurrentAccountScope(), AccountInfoInteger(ACCOUNT_LOGIN),
+      CurrentAccountServerB64(), InpStrategyMode,
       g_ticks, g_breakouts, g_contextRejects, g_healthRejects, g_retests, g_invalidated,
       g_retestExpired, g_triggerCandidates, g_m5ConfluenceRejects, g_triggerExpired,
       g_m1EntryExpired, g_m1FallbackEntries, g_fibDelayedBars, g_fibAlignedSignals,
@@ -1894,12 +2125,20 @@ void PrintSummary()
       g_signals, g_buySignals, g_sellSignals
    );
    PrintFormat(
-      "SNIPER_ROOM candidates=%d below2R=%d watch2R=%d strong2_5R=%d aPlus3R=%d minimumR=%.5f averageR=%.5f maximumR=%.5f",
+      "SNIPER_ROOM strategy=%s strategyVersion=%s directionProfile=%s runId=%s accountScope=%s accountLogin=%I64d originServerB64=%s strategyMode=%d candidates=%d below2R=%d watch2R=%d strong2_5R=%d aPlus3R=%d minimumR=%.5f averageR=%.5f maximumR=%.5f",
+      SNIPER_STRATEGY_ID, SNIPER_STRATEGY_VERSION,
+      EngineLineageProfile(), ResearchRunId(),
+      CurrentAccountScope(), AccountInfoInteger(ACCOUNT_LOGIN),
+      CurrentAccountServerB64(), InpStrategyMode,
       roomCandidates, g_roomBelow2, g_roomWatch, g_roomStrong, g_roomAPlus,
       minimumCandidateRoom, averageCandidateRoom, g_roomCandidateMaximumR
    );
    PrintFormat(
-      "SNIPER_PERFORMANCE resolved=%d stopped=%d protectedStops=%d timedOut=%d m1ManagedExits=%d hit1R=%d hit2R=%d hit3R=%d P1=%.2f P2=%.2f P3=%.2f expectancyR=%.5f totalR=%.5f averageMFE_R=%.5f averageMAE_R=%.5f averageProjectedR=%.5f averageScore=%.2f",
+      "SNIPER_PERFORMANCE strategy=%s strategyVersion=%s directionProfile=%s runId=%s accountScope=%s accountLogin=%I64d originServerB64=%s strategyMode=%d resolved=%d stopped=%d protectedStops=%d timedOut=%d m1ManagedExits=%d hit1R=%d hit2R=%d hit3R=%d P1=%.2f P2=%.2f P3=%.2f expectancyR=%.5f totalR=%.5f averageMFE_R=%.5f averageMAE_R=%.5f averageProjectedR=%.5f averageScore=%.2f",
+      SNIPER_STRATEGY_ID, SNIPER_STRATEGY_VERSION,
+      EngineLineageProfile(), ResearchRunId(),
+      CurrentAccountScope(), AccountInfoInteger(ACCOUNT_LOGIN),
+      CurrentAccountServerB64(), InpStrategyMode,
       g_resolved, g_stopped, g_protectedStops, g_timedOut, g_m1ManagedExits,
       g_oneR, g_twoR, g_threeR,
       p1, p2, p3, expectancy, g_totalOutcomeR, averageMfe, averageMae,

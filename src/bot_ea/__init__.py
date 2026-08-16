@@ -15,7 +15,7 @@ from .models import (
 )
 from .codex_cli_engine import CodexCLIEngine
 from .desktop_runtime import DesktopRuntimeConfig, DesktopRuntimeCoordinator, DesktopRuntimeEvent
-from .mt5_adapter import LiveMT5Adapter, MockMT5Adapter, MT5Adapter, OrderSendResult, OrderValidationResult, PriceTickSnapshot, SymbolCapabilitySnapshot, TerminalStatusSnapshot
+from .mt5_adapter import AccountFingerprintSnapshot, LiveMT5Adapter, MockMT5Adapter, MT5Adapter, MutationAccountBinding, OrderSendResult, OrderValidationResult, PriceTickSnapshot, SymbolCapabilitySnapshot, TerminalStatusSnapshot
 from .mt5_execution_runtime import MT5ExecutionRuntime
 from .mt5_snapshots import build_account_snapshot, build_symbol_snapshot
 from .polling_runtime import AIIntent, DecisionAction, MT5SnapshotProvider, PollingConfig, PollingRuntime, PollingCycleResult, RuntimeSnapshot
@@ -47,6 +47,7 @@ from .validation import (
 
 __all__ = [
     "AccountSnapshot",
+    "AccountFingerprintSnapshot",
     "AIIntent",
     "Bar",
     "CapitalAllocation",
@@ -62,6 +63,7 @@ __all__ = [
     "MT5ExecutionRuntime",
     "MockMT5Adapter",
     "MT5Adapter",
+    "MutationAccountBinding",
     "MT5SnapshotProvider",
     "OOSWindowResult",
     "OperatingMode",

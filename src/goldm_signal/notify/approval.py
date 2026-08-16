@@ -3,19 +3,25 @@ from __future__ import annotations
 import re
 import secrets
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, NoReturn
 
+from ..config import EntrySidePolicy, NotificationSideFilter, StrategyEngine
 from ..storage.database import SignalStore
 from .telegram import (
     PUBLIC_BOT_COMMAND_NAMES,
     TelegramBotClient,
+    normalize_admin_user_ids,
 )
 from .trade_lifecycle import TradeLifecycleConfig
 
 
 _DECISION_PATTERN = re.compile(r"^(approve|reject):(-?\d+)$")
+
+
+class TelegramPollingError(RuntimeError):
+    """A sanitized getUpdates failure safe to emit in worker logs."""
 
 
 class TelegramApprovalWorker:
@@ -27,29 +33,100 @@ class TelegramApprovalWorker:
         store: SignalStore,
         client: TelegramBotClient,
         admin_chat_ids: set[str | int],
+        readiness_worker_instance_id: str,
         account_probe: Callable[[], dict[str, Any]] | None = None,
     ) -> None:
-        normalized_admins = {str(chat_id) for chat_id in admin_chat_ids if str(chat_id)}
-        if not normalized_admins:
-            raise ValueError("At least one Telegram administrator chat ID is required")
+        normalized_admins = normalize_admin_user_ids(admin_chat_ids)
+        normalized_worker = str(readiness_worker_instance_id or "").strip()
+        if not re.fullmatch(r"[0-9a-f]{32}", normalized_worker):
+            raise ValueError(
+                "readiness_worker_instance_id must be 32 lowercase hex characters"
+            )
         self.store = store
         self.client = client
         self.admin_chat_ids = normalized_admins
+        self.readiness_worker_instance_id = normalized_worker
         self.account_probe = account_probe
         for chat_id in self.admin_chat_ids:
             self.store.ensure_telegram_admin(chat_id)
 
     def run_once(self, *, timeout: int = 20) -> int:
-        updates = self.client.get_updates(
-            offset=self.store.telegram_update_offset(), timeout=timeout
-        )
+        try:
+            updates = self.client.get_updates(
+                offset=self.store.telegram_update_offset(), timeout=timeout
+            )
+        except Exception as exc:
+            error_kind = _telegram_poll_error_kind(exc)
+            try:
+                recorded = self.store.record_telegram_poll_failure(
+                    worker_instance_id=self.readiness_worker_instance_id,
+                    error_kind=error_kind,
+                )
+            except Exception:
+                raise TelegramPollingError(
+                    "Telegram getUpdates failed and readiness failure could not be persisted"
+                ) from None
+            if not recorded:
+                raise TelegramPollingError(
+                    "Telegram getUpdates failed for a superseded worker instance"
+                ) from None
+            raise TelegramPollingError(
+                f"Telegram getUpdates failed ({error_kind})"
+            ) from None
+        if not _valid_telegram_updates(updates):
+            recorded = self.store.record_telegram_poll_failure(
+                worker_instance_id=self.readiness_worker_instance_id,
+                error_kind="invalid_response",
+            )
+            if not recorded:
+                raise TelegramPollingError(
+                    "Telegram getUpdates returned invalid data for a superseded worker"
+                )
+            raise TelegramPollingError("Telegram getUpdates returned invalid data")
         processed = 0
         for update in updates:
-            self.process_update(update)
+            try:
+                self.process_update(update)
+            except Exception:
+                self._record_processing_failure(
+                    error_kind="processing_error",
+                    public_message="Telegram update processing failed",
+                )
             update_id = int(update["update_id"])
-            self.store.set_telegram_update_offset(update_id + 1)
+            try:
+                self.store.set_telegram_update_offset(update_id + 1)
+            except Exception:
+                self._record_processing_failure(
+                    error_kind="offset_error",
+                    public_message="Telegram update offset persistence failed",
+                )
             processed += 1
+        recorded = self.store.record_telegram_poll_success(
+            worker_instance_id=self.readiness_worker_instance_id
+        )
+        if not recorded:
+            raise TelegramPollingError(
+                "Telegram poll worker instance is no longer current"
+            )
         return processed
+
+    def _record_processing_failure(
+        self, *, error_kind: str, public_message: str
+    ) -> NoReturn:
+        try:
+            recorded = self.store.record_telegram_poll_failure(
+                worker_instance_id=self.readiness_worker_instance_id,
+                error_kind=error_kind,
+            )
+        except Exception:
+            raise TelegramPollingError(
+                f"{public_message} and readiness failure could not be persisted"
+            ) from None
+        if not recorded:
+            raise TelegramPollingError(
+                f"{public_message} for a superseded worker instance"
+            ) from None
+        raise TelegramPollingError(f"{public_message} ({error_kind})") from None
 
     def run_forever(self, *, timeout: int = 20, retry_delay_seconds: float = 3.0) -> None:
         while True:
@@ -71,20 +148,46 @@ class TelegramApprovalWorker:
             self._handle_message(message)
 
     def _handle_message(self, message: dict[str, Any]) -> None:
-        chat = message.get("chat") or {}
+        raw_chat = message.get("chat")
+        chat = raw_chat if isinstance(raw_chat, Mapping) else {}
         chat_id = str(chat.get("id", ""))
         if not chat_id:
             return
+        raw_actor = message.get("from")
+        actor = raw_actor if isinstance(raw_actor, Mapping) else {}
+        actor_id = str(actor.get("id", ""))
         text = str(message.get("text", "")).strip()
         command, _, argument = text.partition(" ")
         command = command.split("@", 1)[0].lower()
         argument = argument.strip()
 
-        if (
-            text.startswith("/")
-            and chat_id not in self.admin_chat_ids
-            and command not in PUBLIC_BOT_COMMAND_NAMES
+        privileged = text.startswith("/") and command not in PUBLIC_BOT_COMMAND_NAMES
+        private_admin_actor = (
+            actor_id in self.admin_chat_ids
+            and str(chat.get("type") or "").lower() == "private"
+            and chat_id == actor_id
+        )
+        private_self_actor = (
+            str(chat.get("type") or "").lower() == "private"
+            and bool(actor_id)
+            and chat_id == actor_id
+        )
+        root_admin_group_actor = (
+            str(chat.get("type") or "").lower() in {"group", "supergroup"}
+            and actor_id in self.admin_chat_ids
+        )
+        if command in {"/start", "/stop"} and not (
+            private_self_actor or root_admin_group_actor
         ):
+            self.client.send_message(
+                chat_id=chat_id,
+                text=(
+                    "⛔ /start dan /stop hanya boleh mengubah chat private milik "
+                    "pengirim, atau grup bila dipicu root admin yang dikonfigurasi."
+                ),
+            )
+            return
+        if privileged and not private_admin_actor:
             self.client.send_message(
                 chat_id=chat_id,
                 text=(
@@ -213,12 +316,29 @@ class TelegramApprovalWorker:
 
     def _handle_callback(self, callback: dict[str, Any]) -> None:
         callback_id = str(callback.get("id", ""))
-        actor_id = str((callback.get("from") or {}).get("id", ""))
+        raw_actor = callback.get("from")
+        actor = raw_actor if isinstance(raw_actor, Mapping) else {}
+        actor_id = str(actor.get("id", ""))
         data = str(callback.get("data", ""))
-        if actor_id not in self.admin_chat_ids:
+        raw_callback_message = callback.get("message")
+        callback_message = (
+            raw_callback_message
+            if isinstance(raw_callback_message, Mapping)
+            else {}
+        )
+        raw_callback_chat = callback_message.get("chat")
+        callback_chat = (
+            raw_callback_chat if isinstance(raw_callback_chat, Mapping) else {}
+        )
+        private_admin_actor = (
+            actor_id in self.admin_chat_ids
+            and str(callback_chat.get("type") or "").lower() == "private"
+            and str(callback_chat.get("id") or "") == actor_id
+        )
+        if not private_admin_actor:
             self.client.answer_callback_query(
                 callback_query_id=callback_id,
-                text="Anda tidak berwenang memberikan approval.",
+                text="Approval admin hanya sah dari chat private milik admin.",
                 show_alert=True,
             )
             return
@@ -277,6 +397,32 @@ class TelegramApprovalWorker:
                         {"text": "Risk 0.25%", "callback_data": "ctl:risk:025"},
                         {"text": "Risk 0.50%", "callback_data": "ctl:risk:050"},
                         {"text": "Risk 1.00%", "callback_data": "ctl:risk:100"},
+                    ],
+                    [
+                        {"text": "Entry: ALL", "callback_data": "ctl:entry_side:all"},
+                        {"text": "Entry: BUY", "callback_data": "ctl:entry_side:buy_only"},
+                    ],
+                    [
+                        {"text": "Entry: SELL", "callback_data": "ctl:entry_side:sell_only"},
+                    ],
+                    [
+                        {"text": "Show: ALL", "callback_data": "ctl:notification_side:all"},
+                        {"text": "Show: BUY", "callback_data": "ctl:notification_side:buy_only"},
+                    ],
+                    [
+                        {"text": "Show: SELL", "callback_data": "ctl:notification_side:sell_only"},
+                    ],
+                    [
+                        {"text": "R1 SL: ON", "callback_data": "ctl:r1:on"},
+                        {"text": "R1 SL: OFF", "callback_data": "ctl:r1:off"},
+                    ],
+                    [
+                        {"text": "R2 SL: ON", "callback_data": "ctl:r2:on"},
+                        {"text": "R2 SL: OFF", "callback_data": "ctl:r2:off"},
+                    ],
+                    [
+                        {"text": "R3 Close: ON", "callback_data": "ctl:r3:on"},
+                        {"text": "R3 Close: OFF", "callback_data": "ctl:r3:off"},
                     ],
                     [
                         {"text": "🔗 Kunci Akun Ini", "callback_data": "ctl:bind"},
@@ -384,6 +530,77 @@ class TelegramApprovalWorker:
                     summary=f"Ubah risiko per posisi menjadi {value:.2f}%?",
                 )
                 return
+        if action == "entry_side" and len(parts) == 3:
+            try:
+                profile = EntrySidePolicy.parse(parts[2])
+            except ValueError:
+                self._answer_control(
+                    callback_id, "Entry side policy tidak valid.", alert=True
+                )
+                return
+            self._stage_control_action(
+                callback_id=callback_id,
+                actor_id=actor_id,
+                action_type="entry_side_policy",
+                payload={
+                    "settings": {"trade.entry_side_policy": profile.value}
+                },
+                summary=f"Batasi auto-entry ke side policy {profile.value}?",
+            )
+            return
+        if action == "notification_side" and len(parts) == 3:
+            try:
+                profile = NotificationSideFilter.parse(parts[2])
+            except ValueError:
+                self._answer_control(
+                    callback_id, "Notification side filter tidak valid.", alert=True
+                )
+                return
+            self._stage_control_action(
+                callback_id=callback_id,
+                actor_id=actor_id,
+                action_type="notification_side_filter",
+                payload={
+                    "settings": {
+                        "trade.notification_side_filter": profile.value
+                    }
+                },
+                summary=(
+                    f"Batasi notifikasi strategi ke side {profile.value}?\n"
+                    "Penyimpanan sinyal, keputusan entry, dan semua alert POSITION_* "
+                    "tidak berubah."
+                ),
+            )
+            return
+        if action in {"r1", "r2", "r3"} and len(parts) == 3:
+            if parts[2] not in {"on", "off"}:
+                self._answer_control(
+                    callback_id, "Nilai policy R tidak valid.", alert=True
+                )
+                return
+            enabled = parts[2] == "on"
+            setting_key = {
+                "r1": "trade.r1_protection_enabled",
+                "r2": "trade.r2_protection_enabled",
+                "r3": "trade.r3_close_enabled",
+            }[action]
+            label = {
+                "r1": "R1: pindahkan SL ke +0.25R",
+                "r2": "R2: pindahkan SL ke +1R",
+                "r3": "R3: full close",
+            }[action]
+            self._stage_control_action(
+                callback_id=callback_id,
+                actor_id=actor_id,
+                action_type=f"{action}_management_policy",
+                payload={"settings": {setting_key: enabled}},
+                summary=(
+                    f"Set {label} menjadi {'ON' if enabled else 'OFF'}?\n"
+                    "Perubahan hanya dibekukan ke posisi yang dibuka setelah konfirmasi; "
+                    "policy posisi terbuka tidak berubah. Alert touch tetap aktif."
+                ),
+            )
+            return
         if action == "bind":
             account = self._current_account(actor_id)
             if account is None:
@@ -419,6 +636,15 @@ class TelegramApprovalWorker:
             return
         if mode == "live" and is_live is not True:
             self._answer_control(callback_id, "Terminal bukan akun real.", alert=True)
+            return
+        if mode == "live" and not TradeLifecycleConfig.from_sources(
+            self.store
+        ).allow_live_activation:
+            self._answer_control(
+                callback_id,
+                "Mode real dikunci deployment: GOLDM_ALLOW_LIVE_ACTIVATION=false.",
+                alert=True,
+            )
             return
         settings = {
             "trade.execution_mode": mode,
@@ -498,6 +724,18 @@ class TelegramApprovalWorker:
         if not isinstance(settings, dict) or not settings:
             self._answer_control(callback_id, "Payload konfigurasi tidak valid.", alert=True)
             return
+        if (
+            str(settings.get("trade.execution_mode") or "").lower() == "live"
+            and not TradeLifecycleConfig.from_sources(
+                self.store
+            ).allow_live_activation
+        ):
+            self._answer_control(
+                callback_id,
+                "Mode real tetap ditolak oleh deployment kill switch.",
+                alert=True,
+            )
+            return
         self.store.set_runtime_settings(settings, updated_by=actor_id)
         self.client.send_message(
             chat_id=actor_id,
@@ -526,16 +764,42 @@ class TelegramApprovalWorker:
         mode = {"off": "OFF", "demo": "DEMO", "live": "REAL"}.get(
             config.execution_mode, "UNKNOWN"
         )
+        engine = (
+            config.strategy_engine.value
+            if isinstance(config.strategy_engine, StrategyEngine)
+            else "INVALID — DEPLOYMENT DIBLOKIR"
+        )
+        entry_side = (
+            config.entry_side_policy.value
+            if isinstance(config.entry_side_policy, EntrySidePolicy)
+            else "INVALID — ENTRY DIBLOKIR"
+        )
+        notification_side = (
+            config.notification_side_filter.value
+            if isinstance(config.notification_side_filter, NotificationSideFilter)
+            else "INVALID — NOTIFIKASI STRATEGI DIBLOKIR"
+        )
         return "\n".join(
             [
                 "🎛 CONTROL PANEL GOLDM",
                 f"• Auto-entry: {mode}",
+                f"• Engine aktif (read-only): {engine}",
+                "• Engine version (read-only): 1.72",
+                f"• Entry side policy: {entry_side}",
+                f"• Notification side filter: {notification_side}",
                 f"• Akun terkunci: {config.expected_login or '-'} / {config.expected_server or '-'}",
-                f"• Risiko/posisi: {config.risk_pct:.2f}%",
+                f"• Risk sizing lot/posisi: {config.risk_pct:.2f}%",
                 f"• Maks open risk: {config.max_total_open_risk_pct:.2f}%",
                 f"• Daily loss limit: {config.daily_loss_limit_pct:.2f}%",
+                "• Exit/protection untuk posisi baru:",
+                f"  R1 SL +0.25R: {'ON' if config.r1_protection_enabled else 'OFF'}",
+                f"  R2 SL +1R: {'ON' if config.r2_protection_enabled else 'OFF'}",
+                f"  R3 full close: {'ON' if config.r3_close_enabled else 'OFF'}",
+                "• Alert touch R1/R2/R3: selalu ON",
+                f"• Live deployment switch: {'UNLOCKED' if config.allow_live_activation else 'LOCKED'}",
                 f"• TTL sinyal: {config.signal_ttl_minutes} menit",
                 "",
+                "Perubahan risk/R hanya berlaku untuk entry berikutnya; posisi terbuka memakai snapshot policy awal.",
                 "Viewer APPROVED hanya melihat notifikasi. Tombol entry/config hanya menerima root admin chat ID.",
             ]
         )
@@ -698,7 +962,8 @@ class TelegramApprovalWorker:
         if not self._require_approved(chat_id):
             return
         health = self.store.notification_health()
-        status = "🟢 SEHAT" if health["failed_count"] == 0 else "🟠 PERLU DIPERIKSA"
+        status, bridge_reason = _notification_health_assessment(health)
+        bridge = health.get("bridge") if isinstance(health.get("bridge"), dict) else {}
         self.client.send_message(
             chat_id=chat_id,
             text="\n".join(
@@ -712,6 +977,14 @@ class TelegramApprovalWorker:
                     f"• Gagal: {health['failed_count']}",
                     f"• Log MT5 terakhir: {_format_wib_iso(health['last_log_at'])}",
                     f"• Telegram terkirim terakhir: {_format_wib_iso(health['last_sent_at'])}",
+                    "",
+                    "🔐 SESSION BRIDGE",
+                    f"• Penilaian: {bridge_reason}",
+                    f"• Scan terakhir: {_format_wib_iso(bridge.get('last_scan_at'))}",
+                    f"• Match session terakhir: {_format_wib_iso(bridge.get('last_session_match_at'))}",
+                    f"• Mismatch terakhir: {_format_wib_iso(bridge.get('last_session_mismatch_at'))}",
+                    f"• Probe akun gagal terakhir: {_format_wib_iso(bridge.get('last_provider_failure_at'))}",
+                    f"• File/cursor terpantau: {int(bridge.get('files_discovered') or 0)}/{int(bridge.get('tracked_cursors') or 0)}",
                 ]
             ),
         )
@@ -795,7 +1068,123 @@ class TelegramApprovalWorker:
         return full_name or "Tanpa nama"
 
 
+def _valid_telegram_updates(updates: Any) -> bool:
+    if not isinstance(updates, list):
+        return False
+    for update in updates:
+        if not isinstance(update, dict):
+            return False
+        update_id = update.get("update_id")
+        if (
+            not isinstance(update_id, int)
+            or isinstance(update_id, bool)
+            or update_id < 0
+        ):
+            return False
+    return True
+
+
+def _telegram_poll_error_kind(error: Exception) -> str:
+    status_code = getattr(error, "code", None)
+    try:
+        normalized_status = int(status_code) if status_code is not None else None
+    except (TypeError, ValueError, OverflowError):
+        normalized_status = None
+    if normalized_status == 409:
+        return "telegram_conflict"
+    if normalized_status in {401, 403}:
+        return "telegram_auth"
+    if normalized_status is not None:
+        return "telegram_http"
+    class_name = type(error).__name__.lower()
+    if isinstance(error, TimeoutError) or "timeout" in class_name:
+        return "transport_timeout"
+    # Telegram may return a JSON-level API error with no HTTP status. Inspect it
+    # only to classify the failure; the text itself is never persisted or logged.
+    message = str(error).lower()
+    if "conflict" in message or "409" in message:
+        return "telegram_conflict"
+    if "unauthorized" in message or "forbidden" in message:
+        return "telegram_auth"
+    if "telegram rejected" in message:
+        return "telegram_api"
+    return "transport_error"
+
+
 _WIB = timezone(timedelta(hours=7))
+
+
+def _notification_health_assessment(
+    health: dict[str, Any],
+    *,
+    now: datetime | None = None,
+    freshness: timedelta = timedelta(minutes=30),
+) -> tuple[str, str]:
+    """Assess bridge evidence without treating an idle/stale worker as green."""
+
+    if int(health.get("failed_count") or 0) > 0:
+        return "🟠 PERLU DIPERIKSA", "ada kegagalan outbox"
+    if int(health.get("pending_count") or 0) > 0:
+        return "🟠 PERLU DIPERIKSA", "ada antrean Telegram yang belum terkirim"
+    bridge = health.get("bridge")
+    if not isinstance(bridge, dict) or not bridge:
+        return "🟠 PERLU DIPERIKSA", "belum ada bukti runtime bridge"
+    if not bridge.get("required_session_configured"):
+        return "🟠 PERLU DIPERIKSA", "EA session binding belum dikonfigurasi"
+    if int(bridge.get("files_discovered") or 0) <= 0:
+        return "🟠 PERLU DIPERIKSA", "direktori log tidak menghasilkan file"
+    if int(bridge.get("tracked_cursors") or 0) <= 0:
+        return "🟠 PERLU DIPERIKSA", "belum ada cursor log yang terverifikasi"
+
+    match_at = _health_time(bridge.get("last_session_match_at"))
+    mismatch_at = _health_time(bridge.get("last_session_mismatch_at"))
+    provider_failure_at = _health_time(bridge.get("last_provider_failure_at"))
+    scan_at = _health_time(bridge.get("last_scan_at"))
+    if match_at is None:
+        return "🟠 PERLU DIPERIKSA", "belum pernah melihat event dengan session yang cocok"
+    last_session_observation = str(
+        bridge.get("last_session_observation") or ""
+    ).lower()
+    last_account_result = str(
+        bridge.get("last_account_context_result") or ""
+    ).lower()
+    if last_session_observation == "mismatch" or (
+        not last_session_observation
+        and mismatch_at is not None
+        and mismatch_at >= match_at
+    ):
+        return "🟠 PERLU DIPERIKSA", "mismatch session lebih baru dari match terakhir"
+    if last_account_result == "failure" or (
+        not last_account_result
+        and provider_failure_at is not None
+        and provider_failure_at >= match_at
+    ):
+        return "🟠 PERLU DIPERIKSA", "probe akun gagal pada match session terakhir"
+
+    current = now or datetime.now(timezone.utc)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=timezone.utc)
+    current = current.astimezone(timezone.utc)
+    if scan_at is None or current - scan_at > freshness:
+        return "🟡 STALE", "worker bridge tidak scan dalam jendela freshness"
+    if current - match_at > freshness:
+        return (
+            "🟡 STALE",
+            "match session melewati jendela freshness (mis. market tutup/idle)",
+        )
+    return "🟢 SEHAT", "session cocok dan bukti bridge masih fresh"
+
+
+def _health_time(value: Any) -> datetime | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
 
 
 def _wib_now() -> str:

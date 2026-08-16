@@ -4,7 +4,19 @@ import json
 from typing import Any
 from urllib import parse, request
 
+from ..config import NotificationSideFilter
 from ..storage.database import SignalStore
+
+
+_DIRECTIONAL_STRATEGY_EVENTS = frozenset(
+    {
+        "SNIPER_EARLY_CANDIDATE",
+        "SNIPER_EARLY_PROMOTED",
+        "SNIPER_EARLY_CANCELLED",
+        "SNIPER_SIGNAL",
+        "SNIPER_OUTCOME",
+    }
+)
 
 
 PUBLIC_BOT_COMMANDS: tuple[dict[str, str], ...] = (
@@ -76,11 +88,14 @@ class TelegramBotClient:
 
     def set_commands(self, *, admin_chat_ids: set[str | int]) -> None:
         """Publish a minimal default menu and a richer menu per admin chat."""
+        normalized_admins = normalize_admin_user_ids(
+            admin_chat_ids, require_nonempty=False
+        )
         self._call(
             "setMyCommands",
             {"commands": list(PUBLIC_BOT_COMMANDS)},
         )
-        for chat_id in sorted({str(value) for value in admin_chat_ids if str(value)}):
+        for chat_id in sorted(normalized_admins, key=int):
             self._call(
                 "setMyCommands",
                 {
@@ -148,9 +163,9 @@ class ApprovedTelegramSender:
     ) -> None:
         self._store = store
         self._client = client
-        self._admin_chat_ids = {
-            str(chat_id) for chat_id in (admin_chat_ids or set()) if str(chat_id)
-        }
+        self._admin_chat_ids = normalize_admin_user_ids(
+            admin_chat_ids or set(), require_nonempty=False
+        )
 
     def __call__(self, event: dict[str, Any]) -> None:
         payload = event.get("payload", {})
@@ -159,6 +174,41 @@ class ApprovedTelegramSender:
             raise ValueError("outbox payload does not contain message text")
         outbox_id = int(event["id"])
         admin_only = telegram_event_is_admin_only(payload)
+        if (
+            not admin_only
+            and str(event.get("event_type") or "").upper()
+            in _DIRECTIONAL_STRATEGY_EVENTS
+        ):
+            settings = self._store.runtime_settings(prefix="trade.")
+            raw_profile = settings.get(
+                "trade.notification_side_filter", NotificationSideFilter.ALL.value
+            )
+            if "trade.notification_direction_profile" in settings:
+                raw_profile = "INVALID_LEGACY_DIRECTION_PROFILE"
+            try:
+                profile = NotificationSideFilter.parse(raw_profile)
+            except ValueError:
+                self._send_invalid_direction_warning(
+                    event=event,
+                    raw_profile=raw_profile,
+                )
+                return
+            fields = payload.get("fields")
+            field_side = fields.get("side") if isinstance(fields, dict) else None
+            side = str(
+                event.get("side") or payload.get("side") or field_side or ""
+            ).lower()
+            if side not in {"buy", "sell"}:
+                self._send_invalid_direction_warning(
+                    event=event,
+                    raw_profile=raw_profile,
+                    detail="event tidak memiliki side BUY/SELL yang valid",
+                )
+                return
+            if not profile.allows(side):
+                # Display-only suppression: persistence, execution candidates,
+                # and all POSITION_* safety/broker events remain intact.
+                return
         chat_ids = (
             sorted(self._admin_chat_ids)
             if admin_only
@@ -188,10 +238,76 @@ class ApprovedTelegramSender:
         if failures:
             raise RuntimeError(f"Telegram delivery failed for {failures} approved subscriber(s)")
 
+    def _send_invalid_direction_warning(
+        self,
+        *,
+        event: dict[str, Any],
+        raw_profile: object,
+        detail: str = "runtime notification side filter tidak valid",
+    ) -> None:
+        if not self._admin_chat_ids:
+            raise RuntimeError(
+                "Directional notification suppressed but no root administrator is configured"
+            )
+        outbox_id = int(event["id"])
+        warning = "\n".join(
+            [
+                "🚨 NOTIFIKASI STRATEGI DIBLOKIR FAIL-CLOSED",
+                f"• Event: {event.get('event_type') or '-'} / {event.get('side') or '-'}",
+                f"• Notification side filter: {raw_profile!s}",
+                f"• Alasan: {detail}",
+                "Sinyal tetap tersimpan; eksekusi dan alert broker POSITION_* tidak difilter.",
+            ]
+        )
+        failures = 0
+        for chat_id in sorted(self._admin_chat_ids):
+            if self._store.telegram_delivery_was_sent(
+                outbox_id=outbox_id, chat_id=chat_id
+            ):
+                continue
+            try:
+                self._client.send_message(chat_id=chat_id, text=warning)
+            except Exception as exc:
+                self._store.mark_telegram_delivery_failed(
+                    outbox_id=outbox_id, chat_id=chat_id, error=str(exc)
+                )
+                failures += 1
+            else:
+                self._store.mark_telegram_delivery_sent(
+                    outbox_id=outbox_id, chat_id=chat_id
+                )
+        if failures:
+            raise RuntimeError(
+                f"Telegram fail-closed warning failed for {failures} root administrator(s)"
+            )
+
 
 def telegram_event_is_admin_only(payload: dict[str, Any]) -> bool:
-    """Fail closed when an event is explicitly admin-only or belongs to REAL."""
-    return (
-        str(payload.get("audience", "")).strip().lower() == "admin_only"
-        or str(payload.get("account_scope", "")).strip().lower() == "live"
-    )
+    """Only an explicitly approved DEMO event may reach non-admin viewers."""
+
+    audience = str(payload.get("audience", "")).strip().lower()
+    account_scope = str(payload.get("account_scope", "")).strip().lower()
+    if (
+        str(payload.get("source") or "").strip().lower() == "mt5_expert_log"
+        and payload.get("event_account_binding_verified") is not True
+    ):
+        return True
+    return not (account_scope == "demo" and audience == "approved")
+
+
+def normalize_admin_user_ids(
+    values: set[str | int], *, require_nonempty: bool = True
+) -> set[str]:
+    """Validate Telegram administrators as positive private user identifiers."""
+
+    normalized: set[str] = set()
+    for raw_value in values:
+        value = str(raw_value).strip()
+        if not value.isascii() or not value.isdecimal() or int(value) <= 0:
+            raise ValueError(
+                "Telegram administrator IDs must be positive private user IDs"
+            )
+        normalized.add(str(int(value)))
+    if require_nonempty and not normalized:
+        raise ValueError("At least one Telegram administrator user ID is required")
+    return normalized

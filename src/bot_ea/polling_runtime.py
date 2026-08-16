@@ -141,6 +141,7 @@ class MT5SnapshotProvider:
                 "server": fingerprint.server,
                 "broker": fingerprint.broker,
                 "is_live": fingerprint.is_live,
+                "margin_mode": fingerprint.margin_mode,
             }
         return RuntimeSnapshot(
             symbol=self.symbol,

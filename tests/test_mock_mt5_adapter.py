@@ -9,7 +9,12 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from bot_ea.models import CapitalAllocation, CapitalAllocationMode, RiskPolicy, TradingStyle  # noqa: E402
-from bot_ea.mt5_adapter import LiveMT5Adapter, MockMT5Adapter  # noqa: E402
+from bot_ea.mt5_adapter import (  # noqa: E402
+    LiveMT5Adapter,
+    MockMT5Adapter,
+    MutationAccountBinding,
+    OpenPositionSnapshot,
+)
 from bot_ea.polling_runtime import MT5SnapshotProvider  # noqa: E402
 
 
@@ -101,11 +106,87 @@ class MockMT5AdapterTests(unittest.TestCase):
         self.assertTrue(result.accepted)
         self.assertEqual(result.order, 900001)
 
+    def test_mock_adapter_modifies_protection_and_preserves_omitted_tp(self) -> None:
+        adapter = MockMT5Adapter(
+            account_info=self.adapter._account_info,
+            symbols=self.adapter._symbols,
+            open_positions=[
+                OpenPositionSnapshot(
+                    ticket=321,
+                    symbol="EURUSD",
+                    side="buy",
+                    volume=0.1,
+                    price_open=1.1000,
+                    sl=1.0900,
+                    tp=1.1200,
+                    profit=5.0,
+                    opened_at="2024-04-20T00:00:00+00:00",
+                    magic=260814,
+                    comment="GMS: abc123",
+                    position_identifier=987,
+                )
+            ],
+        )
+
+        result = adapter.modify_position_protection(
+            position_identifier=987,
+            sl=1.09504,
+        )
+
+        self.assertTrue(result.accepted)
+        self.assertTrue(result.changed)
+        self.assertTrue(result.postcondition_met)
+        self.assertEqual(result.position_ticket, 321)
+        self.assertEqual(result.position_identifier, 987)
+        self.assertAlmostEqual(result.sl or 0.0, 1.0950)
+        self.assertAlmostEqual(result.tp or 0.0, 1.1200)
+        observed = adapter.find_open_position(position_identifier=987)
+        self.assertIsNotNone(observed)
+        self.assertAlmostEqual(observed.tp, 1.1200)
+
+        idempotent = adapter.modify_position_protection(
+            position_identifier=987,
+            sl=1.0950,
+        )
+        self.assertTrue(idempotent.accepted)
+        self.assertFalse(idempotent.changed)
+        self.assertTrue(idempotent.postcondition_met)
+        self.assertIsNone(idempotent.retcode)
+
+    def test_mock_adapter_falls_back_to_ticket_as_stable_identifier(self) -> None:
+        legacy_position = OpenPositionSnapshot(
+            ticket=321,
+            symbol="EURUSD",
+            side="buy",
+            volume=0.1,
+            price_open=1.1000,
+            sl=1.0900,
+            tp=1.1200,
+            profit=5.0,
+            opened_at=None,
+            magic=260814,
+            comment="legacy constructor",
+        )
+        self.assertEqual(legacy_position.position_identifier, 321)
+        adapter = MockMT5Adapter(
+            account_info=self.adapter._account_info,
+            symbols=self.adapter._symbols,
+            open_positions=[legacy_position],
+        )
+
+        position = adapter.find_open_position(position_identifier=321)
+
+        self.assertIsNotNone(position)
+        self.assertEqual(position.position_identifier, 321)
+
 
 class FakeMT5Module:
     ACCOUNT_TRADE_MODE_DEMO = 0
     ACCOUNT_TRADE_MODE_CONTEST = 1
     ACCOUNT_TRADE_MODE_REAL = 2
+    ACCOUNT_MARGIN_MODE_RETAIL_NETTING = 0
+    ACCOUNT_MARGIN_MODE_EXCHANGE = 1
+    ACCOUNT_MARGIN_MODE_RETAIL_HEDGING = 2
     ORDER_TYPE_BUY = 0
     ORDER_TYPE_SELL = 1
     ORDER_FILLING_FOK = 0
@@ -113,6 +194,9 @@ class FakeMT5Module:
     ORDER_FILLING_RETURN = 2
     ORDER_TIME_GTC = 0
     TRADE_ACTION_DEAL = 1
+    TRADE_ACTION_SLTP = 6
+    TRADE_RETCODE_PLACED = 10008
+    TRADE_RETCODE_DONE = 10009
     POSITION_TYPE_BUY = 0
     DEAL_TYPE_BUY = 0
     DEAL_ENTRY_IN = 0
@@ -127,7 +211,11 @@ class FakeMT5Module:
         self.initialize_calls = []
         self.symbol_select_calls = []
         self.last_checked_request = None
+        self.order_send_calls = []
         self._selected = False
+        self._position_ticket = 321
+        self._position_sl = 1.09
+        self._position_tp = 1.12
 
     def initialize(self, **kwargs):
         self.initialize_calls.append(kwargs)
@@ -142,9 +230,10 @@ class FakeMT5Module:
     def positions_get(self, **kwargs):
         return (
             SimpleNamespace(
-                ticket=321, symbol="EURUSD", type=0, volume=0.1, price_open=1.1,
-                sl=1.09, tp=1.12, profit=5.0, time=1713628800, magic=260814,
-                comment="GMS: abc123",
+                ticket=self._position_ticket, symbol="EURUSD", type=0, volume=0.1, price_open=1.1,
+                sl=self._position_sl, tp=self._position_tp, profit=5.0,
+                time=1713628800, magic=260814, comment="GMS: abc123",
+                identifier=987,
             ),
         )
 
@@ -153,6 +242,7 @@ class FakeMT5Module:
             SimpleNamespace(
                 ticket=654, position_id=321, symbol="EURUSD", type=1, entry=1,
                 volume=0.1, price=1.12, profit=20.0, commission=-0.5, swap=0.0,
+                fee=-0.25,
                 reason=5, time=1713629800, magic=260814, comment="GMS: abc123",
             ),
         )
@@ -163,6 +253,7 @@ class FakeMT5Module:
             server="XMGlobal-MT5",
             company="XM Global Limited",
             trade_mode=self.ACCOUNT_TRADE_MODE_DEMO,
+            margin_mode=self.ACCOUNT_MARGIN_MODE_RETAIL_HEDGING,
             equity=1200.0,
             balance=1180.0,
             margin_free=950.0,
@@ -170,6 +261,15 @@ class FakeMT5Module:
             positions=1,
             trade_allowed=True,
             trade_expert=True,
+        )
+
+    def terminal_info(self):
+        return SimpleNamespace(
+            connected=True,
+            trade_allowed=True,
+            tradeapi_disabled=False,
+            path=r"C:\MT5",
+            data_path=r"C:\MT5Data",
         )
 
     def symbol_info(self, symbol):
@@ -225,12 +325,16 @@ class FakeMT5Module:
 
     def order_send(self, request):
         self.last_checked_request = request
+        self.order_send_calls.append(dict(request))
+        if request["action"] == self.TRADE_ACTION_SLTP:
+            self._position_sl = request["sl"]
+            self._position_tp = request["tp"]
         return SimpleNamespace(
             retcode=10009,
             comment="done",
             order=123456,
             deal=654321,
-            volume=request["volume"],
+            volume=request.get("volume", 0.0),
             price=request.get("price", 1.1),
             bid=1.0998,
             ask=1.1000,
@@ -248,6 +352,24 @@ class LiveMT5AdapterTests(unittest.TestCase):
         self.assertFalse(fingerprint.is_live)
         self.assertEqual(fingerprint.login, "108098316")
         self.assertEqual(fingerprint.server, "XMGlobal-MT5")
+        self.assertEqual(fingerprint.margin_mode, "HEDGING")
+
+    def test_live_adapter_exposes_netting_margin_mode_without_guessing(self) -> None:
+        class NettingAccountMT5(FakeMT5Module):
+            def account_info(self):
+                account = super().account_info()
+                return SimpleNamespace(
+                    **{
+                        **vars(account),
+                        "margin_mode": self.ACCOUNT_MARGIN_MODE_RETAIL_NETTING,
+                    }
+                )
+
+        fingerprint = LiveMT5Adapter(
+            mt5_module=NettingAccountMT5()
+        ).load_account_fingerprint()
+
+        self.assertEqual(fingerprint.margin_mode, "NETTING")
 
     def test_live_adapter_uses_account_trade_mode_for_real_fingerprint(self) -> None:
         class RealAccountMT5(FakeMT5Module):
@@ -293,10 +415,349 @@ class LiveMT5AdapterTests(unittest.TestCase):
             since=datetime(2024, 4, 20, tzinfo=timezone.utc), symbol="EURUSD"
         )
         self.assertEqual(positions[0].ticket, 321)
+        self.assertEqual(positions[0].position_identifier, 987)
         self.assertEqual(positions[0].side, "buy")
         self.assertEqual(deals[0].position_ticket, 321)
         self.assertEqual(deals[0].reason, "take_profit")
         self.assertEqual(deals[0].entry, "out")
+        self.assertEqual(deals[0].fee, -0.25)
+
+    def test_live_adapter_modifies_sltp_without_volume_and_preserves_tp(self) -> None:
+        fake_mt5 = FakeMT5Module()
+        adapter = LiveMT5Adapter(mt5_module=fake_mt5)
+
+        result = adapter.modify_position_protection(
+            position_identifier=987,
+            sl=1.09504,
+        )
+
+        self.assertTrue(result.accepted)
+        self.assertTrue(result.changed)
+        self.assertTrue(result.postcondition_met)
+        self.assertEqual(result.retcode, fake_mt5.TRADE_RETCODE_DONE)
+        self.assertEqual(result.position_ticket, 321)
+        self.assertEqual(result.order, 123456)
+        self.assertEqual(result.deal, 654321)
+        self.assertEqual(result.request_id, 777)
+        self.assertEqual(result.retcode_external, 0)
+        request = fake_mt5.order_send_calls[-1]
+        self.assertEqual(
+            set(request),
+            {"action", "symbol", "position", "sl", "tp"},
+        )
+        self.assertEqual(request["action"], fake_mt5.TRADE_ACTION_SLTP)
+        self.assertEqual(request["position"], 321)
+        self.assertAlmostEqual(request["sl"], 1.0950)
+        self.assertAlmostEqual(request["tp"], 1.1200)
+        self.assertNotIn("volume", request)
+
+    def test_live_adapter_resolves_current_ticket_from_stable_identifier(self) -> None:
+        fake_mt5 = FakeMT5Module()
+        fake_mt5._position_ticket = 654
+        adapter = LiveMT5Adapter(mt5_module=fake_mt5)
+
+        position = adapter.find_open_position(position_identifier=987)
+        result = adapter.modify_position_protection(
+            position_ticket=321,
+            position_identifier=987,
+            sl=1.0950,
+        )
+
+        self.assertIsNotNone(position)
+        self.assertEqual(position.ticket, 654)
+        self.assertTrue(result.accepted)
+        self.assertEqual(result.position_identifier, 987)
+        self.assertEqual(result.position_ticket, 654)
+        self.assertEqual(fake_mt5.order_send_calls[-1]["position"], 654)
+
+        churned = adapter.find_open_position(
+            position_ticket=321,
+            position_identifier=987,
+        )
+        self.assertIsNotNone(churned)
+        self.assertEqual(churned.ticket, 654)
+
+    def test_live_adapter_idempotent_protection_does_not_send_order(self) -> None:
+        fake_mt5 = FakeMT5Module()
+        adapter = LiveMT5Adapter(mt5_module=fake_mt5)
+
+        result = adapter.modify_position_protection(
+            position_ticket=321,
+            sl=1.0900,
+        )
+
+        self.assertTrue(result.accepted)
+        self.assertFalse(result.changed)
+        self.assertTrue(result.postcondition_met)
+        self.assertIsNone(result.retcode)
+        self.assertEqual(fake_mt5.order_send_calls, [])
+
+    def test_live_adapter_rejects_non_done_retcode_even_if_postcondition_is_met(self) -> None:
+        class RejectedButAppliedMT5(FakeMT5Module):
+            def order_send(self, request):
+                result = super().order_send(request)
+                return SimpleNamespace(**{**vars(result), "retcode": self.TRADE_RETCODE_PLACED})
+
+        fake_mt5 = RejectedButAppliedMT5()
+        adapter = LiveMT5Adapter(mt5_module=fake_mt5)
+
+        result = adapter.modify_position_protection(position_ticket=321, sl=1.0950)
+
+        self.assertFalse(result.accepted)
+        self.assertTrue(result.postcondition_met)
+        self.assertTrue(result.changed)
+        self.assertEqual(result.retcode, fake_mt5.TRADE_RETCODE_PLACED)
+
+    def test_live_adapter_rejects_done_when_postcondition_is_not_met(self) -> None:
+        class DoneWithoutApplyingMT5(FakeMT5Module):
+            def order_send(self, request):
+                self.last_checked_request = request
+                self.order_send_calls.append(dict(request))
+                return SimpleNamespace(retcode=self.TRADE_RETCODE_DONE, comment="done")
+
+        fake_mt5 = DoneWithoutApplyingMT5()
+        adapter = LiveMT5Adapter(mt5_module=fake_mt5)
+
+        result = adapter.modify_position_protection(position_ticket=321, sl=1.0950)
+
+        self.assertFalse(result.accepted)
+        self.assertFalse(result.postcondition_met)
+        self.assertFalse(result.changed)
+        self.assertEqual(result.retcode, fake_mt5.TRADE_RETCODE_DONE)
+
+    def test_live_order_send_does_not_retry_ambiguous_ipc_result(self) -> None:
+        class AmbiguousOrderMT5(FakeMT5Module):
+            def __init__(self) -> None:
+                super().__init__()
+                self.send_attempts = 0
+
+            def last_error(self):
+                return (-10004, "No IPC connection")
+
+            def order_send(self, request):
+                self.send_attempts += 1
+                return None
+
+        fake_mt5 = AmbiguousOrderMT5()
+        adapter = LiveMT5Adapter(mt5_module=fake_mt5)
+
+        result = adapter.send_order(
+            {
+                "symbol": "EURUSD",
+                "volume": 0.10,
+                "order_type": "buy",
+                "price": 1.1000,
+                "stop_distance_points": 25,
+            }
+        )
+
+        self.assertFalse(result.accepted)
+        self.assertTrue(result.outcome_unknown)
+        self.assertEqual(result.execution_status, "UNKNOWN")
+        self.assertEqual(fake_mt5.send_attempts, 1)
+        self.assertEqual(len(fake_mt5.initialize_calls), 1)
+
+    def test_live_order_rechecks_account_binding_immediately_before_send(self) -> None:
+        class SwitchedAccountMT5(FakeMT5Module):
+            def account_info(self):
+                account = super().account_info()
+                return SimpleNamespace(**{**vars(account), "login": 999999})
+
+        fake_mt5 = SwitchedAccountMT5()
+        adapter = LiveMT5Adapter(mt5_module=fake_mt5)
+        result = adapter.send_order(
+            {
+                "symbol": "EURUSD",
+                "volume": 0.10,
+                "order_type": "buy",
+                "price": 1.1000,
+                "stop_distance_points": 25,
+                "_mutation_binding": MutationAccountBinding(
+                    login="108098316",
+                    server="XMGlobal-MT5",
+                    broker="XM Global Limited",
+                    account_scope="demo",
+                    margin_mode="HEDGING",
+                ),
+            }
+        )
+
+        self.assertFalse(result.accepted)
+        self.assertEqual(result.execution_status, "REJECTED")
+        self.assertIn("login changed", result.detail)
+        self.assertEqual(fake_mt5.order_send_calls, [])
+
+    def test_live_order_rejects_netting_account_before_send(self) -> None:
+        class NettingAccountMT5(FakeMT5Module):
+            def account_info(self):
+                account = super().account_info()
+                return SimpleNamespace(
+                    **{
+                        **vars(account),
+                        "margin_mode": self.ACCOUNT_MARGIN_MODE_RETAIL_NETTING,
+                    }
+                )
+
+        fake_mt5 = NettingAccountMT5()
+        adapter = LiveMT5Adapter(mt5_module=fake_mt5)
+        result = adapter.send_order(
+            {
+                "symbol": "EURUSD",
+                "volume": 0.10,
+                "order_type": "buy",
+                "price": 1.1000,
+                "stop_distance_points": 25,
+                "_mutation_binding": MutationAccountBinding(
+                    login="108098316",
+                    server="XMGlobal-MT5",
+                    broker="XM Global Limited",
+                    account_scope="demo",
+                    margin_mode="HEDGING",
+                ),
+            }
+        )
+
+        self.assertFalse(result.accepted)
+        self.assertIn("margin mode changed", result.detail)
+        self.assertEqual(fake_mt5.order_send_calls, [])
+
+    def test_live_adapter_can_require_mutation_binding(self) -> None:
+        fake_mt5 = FakeMT5Module()
+        adapter = LiveMT5Adapter(
+            mt5_module=fake_mt5,
+            require_mutation_binding=True,
+        )
+
+        result = adapter.send_order(
+            {
+                "symbol": "EURUSD",
+                "volume": 0.10,
+                "order_type": "buy",
+                "price": 1.1000,
+                "stop_distance_points": 25,
+            }
+        )
+
+        self.assertFalse(result.accepted)
+        self.assertIn("missing its immutable account binding", result.detail)
+        self.assertEqual(fake_mt5.order_send_calls, [])
+
+    def test_live_adapter_accepts_exact_account_and_terminal_binding(self) -> None:
+        fake_mt5 = FakeMT5Module()
+        adapter = LiveMT5Adapter(
+            mt5_module=fake_mt5,
+            path=r"C:\MT5\terminal64.exe",
+            login=108098316,
+            server="XMGlobal-MT5",
+            require_mutation_binding=True,
+        )
+        binding = MutationAccountBinding(
+            login="108098316",
+            server="XMGlobal-MT5",
+            broker="XM Global Limited",
+            account_scope="demo",
+            margin_mode="HEDGING",
+            terminal_path=r"C:\MT5",
+            terminal_data_path=r"C:\MT5Data",
+        )
+
+        result = adapter.send_order(
+            {
+                "symbol": "EURUSD",
+                "volume": 0.10,
+                "order_type": "buy",
+                "price": 1.1000,
+                "stop_distance_points": 25,
+                "_mutation_binding": binding,
+            }
+        )
+
+        self.assertTrue(result.accepted)
+        self.assertEqual(result.execution_status, "FILLED")
+        self.assertEqual(len(fake_mt5.order_send_calls), 1)
+
+    def test_live_protection_rechecks_terminal_binding_before_send(self) -> None:
+        class SwitchedTerminalMT5(FakeMT5Module):
+            def terminal_info(self):
+                terminal = super().terminal_info()
+                return SimpleNamespace(
+                    **{**vars(terminal), "data_path": r"C:\UnexpectedData"}
+                )
+
+        fake_mt5 = SwitchedTerminalMT5()
+        adapter = LiveMT5Adapter(mt5_module=fake_mt5)
+        result = adapter.modify_position_protection(
+            position_identifier=987,
+            sl=1.0950,
+            mutation_binding=MutationAccountBinding(
+                login="108098316",
+                server="XMGlobal-MT5",
+                broker="XM Global Limited",
+                account_scope="demo",
+                margin_mode="HEDGING",
+                terminal_path=r"C:\MT5",
+                terminal_data_path=r"C:\MT5Data",
+            ),
+        )
+
+        self.assertFalse(result.accepted)
+        self.assertIn("data path changed", result.detail)
+        self.assertEqual(fake_mt5.order_send_calls, [])
+
+    def test_live_sltp_does_not_retry_ambiguous_ipc_result(self) -> None:
+        class AmbiguousProtectionMT5(FakeMT5Module):
+            def __init__(self) -> None:
+                super().__init__()
+                self.send_attempts = 0
+
+            def last_error(self):
+                return (-10004, "No IPC connection")
+
+            def order_send(self, request):
+                self.send_attempts += 1
+                return None
+
+        fake_mt5 = AmbiguousProtectionMT5()
+        adapter = LiveMT5Adapter(mt5_module=fake_mt5)
+
+        result = adapter.modify_position_protection(
+            position_ticket=321,
+            position_identifier=987,
+            sl=1.0950,
+        )
+
+        self.assertFalse(result.accepted)
+        self.assertTrue(result.outcome_unknown)
+        self.assertFalse(result.postcondition_met)
+        self.assertEqual(fake_mt5.send_attempts, 1)
+        self.assertEqual(len(fake_mt5.initialize_calls), 1)
+
+    def test_live_sltp_exposes_reconciled_state_after_lost_response(self) -> None:
+        class AppliedWithoutResponseMT5(FakeMT5Module):
+            def __init__(self) -> None:
+                super().__init__()
+                self.send_attempts = 0
+
+            def last_error(self):
+                return (-10004, "No IPC connection")
+
+            def order_send(self, request):
+                self.send_attempts += 1
+                self._position_sl = request["sl"]
+                self._position_tp = request["tp"]
+                return None
+
+        fake_mt5 = AppliedWithoutResponseMT5()
+        adapter = LiveMT5Adapter(mt5_module=fake_mt5)
+
+        result = adapter.modify_position_protection(position_identifier=987, sl=1.0950)
+
+        self.assertFalse(result.accepted)
+        self.assertTrue(result.outcome_unknown)
+        self.assertTrue(result.postcondition_met)
+        self.assertTrue(result.changed)
+        self.assertEqual(result.sl, 1.0950)
+        self.assertEqual(fake_mt5.send_attempts, 1)
 
     def test_mt5_snapshot_provider_builds_runtime_snapshot(self) -> None:
         adapter = MockMT5Adapter(
@@ -305,6 +766,10 @@ class LiveMT5AdapterTests(unittest.TestCase):
                 "balance": 1000.0,
                 "margin_free": 800.0,
                 "margin_level": 400.0,
+                "login": 108098316,
+                "server": "XMGlobal-MT5",
+                "company": "XM Global Limited",
+                "margin_mode": "HEDGING",
             },
             symbols={
                 "EURUSD": {
@@ -344,6 +809,9 @@ class LiveMT5AdapterTests(unittest.TestCase):
         self.assertAlmostEqual(snapshot.spread_points, 2.0)
         self.assertEqual(snapshot.symbol_snapshot.ask, 1.1002)
         self.assertIn("tick_time", snapshot.context)
+        self.assertEqual(
+            snapshot.context["account_fingerprint"]["margin_mode"], "HEDGING"
+        )
 
     def test_live_adapter_send_order_returns_broker_result(self) -> None:
         fake_mt5 = FakeMT5Module()

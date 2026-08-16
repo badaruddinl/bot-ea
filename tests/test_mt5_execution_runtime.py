@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
@@ -17,6 +18,7 @@ from bot_ea.models import (  # noqa: E402
     TradingStyle,
 )
 from bot_ea.mt5_adapter import MockMT5Adapter  # noqa: E402
+from bot_ea.mt5_adapter import OrderSendResult  # noqa: E402
 from bot_ea.mt5_adapter import PriceTickSnapshot  # noqa: E402
 from bot_ea.mt5_execution_runtime import MT5ExecutionRuntime  # noqa: E402
 from bot_ea.polling_runtime import AIIntent, DecisionAction, RuntimeSnapshot  # noqa: E402
@@ -134,6 +136,40 @@ class MT5ExecutionRuntimeTests(unittest.TestCase):
         result = runtime.execute(self.snapshot, self.intent, self.size_result)
         self.assertEqual(result["status"], "FILLED")
         self.assertTrue(result["live_order_submitted"])
+
+    def test_execute_live_preserves_unknown_broker_outcome_for_reconciliation(self) -> None:
+        runtime = MT5ExecutionRuntime(adapter=self.adapter, allow_live_orders=True)
+        ambiguous = OrderSendResult(
+            accepted=False,
+            detail="IPC response lost",
+            execution_status="UNKNOWN",
+            outcome_unknown=True,
+        )
+
+        with patch.object(self.adapter, "send_order", return_value=ambiguous):
+            result = runtime.execute(self.snapshot, self.intent, self.size_result)
+
+        self.assertEqual(result["status"], "UNKNOWN")
+        self.assertTrue(result["outcome_unknown"])
+        self.assertTrue(result["live_order_submitted"])
+        self.assertIsNone(result["realized_price"])
+
+    def test_execute_live_does_not_map_placed_order_to_filled(self) -> None:
+        runtime = MT5ExecutionRuntime(adapter=self.adapter, allow_live_orders=True)
+        placed = OrderSendResult(
+            accepted=True,
+            detail="placed",
+            retcode=10008,
+            order=42,
+            execution_status="PLACED",
+        )
+
+        with patch.object(self.adapter, "send_order", return_value=placed):
+            result = runtime.execute(self.snapshot, self.intent, self.size_result)
+
+        self.assertEqual(result["status"], "PLACED")
+        self.assertFalse(result["outcome_unknown"])
+        self.assertIsNone(result["realized_price"])
 
     def test_execute_live_refreshes_price_before_revalidation_and_send(self) -> None:
         adapter = RefreshingMockMT5Adapter(

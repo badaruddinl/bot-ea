@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import contextlib
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
+from decimal import Decimal, ROUND_HALF_UP
+from math import isfinite
+from pathlib import Path
 from typing import Any
 from typing import Protocol
 
@@ -37,6 +40,34 @@ class OrderSendResult:
     price: float | None = None
     bid: float | None = None
     ask: float | None = None
+    request_id: int | None = None
+    retcode_external: int | None = None
+    execution_status: str = ""
+    outcome_unknown: bool = False
+
+
+@dataclass(slots=True)
+class PositionProtectionResult:
+    """Observed result of a broker-side SL/TP protection change.
+
+    ``accepted`` is deliberately stricter than merely receiving a response: a
+    live request must return ``TRADE_RETCODE_DONE`` and the requested SL/TP must
+    be visible on the position afterwards.  ``postcondition_met`` is kept
+    separate so callers can reconcile safely after an ambiguous broker result.
+    """
+
+    accepted: bool
+    detail: str
+    retcode: int | None = None
+    position_ticket: int | None = None
+    position_identifier: int | None = None
+    sl: float | None = None
+    tp: float | None = None
+    changed: bool = False
+    postcondition_met: bool = False
+    outcome_unknown: bool = False
+    order: int | None = None
+    deal: int | None = None
     request_id: int | None = None
     retcode_external: int | None = None
 
@@ -82,6 +113,20 @@ class AccountFingerprintSnapshot:
     server: str
     broker: str = ""
     is_live: bool | None = None
+    margin_mode: str = "UNKNOWN"
+
+
+@dataclass(frozen=True, slots=True)
+class MutationAccountBinding:
+    """Immutable account/terminal identity required for a broker mutation."""
+
+    login: str
+    server: str
+    account_scope: str
+    margin_mode: str
+    broker: str = ""
+    terminal_path: str = ""
+    terminal_data_path: str = ""
 
 
 @dataclass(slots=True)
@@ -97,6 +142,40 @@ class OpenPositionSnapshot:
     opened_at: str | None
     magic: int
     comment: str
+    # MT5's position identifier remains stable across the position lifecycle,
+    # while the ticket can change after some broker-side service operations.
+    # The default keeps construction by older integrations source-compatible.
+    position_identifier: int | None = None
+
+    def __post_init__(self) -> None:
+        if self.position_identifier is None:
+            self.position_identifier = self.ticket
+
+
+@dataclass(slots=True)
+class OpenOrderSnapshot:
+    """A sanitized active MT5 order returned by ``orders_get``.
+
+    MT5 uses "order" for both pending entry instructions and short-lived
+    active requests.  Deployment safety must account for every row returned by
+    ``orders_get``: an apparently flat position book is not flat when one of
+    these orders can still fill.
+    """
+
+    ticket: int
+    symbol: str
+    order_type: str
+    state: str
+    volume_initial: float
+    volume_current: float
+    price_open: float
+    price_stoplimit: float
+    sl: float
+    tp: float
+    setup_at: str | None
+    expiration_at: str | None
+    magic: int
+    position_ticket: int | None = None
 
 
 @dataclass(slots=True)
@@ -115,6 +194,197 @@ class DealSnapshot:
     occurred_at: str | None
     magic: int
     comment: str
+    # Some brokers charge a separate DEAL_FEE in addition to commission/swap.
+    # Keep a default for source compatibility with existing test adapters.
+    fee: float = 0.0
+
+
+def canonical_account_margin_mode(value: Any, *, mt5_module: Any | None = None) -> str:
+    """Return a stable MT5 account accounting model name.
+
+    MT5 exposes integer constants, while mocks/configuration often expose their
+    symbolic names.  Unknown values deliberately stay UNKNOWN so an automated
+    entry cannot silently assume hedging semantics.
+    """
+
+    if value is None:
+        return "UNKNOWN"
+    text = str(value).strip().upper()
+    aliases = {
+        "HEDGING": "HEDGING",
+        "RETAIL_HEDGING": "HEDGING",
+        "ACCOUNT_MARGIN_MODE_RETAIL_HEDGING": "HEDGING",
+        "NETTING": "NETTING",
+        "RETAIL_NETTING": "NETTING",
+        "ACCOUNT_MARGIN_MODE_RETAIL_NETTING": "NETTING",
+        "EXCHANGE": "EXCHANGE",
+        "ACCOUNT_MARGIN_MODE_EXCHANGE": "EXCHANGE",
+    }
+    if text in aliases:
+        return aliases[text]
+
+    constants = (
+        ("ACCOUNT_MARGIN_MODE_RETAIL_HEDGING", "HEDGING"),
+        ("ACCOUNT_MARGIN_MODE_RETAIL_NETTING", "NETTING"),
+        ("ACCOUNT_MARGIN_MODE_EXCHANGE", "EXCHANGE"),
+    )
+    if mt5_module is not None:
+        for constant_name, label in constants:
+            constant = getattr(mt5_module, constant_name, None)
+            if constant is not None and value == constant:
+                return label
+
+    # These are the documented MT5 enum values.  Keep this fallback for account
+    # dictionaries and old Python bindings that do not export the constants.
+    try:
+        numeric = int(value)
+    except (TypeError, ValueError):
+        return "UNKNOWN"
+    return {0: "NETTING", 1: "EXCHANGE", 2: "HEDGING"}.get(numeric, "UNKNOWN")
+
+
+def _canonical_path_text(value: str) -> str:
+    if not str(value or "").strip():
+        return ""
+    return str(Path(value).expanduser().resolve(strict=False)).casefold()
+
+
+def _terminal_install_path_text(value: str) -> str:
+    path = Path(value).expanduser()
+    if path.suffix.casefold() == ".exe":
+        path = path.parent
+    return str(path.resolve(strict=False)).casefold()
+
+
+def _find_position_snapshot(
+    positions: list[OpenPositionSnapshot],
+    *,
+    position_ticket: int | None,
+    position_identifier: int | None,
+) -> OpenPositionSnapshot | None:
+    if position_ticket is None and position_identifier is None:
+        return None
+    if position_identifier is not None:
+        for position in positions:
+            stable_identifier = (
+                position.position_identifier
+                if position.position_identifier is not None
+                else position.ticket
+            )
+            if stable_identifier == int(position_identifier):
+                return position
+        return None
+    for position in positions:
+        if position_ticket is not None and position.ticket != int(position_ticket):
+            continue
+        return position
+    return None
+
+
+def _validate_protection_request(
+    *,
+    position_ticket: int | None,
+    position_identifier: int | None,
+    sl: float | None,
+    tp: float | None,
+) -> str | None:
+    if position_ticket is None and position_identifier is None:
+        return "position ticket or stable position identifier is required"
+    if position_ticket is not None and int(position_ticket) <= 0:
+        return "position ticket must be positive"
+    if position_identifier is not None and int(position_identifier) <= 0:
+        return "position identifier must be positive"
+    if sl is None and tp is None:
+        return "at least one of sl or tp must be provided"
+    for label, value in (("sl", sl), ("tp", tp)):
+        if value is None:
+            continue
+        numeric = float(value)
+        if not isfinite(numeric) or numeric < 0:
+            return f"{label} must be a finite non-negative price"
+    return None
+
+
+def _position_price_tolerance(symbol_info: Any) -> float:
+    if isinstance(symbol_info, dict):
+        raw_point = symbol_info.get("point", 0.0)
+    else:
+        raw_point = getattr(symbol_info, "point", 0.0)
+    point = float(raw_point or 0.0)
+    return max(point / 2.0, 1e-9)
+
+
+def _normalize_position_price(value: float, symbol_info: Any) -> float:
+    if value == 0:
+        return 0.0
+    if isinstance(symbol_info, dict):
+        raw_tick_size = symbol_info.get("trade_tick_size") or symbol_info.get("point")
+        raw_digits = symbol_info.get("digits")
+        raw_point = symbol_info.get("point")
+    else:
+        raw_tick_size = getattr(symbol_info, "trade_tick_size", None) or getattr(
+            symbol_info, "point", None
+        )
+        raw_digits = getattr(symbol_info, "digits", None)
+        raw_point = getattr(symbol_info, "point", None)
+    tick_size = float(raw_tick_size or 0.0)
+    if tick_size <= 0:
+        raise ValueError("symbol tick size is unavailable for protection normalization")
+    if raw_digits is None:
+        point_text = format(float(raw_point or tick_size), ".12f").rstrip("0")
+        digits = len(point_text.partition(".")[2])
+    else:
+        digits = int(raw_digits)
+    value_decimal = Decimal(str(value))
+    tick_decimal = Decimal(str(tick_size))
+    ticks = (value_decimal / tick_decimal).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+    return round(float(ticks * tick_decimal), digits)
+
+
+def _protection_matches(
+    position: OpenPositionSnapshot,
+    *,
+    sl: float,
+    tp: float,
+    tolerance: float,
+) -> bool:
+    return abs(position.sl - sl) <= tolerance and abs(position.tp - tp) <= tolerance
+
+
+def _protection_result(
+    position: OpenPositionSnapshot,
+    *,
+    accepted: bool,
+    detail: str,
+    retcode: int | None,
+    changed: bool,
+    postcondition_met: bool,
+    outcome_unknown: bool = False,
+    order: int | None = None,
+    deal: int | None = None,
+    request_id: int | None = None,
+    retcode_external: int | None = None,
+) -> PositionProtectionResult:
+    return PositionProtectionResult(
+        accepted=accepted,
+        detail=detail,
+        retcode=retcode,
+        position_ticket=position.ticket,
+        position_identifier=(
+            position.position_identifier
+            if position.position_identifier is not None
+            else position.ticket
+        ),
+        sl=position.sl,
+        tp=position.tp,
+        changed=changed,
+        postcondition_met=postcondition_met,
+        outcome_unknown=outcome_unknown,
+        order=order,
+        deal=deal,
+        request_id=request_id,
+        retcode_external=retcode_external,
+    )
 
 
 class MT5Adapter(Protocol):
@@ -153,6 +423,29 @@ class MT5Adapter(Protocol):
     def load_open_positions(self, *, symbol: str | None = None) -> list[OpenPositionSnapshot]:
         raise NotImplementedError
 
+    def load_open_orders(self, *, symbol: str | None = None) -> list[OpenOrderSnapshot]:
+        raise NotImplementedError
+
+    def find_open_position(
+        self,
+        *,
+        position_ticket: int | None = None,
+        position_identifier: int | None = None,
+        symbol: str | None = None,
+    ) -> OpenPositionSnapshot | None:
+        raise NotImplementedError
+
+    def modify_position_protection(
+        self,
+        position_ticket: int | None = None,
+        *,
+        position_identifier: int | None = None,
+        sl: float | None = None,
+        tp: float | None = None,
+        mutation_binding: MutationAccountBinding | None = None,
+    ) -> PositionProtectionResult:
+        raise NotImplementedError
+
     def load_deals(self, *, since: datetime, symbol: str | None = None) -> list[DealSnapshot]:
         raise NotImplementedError
 
@@ -166,10 +459,14 @@ class MockMT5Adapter:
         account_info: dict,
         symbols: dict[str, dict],
         capabilities: dict[str, dict] | None = None,
+        open_positions: list[OpenPositionSnapshot | dict[str, Any]] | None = None,
+        open_orders: list[OpenOrderSnapshot | dict[str, Any]] | None = None,
     ) -> None:
         self._account_info = account_info
         self._symbols = symbols
         self._capabilities = capabilities or {}
+        self._open_positions = [self._coerce_open_position(row) for row in (open_positions or [])]
+        self._open_orders = [self._coerce_open_order(row) for row in (open_orders or [])]
 
     def load_account_snapshot(self) -> AccountSnapshot:
         return build_account_snapshot(self._account_info)
@@ -243,6 +540,9 @@ class MockMT5Adapter:
             server=server,
             broker=broker,
             is_live=LiveMT5Adapter._infer_is_live(server=server, broker=broker),
+            margin_mode=canonical_account_margin_mode(
+                self._account_info.get("margin_mode")
+            ),
         )
 
     def load_available_symbols(self) -> list[str]:
@@ -313,6 +613,7 @@ class MockMT5Adapter:
                 retcode=validation.retcode,
                 volume=float(request.get("volume", 0.0) or 0.0),
                 price=float(request.get("price", 0.0) or 0.0),
+                execution_status="REJECTED",
             )
         if action == "cancel_pending":
             return OrderSendResult(
@@ -323,6 +624,7 @@ class MockMT5Adapter:
                 deal=None,
                 volume=0.0,
                 price=0.0,
+                execution_status="FILLED",
             )
         return OrderSendResult(
             accepted=True,
@@ -332,13 +634,168 @@ class MockMT5Adapter:
             deal=800001,
             volume=float(request.get("volume", 0.0) or 0.0),
             price=float(request.get("price", 0.0) or 0.0),
+            execution_status="FILLED",
         )
 
     def load_open_positions(self, *, symbol: str | None = None) -> list[OpenPositionSnapshot]:
-        return []
+        return [
+            replace(position)
+            for position in self._open_positions
+            if symbol is None or position.symbol == symbol
+        ]
+
+    def load_open_orders(self, *, symbol: str | None = None) -> list[OpenOrderSnapshot]:
+        return [
+            replace(order)
+            for order in self._open_orders
+            if symbol is None or order.symbol == symbol
+        ]
+
+    def find_open_position(
+        self,
+        *,
+        position_ticket: int | None = None,
+        position_identifier: int | None = None,
+        symbol: str | None = None,
+    ) -> OpenPositionSnapshot | None:
+        return _find_position_snapshot(
+            self.load_open_positions(symbol=symbol),
+            position_ticket=position_ticket,
+            position_identifier=position_identifier,
+        )
+
+    def modify_position_protection(
+        self,
+        position_ticket: int | None = None,
+        *,
+        position_identifier: int | None = None,
+        sl: float | None = None,
+        tp: float | None = None,
+        mutation_binding: MutationAccountBinding | None = None,
+    ) -> PositionProtectionResult:
+        del mutation_binding
+        invalid = _validate_protection_request(
+            position_ticket=position_ticket,
+            position_identifier=position_identifier,
+            sl=sl,
+            tp=tp,
+        )
+        if invalid:
+            return PositionProtectionResult(accepted=False, detail=invalid)
+
+        position = self.find_open_position(
+            position_ticket=position_ticket,
+            position_identifier=position_identifier,
+        )
+        if position is None:
+            return PositionProtectionResult(
+                accepted=False,
+                detail="open position not found",
+                position_ticket=position_ticket,
+                position_identifier=position_identifier,
+            )
+
+        symbol_info = self._symbols.get(position.symbol, {})
+        desired_sl = _normalize_position_price(
+            position.sl if sl is None else float(sl), symbol_info
+        )
+        desired_tp = _normalize_position_price(
+            position.tp if tp is None else float(tp), symbol_info
+        )
+        tolerance = _position_price_tolerance(symbol_info)
+        already_applied = _protection_matches(
+            position,
+            sl=desired_sl,
+            tp=desired_tp,
+            tolerance=tolerance,
+        )
+        if already_applied:
+            return _protection_result(
+                position,
+                accepted=True,
+                detail="position protection already matches requested values",
+                retcode=None,
+                changed=False,
+                postcondition_met=True,
+            )
+
+        for index, current in enumerate(self._open_positions):
+            if current.ticket == position.ticket:
+                self._open_positions[index] = replace(current, sl=desired_sl, tp=desired_tp)
+                break
+        observed = self.find_open_position(position_ticket=position.ticket)
+        postcondition_met = bool(
+            observed
+            and _protection_matches(
+                observed,
+                sl=desired_sl,
+                tp=desired_tp,
+                tolerance=tolerance,
+            )
+        )
+        if observed is None:
+            observed = replace(position, sl=desired_sl, tp=desired_tp)
+        return _protection_result(
+            observed,
+            accepted=postcondition_met,
+            detail=(
+                "mock position protection updated"
+                if postcondition_met
+                else "mock position protection postcondition not met"
+            ),
+            retcode=0,
+            changed=True,
+            postcondition_met=postcondition_met,
+        )
 
     def load_deals(self, *, since: datetime, symbol: str | None = None) -> list[DealSnapshot]:
         return []
+
+    @staticmethod
+    def _coerce_open_position(row: OpenPositionSnapshot | dict[str, Any]) -> OpenPositionSnapshot:
+        if isinstance(row, OpenPositionSnapshot):
+            if row.position_identifier is not None:
+                return replace(row)
+            return replace(row, position_identifier=row.ticket)
+        ticket = int(row.get("ticket", 0) or 0)
+        return OpenPositionSnapshot(
+            ticket=ticket,
+            symbol=str(row.get("symbol", "") or ""),
+            side=str(row.get("side", "") or ""),
+            volume=float(row.get("volume", 0.0) or 0.0),
+            price_open=float(row.get("price_open", 0.0) or 0.0),
+            sl=float(row.get("sl", 0.0) or 0.0),
+            tp=float(row.get("tp", 0.0) or 0.0),
+            profit=float(row.get("profit", 0.0) or 0.0),
+            opened_at=row.get("opened_at"),
+            magic=int(row.get("magic", 0) or 0),
+            comment=str(row.get("comment", "") or ""),
+            position_identifier=int(row.get("position_identifier", ticket) or ticket),
+        )
+
+    @staticmethod
+    def _coerce_open_order(row: OpenOrderSnapshot | dict[str, Any]) -> OpenOrderSnapshot:
+        if isinstance(row, OpenOrderSnapshot):
+            return replace(row)
+        position_ticket = row.get("position_ticket")
+        return OpenOrderSnapshot(
+            ticket=int(row.get("ticket", 0) or 0),
+            symbol=str(row.get("symbol", "") or ""),
+            order_type=str(row.get("order_type", "unknown") or "unknown"),
+            state=str(row.get("state", "unknown") or "unknown"),
+            volume_initial=float(row.get("volume_initial", 0.0) or 0.0),
+            volume_current=float(row.get("volume_current", 0.0) or 0.0),
+            price_open=float(row.get("price_open", 0.0) or 0.0),
+            price_stoplimit=float(row.get("price_stoplimit", 0.0) or 0.0),
+            sl=float(row.get("sl", 0.0) or 0.0),
+            tp=float(row.get("tp", 0.0) or 0.0),
+            setup_at=row.get("setup_at"),
+            expiration_at=row.get("expiration_at"),
+            magic=int(row.get("magic", 0) or 0),
+            position_ticket=(
+                int(position_ticket) if position_ticket not in {None, ""} else None
+            ),
+        )
 
 
 class LiveMT5Adapter:
@@ -381,6 +838,7 @@ class LiveMT5Adapter:
         server: str | None = None,
         timeout_ms: int = 60_000,
         portable: bool = False,
+        require_mutation_binding: bool = False,
         mt5_module: Any | None = None,
     ) -> None:
         self.path = path
@@ -389,6 +847,7 @@ class LiveMT5Adapter:
         self.server = server
         self.timeout_ms = timeout_ms
         self.portable = portable
+        self.require_mutation_binding = bool(require_mutation_binding)
         self._mt5 = mt5_module
         self._initialized = False
 
@@ -473,7 +932,118 @@ class LiveMT5Adapter:
                 server=server,
                 broker=broker,
             ),
+            margin_mode=canonical_account_margin_mode(
+                getattr(account_info, "margin_mode", None), mt5_module=mt5
+            ),
         )
+
+    def _mutation_binding_error(
+        self,
+        mt5: Any,
+        binding: MutationAccountBinding | None,
+    ) -> str | None:
+        """Verify terminal/account identity immediately before ``order_send``.
+
+        This intentionally uses direct, single-attempt MT5 reads.  Reconnecting
+        here could silently bind a different terminal/account between the
+        lifecycle fence and the broker mutation.
+        """
+
+        if binding is None:
+            return (
+                "broker mutation is missing its immutable account binding"
+                if self.require_mutation_binding
+                else None
+            )
+        if not isinstance(binding, MutationAccountBinding):
+            return "broker mutation account binding has an invalid type"
+
+        expected_login = str(binding.login or "").strip()
+        expected_server = str(binding.server or "").strip()
+        expected_scope = str(binding.account_scope or "").strip().lower()
+        expected_margin_mode = canonical_account_margin_mode(binding.margin_mode)
+        if not expected_login or not expected_server:
+            return "broker mutation account binding is incomplete"
+        if expected_scope not in {"demo", "live"}:
+            return "broker mutation account scope is invalid"
+        if expected_margin_mode != "HEDGING":
+            return "broker mutation requires a HEDGING account"
+
+        if self.require_mutation_binding:
+            if not str(self.path or "").strip():
+                return "broker mutation requires an explicit MT5 terminal path"
+            if self.login is None or not str(self.server or "").strip():
+                return "broker mutation requires explicit MT5 login and server"
+            if str(self.login) != expected_login or str(self.server) != expected_server:
+                return "broker mutation binding differs from configured MT5 account"
+            if not str(binding.terminal_path or "").strip() or not str(
+                binding.terminal_data_path or ""
+            ).strip():
+                return "broker mutation requires an exact terminal/data-path binding"
+
+        expected_terminal_path = str(binding.terminal_path or "").strip()
+        expected_data_path = str(binding.terminal_data_path or "").strip()
+        terminal_info = None
+        if expected_terminal_path or expected_data_path or self.path:
+            try:
+                terminal_info = mt5.terminal_info()
+            except Exception as exc:
+                return f"terminal identity check failed before broker mutation: {exc}"
+            if terminal_info is None:
+                return "terminal identity is unavailable before broker mutation"
+
+        # Keep account_info as the final MT5 read before order_send.  It narrows
+        # the remaining external account-switch race to the unavoidable call
+        # boundary between this check and the single broker mutation.
+        try:
+            account_info = mt5.account_info()
+        except Exception as exc:
+            return f"account identity check failed before broker mutation: {exc}"
+        if account_info is None:
+            return "account identity is unavailable before broker mutation"
+
+        actual_login = str(getattr(account_info, "login", "") or "")
+        actual_server = str(getattr(account_info, "server", "") or "")
+        actual_broker = str(getattr(account_info, "company", "") or "")
+        actual_scope_flag = self._account_trade_mode_is_live(
+            mt5=mt5,
+            account_info=account_info,
+            server=actual_server,
+            broker=actual_broker,
+        )
+        actual_scope = (
+            "live" if actual_scope_flag is True else "demo" if actual_scope_flag is False else ""
+        )
+        actual_margin_mode = canonical_account_margin_mode(
+            getattr(account_info, "margin_mode", None), mt5_module=mt5
+        )
+        if actual_login != expected_login:
+            return "MT5 login changed immediately before broker mutation"
+        if actual_server != expected_server:
+            return "MT5 server changed immediately before broker mutation"
+        if binding.broker and actual_broker != str(binding.broker):
+            return "MT5 broker changed immediately before broker mutation"
+        if actual_scope != expected_scope:
+            return "MT5 demo/live scope changed immediately before broker mutation"
+        if actual_margin_mode != expected_margin_mode:
+            return "MT5 account margin mode changed immediately before broker mutation"
+
+        if terminal_info is not None:
+            actual_terminal_path = str(getattr(terminal_info, "path", "") or "")
+            actual_data_path = str(getattr(terminal_info, "data_path", "") or "")
+            if self.path and _terminal_install_path_text(actual_terminal_path) != _terminal_install_path_text(
+                self.path
+            ):
+                return "active MT5 installation differs from configured terminal executable"
+            if expected_terminal_path and _canonical_path_text(actual_terminal_path) != _canonical_path_text(
+                expected_terminal_path
+            ):
+                return "MT5 terminal path changed immediately before broker mutation"
+            if expected_data_path and _canonical_path_text(actual_data_path) != _canonical_path_text(
+                expected_data_path
+            ):
+                return "MT5 terminal data path changed immediately before broker mutation"
+        return None
 
     def load_available_symbols(self) -> list[str]:
         mt5 = self._ensure_initialized()
@@ -535,24 +1105,65 @@ class LiveMT5Adapter:
         mt5 = self._ensure_initialized()
         symbol_name = str(request.get("symbol", "") or "")
         if not symbol_name:
-            return OrderSendResult(accepted=False, detail="symbol missing", retcode=None)
+            return OrderSendResult(
+                accepted=False,
+                detail="symbol missing",
+                retcode=None,
+                execution_status="REJECTED",
+            )
         symbol_info = self._prepare_symbol(symbol_name)
         trade_request = self._build_trade_request(mt5, symbol_info, request)
-        result = self._call_mt5(lambda module: module.order_send(trade_request), retry_on_none=True)
+        binding_error = self._mutation_binding_error(
+            mt5, request.get("_mutation_binding")
+        )
+        if binding_error:
+            return OrderSendResult(
+                accepted=False,
+                detail=binding_error,
+                retcode=None,
+                execution_status="REJECTED",
+            )
+        try:
+            # Broker mutations are intentionally single-attempt.  Retrying a
+            # lost IPC response could duplicate an order already accepted by
+            # the terminal; the caller must reconcile UNKNOWN from broker state.
+            result = mt5.order_send(trade_request)
+        except Exception as exc:
+            return OrderSendResult(
+                accepted=False,
+                detail=f"order_send raised; broker outcome unknown: {exc}",
+                retcode=None,
+                execution_status="UNKNOWN",
+                outcome_unknown=True,
+            )
         if result is None:
             return OrderSendResult(
                 accepted=False,
-                detail=f"order_send failed: {mt5.last_error()}",
+                detail=f"order_send returned no result; broker outcome unknown: {mt5.last_error()}",
                 retcode=None,
+                execution_status="UNKNOWN",
+                outcome_unknown=True,
             )
-        retcode = int(getattr(result, "retcode", -1))
-        success_codes = {
-            int(getattr(mt5, "TRADE_RETCODE_DONE", 10009)),
-            int(getattr(mt5, "TRADE_RETCODE_PLACED", 10008)),
-        }
+        raw_retcode = getattr(result, "retcode", None)
+        try:
+            retcode = int(raw_retcode) if raw_retcode is not None else None
+        except (TypeError, ValueError):
+            retcode = None
+        done_code = int(getattr(mt5, "TRADE_RETCODE_DONE", 10009))
+        placed_code = int(getattr(mt5, "TRADE_RETCODE_PLACED", 10008))
+        partial_code = int(getattr(mt5, "TRADE_RETCODE_DONE_PARTIAL", 10010))
+        execution_status = {
+            done_code: "FILLED",
+            placed_code: "PLACED",
+            partial_code: "PARTIAL",
+        }.get(retcode, "UNKNOWN" if retcode is None else "REJECTED")
+        accepted = execution_status in {"FILLED", "PLACED", "PARTIAL"}
         return OrderSendResult(
-            accepted=retcode in success_codes,
-            detail=str(getattr(result, "comment", "") or ("order_send done" if retcode in success_codes else "order_send rejected")),
+            accepted=accepted,
+            detail=str(
+                getattr(result, "comment", "")
+                or ("order_send accepted" if accepted else "order_send rejected")
+            ),
             retcode=retcode,
             order=getattr(result, "order", None),
             deal=getattr(result, "deal", None),
@@ -562,6 +1173,8 @@ class LiveMT5Adapter:
             ask=float(getattr(result, "ask", 0.0) or 0.0),
             request_id=getattr(result, "request_id", None),
             retcode_external=getattr(result, "retcode_external", None),
+            execution_status=execution_status,
+            outcome_unknown=execution_status == "UNKNOWN",
         )
 
     def load_open_positions(self, *, symbol: str | None = None) -> list[OpenPositionSnapshot]:
@@ -586,9 +1199,262 @@ class LiveMT5Adapter:
                 opened_at=self._format_epoch(getattr(row, "time", None)),
                 magic=int(getattr(row, "magic", 0) or 0),
                 comment=str(getattr(row, "comment", "") or ""),
+                position_identifier=int(
+                    getattr(row, "identifier", None)
+                    or getattr(row, "ticket", 0)
+                    or 0
+                ),
             )
             for row in rows
         ]
+
+    def load_open_orders(self, *, symbol: str | None = None) -> list[OpenOrderSnapshot]:
+        """Load every active/pending order, failing closed on API ambiguity."""
+
+        mt5 = self._ensure_initialized()
+        rows = self._call_mt5(
+            lambda module: module.orders_get(symbol=symbol) if symbol else module.orders_get(),
+            retry_on_none=True,
+        )
+        if rows is None:
+            raise RuntimeError(f"MT5 orders_get() failed: {mt5.last_error()}")
+        return [
+            OpenOrderSnapshot(
+                ticket=int(getattr(row, "ticket", 0) or 0),
+                symbol=str(getattr(row, "symbol", "") or ""),
+                order_type=self._map_order_type(mt5, getattr(row, "type", None)),
+                state=self._map_order_state(mt5, getattr(row, "state", None)),
+                volume_initial=float(getattr(row, "volume_initial", 0.0) or 0.0),
+                volume_current=float(getattr(row, "volume_current", 0.0) or 0.0),
+                price_open=float(getattr(row, "price_open", 0.0) or 0.0),
+                price_stoplimit=float(getattr(row, "price_stoplimit", 0.0) or 0.0),
+                sl=float(getattr(row, "sl", 0.0) or 0.0),
+                tp=float(getattr(row, "tp", 0.0) or 0.0),
+                setup_at=self._format_epoch(getattr(row, "time_setup", None)),
+                expiration_at=self._format_epoch(getattr(row, "time_expiration", None)),
+                magic=int(getattr(row, "magic", 0) or 0),
+                position_ticket=(
+                    int(getattr(row, "position_id", 0) or 0) or None
+                ),
+            )
+            for row in rows
+        ]
+
+    def find_open_position(
+        self,
+        *,
+        position_ticket: int | None = None,
+        position_identifier: int | None = None,
+        symbol: str | None = None,
+    ) -> OpenPositionSnapshot | None:
+        return _find_position_snapshot(
+            self.load_open_positions(symbol=symbol),
+            position_ticket=position_ticket,
+            position_identifier=position_identifier,
+        )
+
+    def modify_position_protection(
+        self,
+        position_ticket: int | None = None,
+        *,
+        position_identifier: int | None = None,
+        sl: float | None = None,
+        tp: float | None = None,
+        mutation_binding: MutationAccountBinding | None = None,
+    ) -> PositionProtectionResult:
+        invalid = _validate_protection_request(
+            position_ticket=position_ticket,
+            position_identifier=position_identifier,
+            sl=sl,
+            tp=tp,
+        )
+        if invalid:
+            return PositionProtectionResult(accepted=False, detail=invalid)
+
+        position = self.find_open_position(
+            position_ticket=position_ticket,
+            position_identifier=position_identifier,
+        )
+        if position is None:
+            return PositionProtectionResult(
+                accepted=False,
+                detail="open position not found",
+                position_ticket=position_ticket,
+                position_identifier=position_identifier,
+            )
+
+        mt5 = self._ensure_initialized()
+        symbol_info = self._prepare_symbol(position.symbol)
+        tolerance = _position_price_tolerance(symbol_info)
+        try:
+            desired_sl = _normalize_position_price(
+                position.sl if sl is None else float(sl), symbol_info
+            )
+            desired_tp = _normalize_position_price(
+                position.tp if tp is None else float(tp), symbol_info
+            )
+        except (ArithmeticError, TypeError, ValueError) as exc:
+            return _protection_result(
+                position,
+                accepted=False,
+                detail=str(exc),
+                retcode=None,
+                changed=False,
+                postcondition_met=False,
+            )
+        if _protection_matches(
+            position,
+            sl=desired_sl,
+            tp=desired_tp,
+            tolerance=tolerance,
+        ):
+            return _protection_result(
+                position,
+                accepted=True,
+                detail="position protection already matches requested values",
+                retcode=None,
+                changed=False,
+                postcondition_met=True,
+            )
+
+        action_code = getattr(mt5, "TRADE_ACTION_SLTP", None)
+        if action_code is None:
+            return _protection_result(
+                position,
+                accepted=False,
+                detail="MT5 module does not expose TRADE_ACTION_SLTP",
+                retcode=None,
+                changed=False,
+                postcondition_met=False,
+            )
+        request = {
+            "action": action_code,
+            "symbol": position.symbol,
+            "position": position.ticket,
+            "sl": desired_sl,
+            "tp": desired_tp,
+        }
+        binding_error = self._mutation_binding_error(mt5, mutation_binding)
+        if binding_error:
+            return _protection_result(
+                position,
+                accepted=False,
+                detail=binding_error,
+                retcode=None,
+                changed=False,
+                postcondition_met=False,
+            )
+        send_exception: Exception | None = None
+        try:
+            # SLTP is a broker mutation.  It must never use the automatic IPC
+            # retry path because an absent response does not prove non-execution.
+            result = mt5.order_send(request)
+        except Exception as exc:
+            result = None
+            send_exception = exc
+        send_error = (
+            f"exception={send_exception}"
+            if send_exception is not None
+            else mt5.last_error() if result is None else None
+        )
+        stable_identifier = (
+            position.position_identifier
+            if position.position_identifier is not None
+            else position.ticket
+        )
+        verification_error: str | None = None
+        try:
+            observed = self.find_open_position(position_identifier=stable_identifier)
+        except Exception as exc:  # broker response must remain observable even if reconciliation fails
+            observed = None
+            verification_error = str(exc)
+        postcondition_met = bool(
+            observed
+            and _protection_matches(
+                observed,
+                sl=desired_sl,
+                tp=desired_tp,
+                tolerance=tolerance,
+            )
+        )
+        changed = bool(
+            observed
+            and not _protection_matches(
+                observed,
+                sl=position.sl,
+                tp=position.tp,
+                tolerance=tolerance,
+            )
+        )
+        if result is None:
+            detail = f"order_send SLTP returned no result; broker outcome unknown: {send_error}"
+            if verification_error:
+                detail += f"; postcondition verification failed: {verification_error}"
+            return PositionProtectionResult(
+                accepted=False,
+                detail=detail,
+                retcode=None,
+                position_ticket=observed.ticket if observed else position.ticket,
+                position_identifier=stable_identifier,
+                sl=observed.sl if observed else None,
+                tp=observed.tp if observed else None,
+                changed=changed,
+                postcondition_met=postcondition_met,
+                outcome_unknown=True,
+            )
+
+        raw_retcode = getattr(result, "retcode", None)
+        try:
+            retcode = int(raw_retcode) if raw_retcode is not None else None
+        except (TypeError, ValueError):
+            retcode = None
+        done_code = int(getattr(mt5, "TRADE_RETCODE_DONE", 10009))
+        broker_accepted = retcode == done_code
+        comment = str(getattr(result, "comment", "") or "")
+        order = getattr(result, "order", None)
+        deal = getattr(result, "deal", None)
+        request_id = getattr(result, "request_id", None)
+        retcode_external = getattr(result, "retcode_external", None)
+        if broker_accepted and postcondition_met:
+            detail = comment or "position protection updated"
+        elif broker_accepted:
+            detail = "broker accepted protection request but postcondition was not met"
+        elif postcondition_met:
+            detail = (
+                (comment + "; ") if comment else ""
+            ) + "broker retcode rejected although requested protection is observable"
+        else:
+            detail = comment or "broker rejected position protection request"
+        if verification_error:
+            detail += f"; postcondition verification failed: {verification_error}"
+        if observed is None:
+            return PositionProtectionResult(
+                accepted=False,
+                detail=detail,
+                retcode=retcode,
+                position_ticket=position.ticket,
+                position_identifier=stable_identifier,
+                sl=None,
+                tp=None,
+                changed=False,
+                postcondition_met=False,
+                order=order,
+                deal=deal,
+                request_id=request_id,
+                retcode_external=retcode_external,
+            )
+        return _protection_result(
+            observed,
+            accepted=broker_accepted and postcondition_met,
+            detail=detail,
+            retcode=retcode,
+            changed=changed,
+            postcondition_met=postcondition_met,
+            order=order,
+            deal=deal,
+            request_id=request_id,
+            retcode_external=retcode_external,
+        )
 
     def load_deals(self, *, since: datetime, symbol: str | None = None) -> list[DealSnapshot]:
         mt5 = self._ensure_initialized()
@@ -638,6 +1504,7 @@ class LiveMT5Adapter:
                     occurred_at=self._format_epoch(getattr(row, "time", None)),
                     magic=int(getattr(row, "magic", 0) or 0),
                     comment=str(getattr(row, "comment", "") or ""),
+                    fee=float(getattr(row, "fee", 0.0) or 0.0),
                 )
             )
         return result
@@ -799,6 +1666,74 @@ class LiveMT5Adapter:
             return cls._EXECUTION_MODE.get(int(value), str(value))
         except (TypeError, ValueError):
             return str(value or "")
+
+    @staticmethod
+    def _map_order_type(mt5: Any, value: Any) -> str:
+        names = (
+            ("ORDER_TYPE_BUY", "buy"),
+            ("ORDER_TYPE_SELL", "sell"),
+            ("ORDER_TYPE_BUY_LIMIT", "buy_limit"),
+            ("ORDER_TYPE_SELL_LIMIT", "sell_limit"),
+            ("ORDER_TYPE_BUY_STOP", "buy_stop"),
+            ("ORDER_TYPE_SELL_STOP", "sell_stop"),
+            ("ORDER_TYPE_BUY_STOP_LIMIT", "buy_stop_limit"),
+            ("ORDER_TYPE_SELL_STOP_LIMIT", "sell_stop_limit"),
+            ("ORDER_TYPE_CLOSE_BY", "close_by"),
+        )
+        for constant_name, label in names:
+            constant = getattr(mt5, constant_name, None)
+            if constant is not None and value == constant:
+                return label
+        try:
+            numeric = int(value)
+        except (TypeError, ValueError):
+            return "unknown"
+        return {
+            0: "buy",
+            1: "sell",
+            2: "buy_limit",
+            3: "sell_limit",
+            4: "buy_stop",
+            5: "sell_stop",
+            6: "buy_stop_limit",
+            7: "sell_stop_limit",
+            8: "close_by",
+        }.get(numeric, f"unknown_{numeric}")
+
+    @staticmethod
+    def _map_order_state(mt5: Any, value: Any) -> str:
+        names = (
+            ("ORDER_STATE_STARTED", "started"),
+            ("ORDER_STATE_PLACED", "placed"),
+            ("ORDER_STATE_CANCELED", "canceled"),
+            ("ORDER_STATE_PARTIAL", "partial"),
+            ("ORDER_STATE_FILLED", "filled"),
+            ("ORDER_STATE_REJECTED", "rejected"),
+            ("ORDER_STATE_EXPIRED", "expired"),
+            ("ORDER_STATE_REQUEST_ADD", "request_add"),
+            ("ORDER_STATE_REQUEST_MODIFY", "request_modify"),
+            ("ORDER_STATE_REQUEST_CANCEL", "request_cancel"),
+        )
+        for constant_name, label in names:
+            constant = getattr(mt5, constant_name, None)
+            if constant is not None and value == constant:
+                return label
+        try:
+            numeric = int(value)
+        except (TypeError, ValueError):
+            return "unknown"
+        return {
+            0: "started",
+            1: "placed",
+            2: "canceled",
+            3: "partial",
+            4: "filled",
+            5: "rejected",
+            6: "expired",
+            7: "request_add",
+            8: "request_modify",
+            9: "request_cancel",
+        }.get(numeric, f"unknown_{numeric}")
 
     @classmethod
     def _map_flags(cls, value: Any, mapping: dict[int, str]) -> str:

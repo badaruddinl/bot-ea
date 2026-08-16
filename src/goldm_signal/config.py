@@ -2,6 +2,74 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import time
+from enum import Enum
+
+
+class StrategyEngine(str, Enum):
+    """Immutable strategy implementation bound by the deployed release."""
+
+    D7_CHANNEL_CONTINUATION = "D7_CHANNEL_CONTINUATION"
+
+    @classmethod
+    def parse(cls, value: object) -> "StrategyEngine":
+        if isinstance(value, cls):
+            return value
+        normalized = str(value or "").strip().upper().replace("-", "_")
+        try:
+            return cls(normalized)
+        except ValueError as exc:
+            raise ValueError(
+                "strategy engine must be D7_CHANNEL_CONTINUATION for core-v2"
+            ) from exc
+
+
+class EntrySidePolicy(str, Enum):
+    """Runtime permission filter; it never selects a strategy algorithm."""
+
+    ALL = "ALL"
+    BUY_ONLY = "BUY_ONLY"
+    SELL_ONLY = "SELL_ONLY"
+
+    @classmethod
+    def parse(cls, value: object) -> "EntrySidePolicy":
+        return _parse_side_selector(cls, value, "entry side policy")
+
+    def allows(self, side: object) -> bool:
+        return _side_selector_allows(self, side)
+
+
+class NotificationSideFilter(str, Enum):
+    """Display-only filter; it cannot alter strategy or execution authority."""
+
+    ALL = "ALL"
+    BUY_ONLY = "BUY_ONLY"
+    SELL_ONLY = "SELL_ONLY"
+
+    @classmethod
+    def parse(cls, value: object) -> "NotificationSideFilter":
+        return _parse_side_selector(cls, value, "notification side filter")
+
+    def allows(self, side: object) -> bool:
+        return _side_selector_allows(self, side)
+
+
+def _parse_side_selector(cls, value: object, label: str):
+    if isinstance(value, cls):
+        return value
+    normalized = str(value or "").strip().upper().replace("-", "_")
+    try:
+        return cls(normalized)
+    except ValueError as exc:
+        allowed = ", ".join(item.value for item in cls)
+        raise ValueError(f"{label} must be one of: {allowed}") from exc
+
+
+def _side_selector_allows(selector: object, side: object) -> bool:
+    normalized = str(side or "").strip().lower()
+    if normalized not in {"buy", "sell"}:
+        return False
+    value = str(getattr(selector, "value", selector)).upper()
+    return value == "ALL" or value == f"{normalized.upper()}_ONLY"
 
 
 @dataclass(frozen=True, slots=True)

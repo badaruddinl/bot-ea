@@ -4,6 +4,7 @@ from dataclasses import asdict
 from time import perf_counter
 
 from .execution_guard import evaluate_execution_guards
+from .mt5_adapter import MutationAccountBinding
 from .polling_runtime import DecisionAction
 
 
@@ -18,12 +19,14 @@ class MT5ExecutionRuntime:
         deviation_points: int = 20,
         magic: int = 234000,
         comment_prefix: str = "bot-ea",
+        mutation_binding: MutationAccountBinding | None = None,
     ) -> None:
         self.adapter = adapter
         self.allow_live_orders = allow_live_orders
         self.deviation_points = deviation_points
         self.magic = magic
         self.comment_prefix = comment_prefix
+        self.mutation_binding = mutation_binding
 
     def execute(self, snapshot, intent, size_result, preflight_result: dict | None = None) -> dict:
         if intent.action not in {
@@ -76,11 +79,26 @@ class MT5ExecutionRuntime:
         send_result = self.adapter.send_order(live_request)
         latency_ms = (perf_counter() - started) * 1000.0
         quoted_price = float(live_request.get("price") or 0.0)
-        realized_price = float(send_result.price or quoted_price or 0.0)
+        execution_status = str(
+            getattr(send_result, "execution_status", "")
+            or ("FILLED" if send_result.accepted else "REJECTED")
+        )
+        outcome_unknown = bool(getattr(send_result, "outcome_unknown", False))
+        if outcome_unknown:
+            execution_status = "UNKNOWN"
+        realized_price = (
+            float(send_result.price or quoted_price or 0.0)
+            if execution_status in {"FILLED", "PARTIAL"}
+            else None
+        )
         point = float(snapshot.symbol_snapshot.point or 0.0)
-        slippage_points = abs(realized_price - quoted_price) / point if point > 0 and quoted_price > 0 else 0.0
+        slippage_points = (
+            abs(realized_price - quoted_price) / point
+            if realized_price is not None and point > 0 and quoted_price > 0
+            else 0.0
+        )
         return {
-            "status": "FILLED" if send_result.accepted else "REJECTED",
+            "status": execution_status,
             "detail": send_result.detail,
             "retcode": str(send_result.retcode or ""),
             "order": send_result.order,
@@ -92,6 +110,7 @@ class MT5ExecutionRuntime:
             "request_id": send_result.request_id,
             "retcode_external": send_result.retcode_external,
             "live_order_submitted": True,
+            "outcome_unknown": outcome_unknown,
             "request": live_request,
             "action": live_request.get("action"),
             "position_ticket": live_request.get("position_ticket"),
@@ -179,6 +198,8 @@ class MT5ExecutionRuntime:
             "magic": self.magic,
             "comment": f"{self.comment_prefix}: {(intent.reason or 'execution')[:24]}",
         }
+        if self.mutation_binding is not None:
+            request["_mutation_binding"] = self.mutation_binding
         if intent.action is DecisionAction.CANCEL_PENDING:
             request["order_ticket"] = (
                 intent.payload.get("order_ticket")
