@@ -9,7 +9,7 @@ param(
     [Parameter(Mandatory = $true)][string]$WheelhousePath,
     [Parameter(Mandatory = $true)][string]$WheelhouseManifestSha256,
     [string]$Remote = "origin",
-    [string]$RemoteBranch = "feature/core-trading-lifecycle",
+    [string]$RemoteBranch = "release/goldm-core-v2",
     [Parameter(Mandatory = $true)][string]$ExpectedCommit,
     [string]$EnvFile = "",
     [string]$DatabasePath = "",

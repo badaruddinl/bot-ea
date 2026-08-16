@@ -172,6 +172,52 @@ class GoldMDeploymentTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.temp.cleanup()
 
+    def test_demo_release_template_runbook_and_updater_are_fail_closed(self) -> None:
+        repo = Path(__file__).resolve().parents[1]
+        template = parse_env_file(repo / ".env.example")
+        required_demo_bindings = {
+            "TELEGRAM_BOT_TOKEN",
+            "TELEGRAM_ADMIN_CHAT_IDS",
+            "MT5_PATH",
+            "MT5_DATA_PATH",
+            "MT5_LAUNCH_MODE",
+            "MT5_LOGIN",
+            "MT5_SERVER",
+            "GOLDM_EXPECTED_MT5_LOGIN",
+            "GOLDM_EXPECTED_MT5_SERVER",
+            "GOLDM_EA_SESSION_ID",
+            "GOLDM_ALLOW_LIVE_ACTIVATION",
+            "GOLDM_TRADE_LIFECYCLE_ENABLED",
+            "GOLDM_EXECUTION_MODE",
+        }
+        self.assertTrue(required_demo_bindings.issubset(template))
+        self.assertEqual(template["GOLDM_ALLOW_LIVE_ACTIVATION"], "false")
+        self.assertEqual(template["GOLDM_EXECUTION_MODE"], "off")
+        self.assertEqual(template["GOLDM_ENTRY_SIDE_POLICY"], "ALL")
+        self.assertEqual(template["GOLDM_NOTIFICATION_SIDE_FILTER"], "ALL")
+        self.assertEqual(template["MT5_LOGIN"], "UNSET")
+        self.assertEqual(template["GOLDM_EA_SESSION_ID"], "UNSET")
+        self.assertNotIn("MT5_PASSWORD", template)
+        self.assertNotIn("GOLDM_LIVE_ORDER_CONSENT", template)
+
+        updater = (repo / "scripts" / "update-goldm-windows-vm.ps1").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn(
+            '[string]$RemoteBranch = "release/goldm-core-v2"', updater
+        )
+        self.assertNotIn('"feature/core-trading-lifecycle"', updater)
+
+        runbook = (repo / "docs" / "windows-vm-deployment.md").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("DEMO/shadow only", runbook)
+        self.assertIn("self-hosted, Windows, X64, goldm-mt5", runbook)
+        self.assertIn("-StageOnly", runbook)
+        self.assertNotIn("-RestartTerminal", runbook)
+        self.assertNotIn("-TelegramSmokeTest", runbook)
+        self.assertNotIn("Two-terminal DEMO and REAL", runbook)
+
     def test_environment_contract_is_exact_demo_only_and_comment_safe(self) -> None:
         values = parse_env_file(self.env)
         self.assertEqual(values["TELEGRAM_BOT_TOKEN"], "secret#inside")

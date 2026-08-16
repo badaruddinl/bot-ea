@@ -1,95 +1,191 @@
-# GoldM Windows VM deployment
+# GOLDM demo-only Windows VM release runbook
 
-## What remains manual on a new host
+This runbook applies to the frozen GOLDM strategy 1.72 release line. The
+production engine is the exact `ALL` baseline descended from commit
+`6a4150322433640d555506a3ce9bb6f3065d2d32`. `EntrySidePolicy` and
+`NotificationSideFilter` are runtime controls; neither selects or modifies the
+strategy engine.
 
-Install these components before running repository scripts:
+The release is DEMO/shadow only. The validator requires
+`GOLDM_ALLOW_LIVE_ACTIVATION=false`, requires `GOLDM_EXECUTION_MODE=off` at
+cutover, and refuses REAL, CONTEST, or unclassified MT5 accounts. Do not weaken
+those gates to make deployment pass.
 
-1. Git for Windows.
-2. Python 3.11 or newer, including `py.exe`, `pip`, and `pythonw.exe`.
-3. MetaTrader 5 and MetaEditor.
-4. Log in to the intended MT5 account manually. Do not place MT5 passwords in Telegram or Git.
-5. Clone this repository and create `.env` from `.env.example`.
+## Required external inputs
 
-At minimum, `.env` must contain `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ADMIN_CHAT_IDS`, and
-`GOLDM_TRADE_LIFECYCLE_ENABLED=true`. Keep the initial execution mode `off`.
+Prepare these outside Git and record their independently verified SHA-256
+digests:
 
-## First installation
+1. A dedicated Windows x64 VM and operator account. Do not reuse an interactive
+   workstation whose MT5 terminal may reconnect to an unknown last account.
+2. CPython 3.14 x64, with the exact `python.exe` path and SHA-256.
+3. One standard (non-portable) MetaTrader 5 installation, its exact
+   `terminal64.exe`, `MetaEditor64.exe`, and terminal data directory.
+4. A manually authenticated MT5 DEMO hedging account. Never place its password
+   in Git, Telegram, an environment file, command arguments, or logs.
+5. A sealed offline wheelhouse containing only the CPython 3.14 win_amd64
+   `MetaTrader5==5.0.5735` and `numpy==2.4.2` wheels, the hashed
+   `requirements-goldm-live.lock`, and `goldm-wheelhouse-manifest.json`. The
+   operator-approved manifest SHA-256 is the root of trust.
+6. A private Telegram bot token and positive private-user admin chat IDs.
 
-Run PowerShell as Administrator from the repository:
+## Required GitHub runner gate
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\bootstrap-goldm-windows-vm.ps1
-powershell -ExecutionPolicy Bypass -File .\scripts\deploy-goldm-windows-vm.ps1 -RestartTerminal -TelegramSmokeTest
+Register the VM as a repository self-hosted runner using GitHub's ephemeral
+registration token and these labels:
+
+```text
+self-hosted, Windows, X64, goldm-mt5
 ```
 
-On a new terminal profile, open `GOLD.i#` M15, attach `GoldMSniperParity`, enable Algo
-Trading, and save the profile. This one-time UI step is intentionally manual because MT5
-does not provide a safe supported interface for selecting a chart and attaching an EA.
+Run it as a service under the dedicated operator account. The required
+`mt5-release-windows` check only performs the full release verification and
+clean MQL compilation; it does not deploy, start MT5, or submit an order. Do
+not merge the release PR until both `full-python-windows` and
+`mt5-release-windows` pass and the independent review requirement is met.
 
-## Normal update
+## Prepare the private runtime environment
+
+Run PowerShell as Administrator from an exact checkout of the approved release
+commit. On the first bootstrap attempt, the script creates `.env` from
+`.env.example` and deliberately stops. Fill every `UNSET` value. In particular:
+
+- `MT5_PATH` and `MT5_DATA_PATH` must be absolute and identify the exact
+  standard terminal instance;
+- `MT5_LOGIN`, `MT5_SERVER`, and both `GOLDM_EXPECTED_*` values must match;
+- `GOLDM_EA_SESSION_ID` must be a unique 16-96 character safe token;
+- `GOLDM_ALLOW_LIVE_ACTIVATION` must remain exactly `false`;
+- `GOLDM_EXECUTION_MODE` must remain exactly `off`;
+- entry and notification policies start at `ALL` independently.
+
+The bootstrap seals this source file into
+`runtime_data\config\runtime.env` with private ACLs. Scheduled Tasks use only
+that private snapshot; the repository `.env` is not the runtime authority.
+
+## First bootstrap
+
+Resolve every value explicitly. Do not replace full commit IDs or SHA-256
+digests with branch names, `HEAD`, globs, or short hashes in an approved run.
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\deploy-goldm-windows-vm.ps1 -RestartTerminal
+$repo = 'C:\GoldM\bot-ea'
+$python = 'C:\Program Files\Python314\python.exe'
+$terminal = 'C:\Program Files\MetaTrader 5\terminal64.exe'
+$terminalData = 'C:\Users\goldm-demo\AppData\Roaming\MetaQuotes\Terminal\INSTANCE_ID'
+$editor = 'C:\Program Files\MetaTrader 5\MetaEditor64.exe'
+$wheelhouse = 'D:\sealed-inputs\goldm-wheelhouse-cp314-win-amd64'
+$releaseCommit = 'REPLACE_WITH_APPROVED_40_HEX_COMMIT'
+$pythonSha256 = 'REPLACE_WITH_64_HEX_SHA256'
+$wheelhouseManifestSha256 = 'REPLACE_WITH_64_HEX_SHA256'
+
+powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass `
+  -File "$repo\scripts\bootstrap-goldm-windows-vm.ps1" `
+  -RepoRoot $repo `
+  -PythonExecutable $python `
+  -PythonSha256 $pythonSha256 `
+  -TerminalExecutable $terminal `
+  -TerminalDataPath $terminalData `
+  -MetaEditorPath $editor `
+  -WheelhousePath $wheelhouse `
+  -WheelhouseManifestSha256 $wheelhouseManifestSha256 `
+  -ReleaseCommit $releaseCommit
 ```
 
-The deployment performs a fast-forward Git pull, installs Python plus the MT5 library,
-runs the critical tests, compiles the EA with zero errors and zero warnings, backs up the
-database/config/active EA, deploys the EA, and restarts the worker. Add
-`-TelegramSmokeTest` when a Telegram diagnostic message is desired.
+Bootstrap validates the demo-only runtime contract, builds an offline sealed
+release, runs full test discovery, compiles the EA and importer with zero
+errors/warnings, creates the private database/config, and installs a disabled
+Scheduled Task. It does not enable entry automatically.
 
-## Telegram administration
+## Stage-only cutover
 
-Only chat IDs in `TELEGRAM_ADMIN_CHAT_IDS` can mutate runtime trading configuration.
-The default Telegram command menu contains only `/start`, `/status`, `/signal`,
-`/history`, and `/stop`. Telegram publishes the extended control menu with a per-chat
-scope only for configured root admins. The worker enforces the same allowlist server-side,
-so manually typing a hidden admin command does not bypass it.
+Use `-StageOnly` for the first cutover. It deploys and verifies the release but
+keeps the worker task disabled:
 
-Approved subscribers remain view-only. Use `/control` for the button panel, `/account`
-for the connected MT5 fingerprint, and `/users`, `/pending`, `/approve`, and `/reject`
-for notification access. `/users` includes revoke buttons and `/pending` includes approve
-and reject buttons, so normal subscriber management does not require typing chat IDs.
+```powershell
+powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass `
+  -File "$repo\scripts\deploy-goldm-windows-vm.ps1" `
+  -RepoRoot $repo `
+  -PythonExecutable $python `
+  -PythonSha256 $pythonSha256 `
+  -TerminalExecutable $terminal `
+  -TerminalDataPath $terminalData `
+  -MetaEditorPath $editor `
+  -WheelhousePath $wheelhouse `
+  -WheelhouseManifestSha256 $wheelhouseManifestSha256 `
+  -ReleaseCommit $releaseCommit `
+  -StageOnly
+```
 
-Changing DEMO/REAL mode or risk requires a second confirmation within two minutes. The
-confirmation is rejected if the MT5 login, server, or account type changed meanwhile.
-`Matikan Entry` is deliberately immediate. Telegram never reads or stores an MT5 password.
+Only after `STAGE_ONLY_OK`, attach `GoldMSniperParity` manually to `GOLD.i#`
+M15 in the exact DEMO terminal profile, keep entry OFF, and save the profile.
+The manual chart step is required because MT5 exposes no safe supported API for
+attaching an EA to a chart.
 
-Changing the actual MT5 login remains a terminal operation: log in to the desired account
-in MT5, open `/account` to verify its fingerprint, then use `Kunci Akun Ini` or activate
-the matching DEMO/REAL mode and complete the second confirmation. The bot will reject
-entry when the connected login/server/type differs from the approved binding.
+## Demo cutover and proof
 
-Execution notifications carry an account scope. Events belonging to `live` are forced to
-the root-admin audience, including position ticket, lot, entry/exit, close reason, and P/L.
-Public `/signal` and `/history` queries exclude those events as a second privacy boundary.
+Rerun the same deploy command without `-StageOnly`. Success requires all of the
+following evidence before `DEPLOY_OK` is emitted:
 
-## Two-terminal DEMO and REAL topology
+- immutable source, production-input, interpreter, wheelhouse, and runtime
+  configuration hashes;
+- exact connected DEMO login/server/trade-mode and hedging account proof;
+- strategy 1.72 `ALL` session evidence from a fresh EA configuration log;
+- database integrity and a flat broker book at cutover;
+- exact Scheduled Task action/process identity;
+- fresh Telegram `getUpdates` readiness with no competing poller.
 
-Running DEMO and REAL continuously is possible, but do not start two copies of the current
-all-in-one worker against one bot token and one database. Only one process may poll Telegram
-`getUpdates`, and MetaTrader5 terminal connections must be isolated per operating-system
-process.
+The deployment starts in execution mode OFF. Enabling DEMO entry is a separate
+admin action after reviewing `/status` and `/account`; REAL activation remains
+impossible while the deployment kill switch is false.
 
-The production topology must use:
+## Exact normal update
 
-1. one Telegram coordinator that owns commands, approvals, and bot polling;
-2. one DEMO executor process pinned to its own MT5 installation path, login/server, database
-   namespace, and magic number;
-3. one REAL executor process pinned to a second MT5 installation path, login/server, database
-   namespace, and a different magic number;
-4. DEMO events routed to all approved users and REAL events routed only to root admins.
+The updater defaults to `release/goldm-core-v2`, fetches one named remote ref,
+and requires the expected full commit. Always pass the approved commit
+explicitly:
 
-Install the second MT5 terminal and log in manually. Never copy an MT5 password into Git,
-Telegram, deployment arguments, or logs. Keep the REAL executor disabled until the separate
-executor services, account pins, consent gate, and rollback checks are installed and verified.
+```powershell
+powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass `
+  -File "$repo\scripts\update-goldm-windows-vm.ps1" `
+  -RepoRoot $repo `
+  -PythonExecutable $python `
+  -PythonSha256 $pythonSha256 `
+  -TerminalExecutable $terminal `
+  -TerminalDataPath $terminalData `
+  -MetaEditorPath $editor `
+  -WheelhousePath $wheelhouse `
+  -WheelhouseManifestSha256 $wheelhouseManifestSha256 `
+  -Remote origin `
+  -RemoteBranch 'release/goldm-core-v2' `
+  -ExpectedCommit $releaseCommit
+```
 
-Telegram buttons control runtime operations (viewer approval, execution mode, active
-account binding, and risk preset). Changes to trading algorithms, message parsing, or
-entry/close logic are code releases and must pass the deployment verification pipeline.
+## Monitoring checklist
 
-## Manual recovery
+Monitoring is read-only until all checks are healthy:
 
-Each deployment stores a timestamped backup under `runtime_data\deploy-backups`. If an EA
-compile fails, the deployment restores the previous active MQ5/EX5 automatically and
-starts the worker again. To recover the database or `.env`, stop the Scheduled Task, copy
-the selected backup into the repository, and start the task.
+1. GitHub required checks remain green for the deployed commit.
+2. The Scheduled Task is running under the dedicated operator and its action is
+   bound to the sealed release manifest and private runtime config hashes.
+3. `/status` reports execution OFF or DEMO, never LIVE; `/account` reports the
+   expected DEMO login/server and hedging scope.
+4. Telegram polling readiness remains fresh and no `409 Conflict`/competing
+   poller is recorded.
+5. MT5 logs continue to emit the expected run/session, account binding, and
+   production contract without `runtime_safe_halt`, account drift, or
+   unreconciled broker actions.
+6. R1/R2/R3 mutations reconcile to durable confirmed/failed state; UNKNOWN is
+   investigated and is never blindly retried.
+
+If account identity changes, Telegram readiness degrades, an unexpected process
+appears, or any source/config hash drifts, disable the Scheduled Task and leave
+entry OFF. Do not improvise a REAL fallback.
+
+## Backup and recovery
+
+Use `backup-goldm-windows-vm.ps1` to create a sealed backup manifest. Recovery
+must use `restore-goldm-windows-vm.ps1`, the exact manifest and sidecar digest,
+explicit restore switches, and the acknowledgement required by the script.
+Deployment rollback re-proves the terminal session and Telegram readiness
+before restarting the previous worker. Never manually copy a database or
+runtime environment over a running worker.
