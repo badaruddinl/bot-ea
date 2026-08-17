@@ -1333,18 +1333,30 @@ void EmitEarlyCandidateIfEligible(
    const double invalidation = g_side == SETUP_BUY
       ? g_level - InpMaximumRetestPenetrationATR * g_breakoutAtr
       : g_level + InpMaximumRetestPenetrationATR * g_breakoutAtr;
+   const double provisionalRisk = MathAbs(watchPrice - invalidation);
+   double expectedTarget = NearestObjectiveTarget(
+      g_side, watchPrice, provisionalRisk * InpMinimumProjectedR
+   );
+   if(expectedTarget <= 0.0)
+      expectedTarget = g_side == SETUP_BUY
+         ? watchPrice + provisionalRisk * InpMinimumProjectedR
+         : watchPrice - provisionalRisk * InpMinimumProjectedR;
+   const double provisionalProjectedR = provisionalRisk > 0.0
+      ? MathAbs(expectedTarget - watchPrice) / provisionalRisk
+      : 0.0;
    const double fibonacciReaction = NearestFibonacciExtension(g_side, watchPrice);
    g_earlyCandidateAlerted = true;
    g_earlyCandidateAlerts++;
    PrintFormat(
-      "SNIPER_EARLY_CANDIDATE id=%s status=WATCH_ONLY strategy=%s strategyVersion=%s directionProfile=%s runId=%s accountScope=%s accountLogin=%I64d originServerB64=%s strategyMode=%d autoEntry=false side=%s level=%.2f watchPrice=%.2f invalidation=%.2f confidence=%d threshold=>%.1f m5Votes=%d pattern=%s fibonacciReaction=%.2f next=M1_AND_FINAL_RISK_CHECK setupUtcEpoch=%I64d generatedUtcEpoch=%I64d serverUtcOffsetMinutes=%d",
+      "SNIPER_EARLY_CANDIDATE id=%s status=WATCH_ONLY strategy=%s strategyVersion=%s directionProfile=%s runId=%s accountScope=%s accountLogin=%I64d originServerB64=%s strategyMode=%d autoEntry=false side=%s level=%.2f watchPrice=%.2f invalidation=%.2f expectedSl=%.2f expectedTp=%.2f provisionalProjectedR=%.3f confidence=%d threshold=>%.1f m5Votes=%d pattern=%s fibonacciReaction=%.2f next=M1_AND_FINAL_RISK_CHECK setupUtcEpoch=%I64d generatedUtcEpoch=%I64d serverUtcOffsetMinutes=%d",
       g_candidateId,
       SNIPER_STRATEGY_ID, SNIPER_STRATEGY_VERSION,
       EngineLineageProfile(), ResearchRunId(),
       g_candidateAccountScope, g_candidateAccountLogin,
       g_candidateServerB64, InpStrategyMode,
       g_side == SETUP_BUY ? "BUY" : "SELL",
-      g_level, watchPrice, invalidation, g_earlyCandidateConfidence,
+      g_level, watchPrice, invalidation, invalidation, expectedTarget,
+      provisionalProjectedR, g_earlyCandidateConfidence,
       InpMinimumEarlyCandidateConfidence, g_m5ConfluenceVotes,
       g_m5PatternName, fibonacciReaction,
       g_candidateSetupUtcEpoch, GeneratedUtcEpoch(),
@@ -1537,10 +1549,28 @@ void CreateTechnicalSignal(
    const double entryDistanceAtr = g_side == SETUP_BUY
       ? (entry - g_level) / atr
       : (g_level - entry) / atr;
+   const bool waitForEntryPullback = entryDistanceAtr > InpMaximumEntryDistanceATR &&
+      g_phase == PHASE_WAITING_M1_TRIGGER &&
+      g_m1EntryBars < InpMaximumM1EntryBars &&
+      g_m5ConfluenceVotes >= 3;
+   if(waitForEntryPullback)
+   {
+      PrintFormat(
+         "SNIPER_ENTRY_DISTANCE_DEFERRED id=%s status=WATCH_ONLY side=%s entryDistanceATR=%.3f maximumEntryDistanceATR=%.3f m1Bars=%d maximumM1Bars=%d m5Votes=%d reason=WAIT_PULLBACK_NO_CHASE",
+         g_candidateId, g_side == SETUP_BUY ? "BUY" : "SELL",
+         entryDistanceAtr, InpMaximumEntryDistanceATR,
+         g_m1EntryBars, InpMaximumM1EntryBars, g_m5ConfluenceVotes
+      );
+      return;
+   }
    if(entryDistanceAtr < 0.0 || entryDistanceAtr > InpMaximumEntryDistanceATR)
    {
       g_entryDistanceRejects++;
-      ResetSetup("ENTRY_DISTANCE_REJECTED");
+      ResetSetup(
+         entryDistanceAtr > InpMaximumEntryDistanceATR
+            ? "ENTRY_DISTANCE_EXPIRED_NO_CHASE"
+            : "ENTRY_DISTANCE_REJECTED"
+      );
       return;
    }
 

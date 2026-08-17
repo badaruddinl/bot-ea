@@ -29,7 +29,8 @@ def _origin_fields(
 EARLY = (
     "SNIPER_EARLY_CANDIDATE id=GOLD.i#-BUY-4379.22-2026.08.13 12:15 "
     "status=WATCH_ONLY autoEntry=false side=BUY level=4379.22 watchPrice=4380.00 "
-    "invalidation=4374.00 confidence=64 threshold=>60.0 m5Votes=3 "
+    "invalidation=4374.00 expectedSl=4374.00 expectedTp=4392.00 provisionalProjectedR=2.000 "
+    "confidence=64 threshold=>60.0 m5Votes=3 "
     "pattern=MORNING_STAR fibonacciReaction=4384.50 next=M1_AND_FINAL_RISK_CHECK"
 )
 PROMOTED = (
@@ -104,6 +105,9 @@ class GoldMMt5LogBridgeTests(unittest.TestCase):
         self.assertEqual(event.fields["confidence"], "64")
         self.assertIn("Belum entry", event.telegram_text)
         self.assertIn("📍 LEVEL PANTAU\n• Trigger: 4379.22", event.telegram_text)
+        self.assertIn("• Expected SL sementara: 4374.00", event.telegram_text)
+        self.assertIn("• Expected TP sementara: 4392.00", event.telegram_text)
+        self.assertIn("• Projected R sementara: 2.000R", event.telegram_text)
         self.assertIn("📊 VALIDASI", event.telegram_text)
         self.assertIn(
             "🕒 Dibuat: 13 Agu 2026 • 19:15 WIB (UTC+7)",
@@ -122,6 +126,9 @@ class GoldMMt5LogBridgeTests(unittest.TestCase):
         assert event is not None
         self.assertIn("🔔 ENTRY READY", event.telegram_text)
         self.assertIn("• Entry: 4380.10", event.telegram_text)
+        self.assertIn("• Expected SL: 4374.20", event.telegram_text)
+        self.assertIn("• Expected TP: 4397.80", event.telegram_text)
+        self.assertIn("• Jarak SL: 0.600 ATR", event.telegram_text)
         self.assertIn("• Lot: menunggu sizing MT5", event.telegram_text)
         self.assertIn("• Risiko estimasi: menunggu sizing MT5", event.telegram_text)
         self.assertIn("Approval Telegram hanya memberi akses notifikasi", event.telegram_text)

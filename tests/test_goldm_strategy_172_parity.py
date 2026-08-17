@@ -106,6 +106,39 @@ class GoldMStrategy172ParityTests(unittest.TestCase):
             }.isdisjoint(_BASELINE_6A_FUNCTION_SHA256)
         )
 
+    def test_entry_distance_guard_waits_for_pullback_without_raising_risk_limit(self) -> None:
+        source = (
+            Path(__file__).resolve().parents[1]
+            / "mt5"
+            / "Experts"
+            / "bot-ea"
+            / "GoldMSniperParity.mq5"
+        ).read_text(encoding="utf-8")
+        function = _function_bodies(source)["CreateTechnicalSignal"]
+
+        self.assertIn("input double InpMaximumEntryDistanceATR = 0.60;", source)
+        self.assertIn("g_m1EntryBars < InpMaximumM1EntryBars", function)
+        self.assertIn("g_m5ConfluenceVotes >= 3", function)
+        self.assertIn("WAIT_PULLBACK_NO_CHASE", function)
+        self.assertIn("ENTRY_DISTANCE_EXPIRED_NO_CHASE", function)
+        self.assertLess(
+            function.index("WAIT_PULLBACK_NO_CHASE"),
+            function.index("ENTRY_DISTANCE_EXPIRED_NO_CHASE"),
+        )
+
+    def test_fibonacci_impulse_is_anchored_to_m15_not_m1(self) -> None:
+        source = (
+            Path(__file__).resolve().parents[1]
+            / "mt5"
+            / "Experts"
+            / "bot-ea"
+            / "GoldMSniperParity.mq5"
+        ).read_text(encoding="utf-8")
+        functions = _function_bodies(source)
+        for name in ("BuildFibonacciImpulse", "BuildReversalFibonacciImpulse"):
+            self.assertIn("PERIOD_M15", functions[name])
+            self.assertNotRegex(functions[name], r"\bPERIOD_M1\b")
+
 
 if __name__ == "__main__":
     unittest.main()
