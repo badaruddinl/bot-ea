@@ -349,26 +349,6 @@ class GoldMRevisedEngineTests(unittest.TestCase):
         self.assertEqual(obstacle, 4400.0)
         self.assertEqual(kind, "PSYCH_10")
 
-    def test_retested_nearby_m1_cluster_yields_to_next_external_obstacle(self) -> None:
-        with patch.object(
-            RevisedEngine,
-            "_first_obstacle",
-            side_effect=[
-                (4394.70, "M1_SWING_CLUSTER"),
-                (4400.0, "PSYCH_10"),
-            ],
-        ), patch.object(
-            RevisedEngine,
-            "_fibonacci_stats",
-            return_value={"retests": 2, "current_rejection": True},
-        ):
-            decision = RevisedEngine().evaluate(
-                snapshot(entry=4394.60, stop=4390.0)
-            )
-
-        self.assertEqual(decision.first_obstacle, 4400.0)
-        self.assertEqual(decision.first_obstacle_kind, "PSYCH_10")
-
     def test_momentum_can_bypass_range_when_room_is_large(self) -> None:
         m5 = tuple(
             bar(index, 4390 + index * 2.0, 4392 + index * 2.0, 4389 + index * 2.0, 4392 + index * 2.0, minutes=5)
@@ -406,27 +386,6 @@ class GoldMRevisedEngineTests(unittest.TestCase):
 
         self.assertEqual(decision.state, RevisedState.ENTRY_READY)
         self.assertEqual(decision.reason, "LATCHED_CONFIRMATION_RETEST")
-
-    def test_single_strong_m5_displacement_can_confirm_large_room(self) -> None:
-        m5 = list(flat_m5())
-        m5[-2] = bar(18, 4394.0, 4394.3, 4392.7, 4393.0, minutes=5)
-        m5[-1] = bar(19, 4392.8, 4401.0, 4392.5, 4400.5, minutes=5)
-        with patch.object(
-            RevisedEngine,
-            "_first_obstacle",
-            return_value=(4410.0, "H1_SWING"),
-        ), patch.object(
-            RevisedEngine,
-            "_range_confirmed",
-            return_value=False,
-        ):
-            decision = RevisedEngine().evaluate(
-                snapshot(m5=tuple(m5), entry=4400.5, stop=4395.0)
-            )
-
-        self.assertEqual(decision.state, RevisedState.ENTRY_READY)
-        self.assertEqual(decision.reason, "M5_DISPLACEMENT_ENTRY")
-        self.assertEqual(decision.mode, ConfirmationMode.MOMENTUM)
 
     def test_exhaustion_forces_range_mode(self) -> None:
         m5 = list(flat_m5())
@@ -637,38 +596,11 @@ class GoldMRevisedEngineTests(unittest.TestCase):
         )
 
         self.assertEqual(decision.state, RevisedState.ENTRY_READY)
-        self.assertIn(
-            decision.evidence["risk"]["source"],
-            {"M1_CONFIRMED_STRUCTURE", "M1_IMPULSE_STRUCTURE"},
-        )
+        self.assertEqual(decision.evidence["risk"]["source"], "M1_CONFIRMED_STRUCTURE")
         self.assertGreater(decision.stop or 0.0, 4388.0)
         self.assertGreaterEqual(decision.first_obstacle_r or 0.0, 1.0)
         self.assertGreater(decision.target or 0.0, decision.entry or 0.0)
         self.assertLess(decision.target or 0.0, decision.first_obstacle or 0.0)
-
-    def test_strong_m5_can_use_latest_closed_m1_impulse_stop(self) -> None:
-        m1 = tuple(
-            bar(
-                index,
-                4390.0 + index * 0.20,
-                4390.45 + index * 0.20,
-                4389.90 + index * 0.20,
-                4390.40 + index * 0.20,
-            )
-            for index in range(16)
-        )
-        decision = RevisedEngine().evaluate(
-            snapshot(
-                m1=m1,
-                entry=m1[-1].close,
-                stop=4380.0,
-                pattern="BULL_ENGULFING",
-                votes=3,
-            )
-        )
-
-        self.assertEqual(decision.evidence["risk"]["source"], "M1_IMPULSE_STRUCTURE")
-        self.assertGreater(decision.stop or 0.0, 4380.0)
 
     def test_strict_room_rejects_weak_m5_pattern_but_accepts_engulfing(self) -> None:
         weak = RevisedEngine().evaluate(

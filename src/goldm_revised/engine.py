@@ -117,8 +117,6 @@ class RevisedEngineConfig:
     adaptive_stop_min_risk_atr: float = 0.35
     strong_m1_body_ratio: float = 0.55
     strong_m1_close_location: float = 0.75
-    strong_m5_displacement_atr: float = 0.65
-    strong_m5_body_ratio: float = 0.60
     watch_max_m1_bars: int = 60
     fibonacci_lookback_m5: int = 12
     fibonacci_retest_separation_bars: int = 2
@@ -175,10 +173,6 @@ class RevisedEngineConfig:
             raise ValueError("strong M1 body ratio is invalid")
         if not 0 < self.strong_m1_close_location <= 1:
             raise ValueError("strong M1 close location is invalid")
-        if self.strong_m5_displacement_atr <= 0:
-            raise ValueError("strong M5 displacement is invalid")
-        if not 0 < self.strong_m5_body_ratio <= 1:
-            raise ValueError("strong M5 body ratio is invalid")
         if self.watch_max_m1_bars < self.range_max_bars:
             raise ValueError("watch window must cover the range window")
         if self.fibonacci_lookback_m5 < 3 or self.fibonacci_retest_separation_bars < 1:
@@ -270,30 +264,6 @@ class RevisedEngine:
         range_stats = self._range_stats(snapshot, side, atr_m1)
         momentum, exhaustion, momentum_stats = self._momentum_stats(snapshot, side, atr_m5)
         m1 = self._m1_confirmation(snapshot.m1_bars, side)
-        if (
-            obstacle is not None
-            and obstacle_kind in {"M1_SWING_CLUSTER", "M5_SWING"}
-            and abs(obstacle - entry)
-            <= max(self.config.spread_floor * 3.0, atr_m1 * 0.25)
-            and int(fibonacci.get("retests", 0)) >= 2
-            and int(m1.get("votes", 0)) == 3
-            and bool(m1.get("micro_break"))
-        ):
-            obstacle, obstacle_kind = self._first_obstacle(
-                snapshot,
-                entry,
-                atr_m1,
-                include_m1=False,
-                minimum_distance=max(
-                    self.config.spread_floor * 3.0,
-                    atr_m1 * 0.25,
-                ),
-            )
-            obstacle_r = (
-                abs(obstacle - entry) / risk
-                if obstacle is not None and risk > 0
-                else None
-            )
         strong_m1_now = self._strong_m1_confirmation(m1)
         strong_m1_latched = self._strong_m1_latched(snapshot, side)
         fibonacci_ok = bool(
@@ -312,21 +282,6 @@ class RevisedEngine:
             and snapshot.m5_votes >= self.config.minimum_m5_votes
         )
         strong_pattern = snapshot.m5_pattern in self.config.strong_m5_patterns
-        strong_m5_displacement = self._strong_m5_displacement(
-            snapshot,
-            side,
-            atr_m5,
-        )
-        m5_displacement_ok = bool(
-            obstacle_r is not None
-            and obstacle_r >= self.config.first_obstacle_strict_r
-            and strong_pattern
-            and snapshot.m5_votes >= self.config.minimum_m5_votes
-            and strong_m5_displacement
-            and int(m1.get("votes", 0)) >= 2
-            and not exhaustion
-            and not bool(range_stats.get("acceptance"))
-        )
         strong_first_ok = bool(
             obstacle_r is not None
             and obstacle_r >= self.config.first_obstacle_strict_r
@@ -342,7 +297,7 @@ class RevisedEngine:
             and snapshot.m5_votes >= self.config.minimum_m5_votes
             and strong_m1_latched
             and int(fibonacci.get("retests", 0)) >= 1
-            and bool(m1.get("rsi_ok"))
+            and bool(m1.get("directional"))
             and not bool(range_stats.get("acceptance"))
         )
         strict_ok = (
@@ -447,8 +402,6 @@ class RevisedEngine:
             mode = ConfirmationMode.RANGE
         elif momentum_ok:
             mode = ConfirmationMode.MOMENTUM
-        elif m5_displacement_ok:
-            mode = ConfirmationMode.MOMENTUM
         elif strong_first_ok or latched_retest_ok:
             mode = ConfirmationMode.RANGE
         elif range_ok:
@@ -457,7 +410,6 @@ class RevisedEngine:
             mode = ConfirmationMode.RANGE if strict_room else None
         eligible = bool(
             momentum_ok
-            or m5_displacement_ok
             or strong_first_ok
             or latched_retest_ok
             or (range_ok and (not strict_room or strict_ok))
@@ -507,9 +459,7 @@ class RevisedEngine:
             RevisedState.ENTRY_READY,
             RevisedAction.ENTER,
             "MOMENTUM_ENTRY"
-            if momentum_ok
-            else "M5_DISPLACEMENT_ENTRY"
-            if m5_displacement_ok
+            if mode is ConfirmationMode.MOMENTUM
             else "STRONG_FIRST_CONFIRMATION"
             if strong_first_ok
             else "LATCHED_CONFIRMATION_RETEST"
@@ -540,9 +490,6 @@ class RevisedEngine:
         snapshot: RevisedSnapshot,
         entry: float,
         atr_m1: float,
-        *,
-        include_m1: bool = True,
-        minimum_distance: float = 0.0,
     ) -> tuple[float | None, str | None]:
         candidates: list[tuple[float, str]] = []
         side = snapshot.side
@@ -575,10 +522,8 @@ class RevisedEngine:
         )
         m1_pivots = (
             _swing_highs(obstacle_m1_bars, self.config.swing_span)
-            if include_m1 and side is RevisedSide.BUY
+            if side is RevisedSide.BUY
             else _swing_lows(obstacle_m1_bars, self.config.swing_span)
-            if include_m1
-            else []
         )
         directional_m1 = [
             price
@@ -599,13 +544,6 @@ class RevisedEngine:
             )
             if repeated or confluent:
                 candidates.append((price, "M1_SWING_CLUSTER"))
-        if not candidates:
-            return None, None
-        candidates = [
-            item
-            for item in candidates
-            if abs(item[0] - entry) > minimum_distance
-        ]
         if not candidates:
             return None, None
         selected = min(candidates, key=lambda item: abs(item[0] - entry)) if side is RevisedSide.BUY else max(candidates, key=lambda item: item[0])
@@ -743,35 +681,6 @@ class RevisedEngine:
             and float(m1.get("body_ratio", 0.0)) >= self.config.range_min_body_fraction
             and float(m1.get("close_location", 0.0)) >= self.config.range_min_close_location
             and int(m1.get("votes", 0)) >= 3
-        )
-
-    def _strong_m5_displacement(
-        self,
-        snapshot: RevisedSnapshot,
-        side: RevisedSide,
-        atr: float,
-    ) -> bool:
-        if not snapshot.m5_bars or atr <= 0:
-            return False
-        latest = snapshot.m5_bars[-1]
-        if latest.range <= 0:
-            return False
-        body_ratio = latest.body / latest.range
-        close_location = (
-            (latest.close - latest.low) / latest.range
-            if side is RevisedSide.BUY
-            else (latest.high - latest.close) / latest.range
-        )
-        directional = (
-            latest.close > latest.open
-            if side is RevisedSide.BUY
-            else latest.close < latest.open
-        )
-        return bool(
-            directional
-            and latest.body >= atr * self.config.strong_m5_displacement_atr
-            and body_ratio >= self.config.strong_m5_body_ratio
-            and close_location >= self.config.momentum_close_location
         )
 
     def _momentum_stats(self, snapshot: RevisedSnapshot, side: RevisedSide, atr: float) -> tuple[bool, bool, dict[str, object]]:
@@ -990,7 +899,6 @@ class RevisedEngine:
             atr_m1 * self.config.adaptive_stop_min_risk_atr,
         )
         structural: float | None = None
-        structural_source: str | None = None
         if directional_pivots:
             pivot = (
                 max(directional_pivots)
@@ -1003,58 +911,13 @@ class RevisedEngine:
                 if side is RevisedSide.BUY
                 else max(structural, entry + minimum_risk)
             )
-            structural_source = "M1_CONFIRMED_STRUCTURE"
-        if snapshot.m5_pattern in self.config.strong_m5_patterns:
-            impulse_bars = [
-                bar
-                for bar in snapshot.m1_bars[-5:]
-                if bar.range > 0
-                and (
-                    bar.close > bar.open
-                    if side is RevisedSide.BUY
-                    else bar.close < bar.open
-                )
-                and bar.body / bar.range >= self.config.range_min_body_fraction
-                and (
-                    (bar.close - bar.low) / bar.range
-                    if side is RevisedSide.BUY
-                    else (bar.high - bar.close) / bar.range
-                )
-                >= self.config.range_min_close_location
-            ]
-            latest_m1 = self._m1_confirmation(snapshot.m1_bars, side)
-            if (
-                int(latest_m1.get("votes", 0)) == 3
-                and bool(latest_m1.get("micro_break"))
-            ):
-                latest_bar = snapshot.m1_bars[-1]
-                if latest_bar not in impulse_bars:
-                    impulse_bars.append(latest_bar)
-            if impulse_bars:
-                impulse = impulse_bars[-1]
-                impulse_structural = (
-                    impulse.low - buffer
-                    if side is RevisedSide.BUY
-                    else impulse.high + buffer
-                )
-                impulse_structural = (
-                    min(impulse_structural, entry - minimum_risk)
-                    if side is RevisedSide.BUY
-                    else max(impulse_structural, entry + minimum_risk)
-                )
-                if (
-                    structural is None
-                    or abs(entry - impulse_structural) < abs(entry - structural)
-                ):
-                    structural = impulse_structural
-                    structural_source = "M1_IMPULSE_STRUCTURE"
         selected = float(fallback)
         if structural is not None:
             fallback_distance = abs(entry - selected)
             structural_distance = abs(entry - structural)
             if minimum_risk <= structural_distance < fallback_distance:
                 selected = structural
-                source = structural_source or "M1_CONFIRMED_STRUCTURE"
+                source = "M1_CONFIRMED_STRUCTURE"
         selected = _normalize(selected, self.config.price_tick)
         return selected, {
             "source": source,
