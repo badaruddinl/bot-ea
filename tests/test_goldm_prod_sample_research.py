@@ -55,6 +55,20 @@ class GoldMProductionSampleResearchTests(unittest.TestCase):
         ]
         self.assertEqual(MODULE._swing_highs(bars), [5.0])
 
+    def test_tick_touch_uses_bid_for_buy_and_preserves_order(self) -> None:
+        first = datetime(2026, 8, 18, tzinfo=timezone.utc)
+        ticks = [
+            {"time": first, "bid": 4398.0, "ask": 4398.2},
+            {"time": first, "bid": 4400.0, "ask": 4400.2},
+        ]
+        result = MODULE._first_tick_touch(
+            ticks,
+            side="BUY",
+            stop=4390.0,
+            target=4400.0,
+        )
+        self.assertEqual(result, {"event": "TARGET", "time": first})
+
 
 if __name__ == "__main__":
     unittest.main()

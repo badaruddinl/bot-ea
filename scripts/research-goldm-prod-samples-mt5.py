@@ -128,6 +128,43 @@ def _first_level_touch(
     return None
 
 
+def _first_tick_touch(
+    ticks: Sequence[dict[str, Any]],
+    *,
+    side: str,
+    stop: float,
+    target: float,
+) -> dict[str, Any]:
+    for tick in ticks:
+        price = tick["bid"] if side == "BUY" else tick["ask"]
+        if side == "BUY":
+            if price >= target:
+                return {"event": "TARGET", "time": tick["time"]}
+            if price <= stop:
+                return {"event": "STOP", "time": tick["time"]}
+        else:
+            if price <= target:
+                return {"event": "TARGET", "time": tick["time"]}
+            if price >= stop:
+                return {"event": "STOP", "time": tick["time"]}
+    return {"event": "OPEN", "time": None}
+
+
+def _first_tick_level_touch(
+    ticks: Sequence[dict[str, Any]],
+    *,
+    side: str,
+    level: float,
+) -> datetime | None:
+    for tick in ticks:
+        price = tick["bid"] if side == "BUY" else tick["ask"]
+        if (side == "BUY" and price >= level) or (
+            side == "SELL" and price <= level
+        ):
+            return tick["time"]
+    return None
+
+
 def _load_plans(
     db_path: Path,
     *,
@@ -198,6 +235,21 @@ def _rates(mt5, symbol: str, timeframe: int, start: datetime, end: datetime):
     ]
 
 
+def _ticks(mt5, symbol: str, start: datetime, end: datetime):
+    raw = mt5.copy_ticks_range(symbol, start, end, mt5.COPY_TICKS_ALL)
+    if raw is None:
+        raise RuntimeError(f"MT5 CopyTicks failed: {mt5.last_error()}")
+    return [
+        {
+            "time": datetime.fromtimestamp(int(tick["time"]), tz=timezone.utc),
+            "bid": float(tick["bid"]),
+            "ask": float(tick["ask"]),
+        }
+        for tick in raw
+        if float(tick["bid"]) > 0.0 and float(tick["ask"]) > 0.0
+    ]
+
+
 def reconcile(mt5, *, symbol: str, plans, end_utc: datetime, psych_step: float):
     results = []
     for plan in plans:
@@ -213,7 +265,8 @@ def reconcile(mt5, *, symbol: str, plans, end_utc: datetime, psych_step: float):
             )
             if bar["time"] + timedelta(minutes=15) <= signal_utc
         ]
-        m1 = _rates(mt5, symbol, mt5.TIMEFRAME_M1, signal_utc, end_utc)
+        tick_end = min(end_utc, signal_utc + timedelta(hours=24))
+        ticks = _ticks(mt5, symbol, signal_utc, tick_end)
         atr = _average_true_range(m15)
         psych = _nearest_psychological_above(plan["entry"], psych_step)
         swing_candidates = [level for level in _swing_highs(m15[-48:]) if level > plan["entry"]]
@@ -221,8 +274,8 @@ def reconcile(mt5, *, symbol: str, plans, end_utc: datetime, psych_step: float):
         obstacle = min([value for value in (psych, swing) if value is not None])
         buffer = max(0.20, 0.08 * atr)
         safe_target = obstacle - buffer
-        original = _first_touch(
-            m1,
+        original = _first_tick_touch(
+            ticks,
             side=plan["side"],
             stop=plan["stop"],
             target=plan["target"],
@@ -234,7 +287,11 @@ def reconcile(mt5, *, symbol: str, plans, end_utc: datetime, psych_step: float):
             if outcome_payload
             else None
         )
-        after_exit = [bar for bar in m1 if exit_utc is not None and bar["time"] >= exit_utc]
+        after_exit = [
+            tick
+            for tick in ticks
+            if exit_utc is not None and tick["time"] >= exit_utc
+        ]
         result = {
             "setup_id": plan["setup_id"],
             "side": plan["side"],
@@ -249,20 +306,20 @@ def reconcile(mt5, *, symbol: str, plans, end_utc: datetime, psych_step: float):
             "first_obstacle": obstacle,
             "safe_target_before_obstacle": safe_target,
             "original_first_touch": original,
-            "safe_target_touch": _first_level_touch(
-                m1,
+            "safe_target_touch": _first_tick_level_touch(
+                ticks,
                 side=plan["side"],
                 level=safe_target,
             ),
             "model_result": str(outcome_fields.get("result") or "MISSING"),
             "model_outcome_r": outcome_fields.get("outcomeR"),
             "model_exit_server": exit_utc,
-            "post_exit_original_target_touch": _first_level_touch(
+            "post_exit_original_target_touch": _first_tick_level_touch(
                 after_exit,
                 side=plan["side"],
                 level=plan["target"],
             ),
-            "post_exit_safe_target_touch": _first_level_touch(
+            "post_exit_safe_target_touch": _first_tick_level_touch(
                 after_exit,
                 side=plan["side"],
                 level=safe_target,
