@@ -33,6 +33,7 @@ class GoldMOperatorLauncherTests(unittest.TestCase):
         self.assertIn("-ExpectedArguments $contract.Arguments", source)
         self.assertIn("Get-LegacyWorkerProcesses", source)
         self.assertIn("Stop-LegacyWorkerProcessesAndWait", source)
+        self.assertIn('(Resolve-Path (Join-Path $PSScriptRoot "..")).Path', source)
         self.assertIn('"Legacy PID :', source)
         self.assertIn("-Verb RunAs", source)
 

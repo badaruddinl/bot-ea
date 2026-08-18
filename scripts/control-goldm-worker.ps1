@@ -53,8 +53,9 @@ function Get-WorkerContract {
 }
 
 function Get-LegacyWorkerProcesses {
+    $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
     $deploymentRoot = [System.IO.Path]::GetFullPath(
-        (Split-Path -Parent $RepoRoot)
+        (Split-Path -Parent $repoRoot)
     ).TrimEnd([System.IO.Path]::DirectorySeparatorChar)
     $legacyRootPrefix = $deploymentRoot + [System.IO.Path]::DirectorySeparatorChar + "app-backup-"
     $legacyWrapperSuffix = [System.IO.Path]::DirectorySeparatorChar + "telegram-worker.pyw"
