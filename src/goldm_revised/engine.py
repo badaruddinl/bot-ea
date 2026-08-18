@@ -272,9 +272,9 @@ class RevisedEngine:
         m1 = self._m1_confirmation(snapshot.m1_bars, side)
         if (
             obstacle is not None
-            and obstacle_kind == "M1_SWING_CLUSTER"
+            and obstacle_kind in {"M1_SWING_CLUSTER", "M5_SWING"}
             and abs(obstacle - entry)
-            <= max(self.config.spread_floor, atr_m1 * 0.10)
+            <= max(self.config.spread_floor * 3.0, atr_m1 * 0.25)
             and int(fibonacci.get("retests", 0)) >= 2
             and int(m1.get("votes", 0)) == 3
             and bool(m1.get("micro_break"))
@@ -284,6 +284,10 @@ class RevisedEngine:
                 entry,
                 atr_m1,
                 include_m1=False,
+                minimum_distance=max(
+                    self.config.spread_floor * 3.0,
+                    atr_m1 * 0.25,
+                ),
             )
             obstacle_r = (
                 abs(obstacle - entry) / risk
@@ -538,6 +542,7 @@ class RevisedEngine:
         atr_m1: float,
         *,
         include_m1: bool = True,
+        minimum_distance: float = 0.0,
     ) -> tuple[float | None, str | None]:
         candidates: list[tuple[float, str]] = []
         side = snapshot.side
@@ -594,6 +599,13 @@ class RevisedEngine:
             )
             if repeated or confluent:
                 candidates.append((price, "M1_SWING_CLUSTER"))
+        if not candidates:
+            return None, None
+        candidates = [
+            item
+            for item in candidates
+            if abs(item[0] - entry) > minimum_distance
+        ]
         if not candidates:
             return None, None
         selected = min(candidates, key=lambda item: abs(item[0] - entry)) if side is RevisedSide.BUY else max(candidates, key=lambda item: item[0])
@@ -978,6 +990,7 @@ class RevisedEngine:
             atr_m1 * self.config.adaptive_stop_min_risk_atr,
         )
         structural: float | None = None
+        structural_source: str | None = None
         if directional_pivots:
             pivot = (
                 max(directional_pivots)
@@ -990,7 +1003,8 @@ class RevisedEngine:
                 if side is RevisedSide.BUY
                 else max(structural, entry + minimum_risk)
             )
-        if structural is None and snapshot.m5_pattern in self.config.strong_m5_patterns:
+            structural_source = "M1_CONFIRMED_STRUCTURE"
+        if snapshot.m5_pattern in self.config.strong_m5_patterns:
             impulse_bars = [
                 bar
                 for bar in snapshot.m1_bars[-5:]
@@ -1010,27 +1024,29 @@ class RevisedEngine:
             ]
             if impulse_bars:
                 impulse = impulse_bars[-1]
-                structural = (
+                impulse_structural = (
                     impulse.low - buffer
                     if side is RevisedSide.BUY
                     else impulse.high + buffer
                 )
-                structural = (
-                    min(structural, entry - minimum_risk)
+                impulse_structural = (
+                    min(impulse_structural, entry - minimum_risk)
                     if side is RevisedSide.BUY
-                    else max(structural, entry + minimum_risk)
+                    else max(impulse_structural, entry + minimum_risk)
                 )
+                if (
+                    structural is None
+                    or abs(entry - impulse_structural) < abs(entry - structural)
+                ):
+                    structural = impulse_structural
+                    structural_source = "M1_IMPULSE_STRUCTURE"
         selected = float(fallback)
         if structural is not None:
             fallback_distance = abs(entry - selected)
             structural_distance = abs(entry - structural)
             if minimum_risk <= structural_distance < fallback_distance:
                 selected = structural
-                source = (
-                    "M1_CONFIRMED_STRUCTURE"
-                    if directional_pivots
-                    else "M1_IMPULSE_STRUCTURE"
-                )
+                source = structural_source or "M1_CONFIRMED_STRUCTURE"
         selected = _normalize(selected, self.config.price_tick)
         return selected, {
             "source": source,
