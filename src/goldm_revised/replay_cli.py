@@ -160,7 +160,9 @@ def _print_validation_summary(payload: dict[str, object]) -> None:
         print(
             f"{evidence['evidence_id']}_PROGRESS side_candidates={len(candidates)} "
             f"max_room={max_room.get('first_obstacle_r', '-')}/"
-            f"{max_room.get('first_obstacle_kind', '-')}@{max_room.get('decision_time', '-')} "
+            f"{max_room.get('first_obstacle_kind', '-')}/"
+            f"{max_room.get('m5_pattern', '-')}/votes{max_room.get('m1_votes', '-')}"
+            f"@{max_room.get('decision_time', '-')} "
             f"max_retests={max_retest.get('retest_count', '-')}/"
             f"votes{max_retest.get('m1_votes', '-')}@{max_retest.get('decision_time', '-')} "
             f"ready={('-' if ready is None else str(ready.get('entry_profile')))}/"

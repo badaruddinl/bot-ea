@@ -297,7 +297,7 @@ class RevisedEngine:
             and snapshot.m5_votes >= self.config.minimum_m5_votes
             and strong_m1_latched
             and int(fibonacci.get("retests", 0)) >= 1
-            and bool(m1.get("directional"))
+            and bool(m1.get("rsi_ok"))
             and not bool(range_stats.get("acceptance"))
         )
         strict_ok = (
