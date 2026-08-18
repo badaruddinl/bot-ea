@@ -253,7 +253,7 @@ class RevisedEngine:
         risk = abs(entry - stop)
         fibonacci = self._fibonacci_stats(snapshot, side, atr_m1)
         hard_invalidation = self._hard_invalidation(snapshot, side, atr_m1)
-        obstacle, obstacle_kind = self._first_obstacle(snapshot, entry)
+        obstacle, obstacle_kind = self._first_obstacle(snapshot, entry, atr_m1)
         obstacle_r = abs(obstacle - entry) / risk if obstacle is not None and risk > 0 else None
         range_stats = self._range_stats(snapshot, side, atr_m1)
         momentum, exhaustion, momentum_stats = self._momentum_stats(snapshot, side, atr_m5)
@@ -430,7 +430,12 @@ class RevisedEngine:
             fibonacci=fibonacci,
         )
 
-    def _first_obstacle(self, snapshot: RevisedSnapshot, entry: float) -> tuple[float | None, str | None]:
+    def _first_obstacle(
+        self,
+        snapshot: RevisedSnapshot,
+        entry: float,
+        atr_m1: float,
+    ) -> tuple[float | None, str | None]:
         candidates: list[tuple[float, str]] = []
         side = snapshot.side
         for step in self.config.psychological_steps:
@@ -443,11 +448,35 @@ class RevisedEngine:
                 if price >= entry:
                     price -= step
             candidates.append((round(price, 8), f"PSYCH_{step:g}"))
-        for bars, label in ((snapshot.m1_bars, "M1_SWING"), (snapshot.m5_bars, "M5_SWING"), (snapshot.h1_bars, "H1_SWING"), (snapshot.d1_bars, "D1_SWING")):
+        for bars, label in ((snapshot.m5_bars, "M5_SWING"), (snapshot.h1_bars, "H1_SWING"), (snapshot.d1_bars, "D1_SWING")):
             pivots = _swing_highs(bars, self.config.swing_span) if side is RevisedSide.BUY else _swing_lows(bars, self.config.swing_span)
             for price in pivots:
                 if (side is RevisedSide.BUY and price > entry) or (side is RevisedSide.SELL and price < entry):
                     candidates.append((price, label))
+        m1_pivots = (
+            _swing_highs(snapshot.m1_bars, self.config.swing_span)
+            if side is RevisedSide.BUY
+            else _swing_lows(snapshot.m1_bars, self.config.swing_span)
+        )
+        directional_m1 = [
+            price
+            for price in m1_pivots
+            if (side is RevisedSide.BUY and price > entry)
+            or (side is RevisedSide.SELL and price < entry)
+        ]
+        tolerance = max(self.config.spread_floor * 2.0, atr_m1 * 0.20)
+        for index, price in enumerate(directional_m1):
+            repeated = any(
+                abs(price - other) <= tolerance
+                for other_index, other in enumerate(directional_m1)
+                if other_index != index
+            )
+            confluent = any(
+                abs(price - candidate_price) <= tolerance
+                for candidate_price, _ in candidates
+            )
+            if repeated or confluent:
+                candidates.append((price, "M1_SWING_CLUSTER"))
         if not candidates:
             return None, None
         selected = min(candidates, key=lambda item: abs(item[0] - entry)) if side is RevisedSide.BUY else max(candidates, key=lambda item: item[0])

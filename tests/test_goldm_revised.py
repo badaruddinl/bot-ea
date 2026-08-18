@@ -227,6 +227,16 @@ class GoldMRevisedEngineTests(unittest.TestCase):
         self.assertEqual(revised.state, RevisedState.ENTRY_READY)
         self.assertLess(revised.target or 0.0, earlier.target or 0.0)
 
+    def test_single_m1_micro_swing_does_not_override_psychological_obstacle(self) -> None:
+        obstacle, kind = RevisedEngine()._first_obstacle(
+            snapshot(),
+            entry=4394.6,
+            atr_m1=1.0,
+        )
+
+        self.assertEqual(obstacle, 4400.0)
+        self.assertEqual(kind, "PSYCH_10")
+
     def test_momentum_can_bypass_range_when_room_is_large(self) -> None:
         m5 = tuple(
             bar(index, 4390 + index * 2.0, 4392 + index * 2.0, 4389 + index * 2.0, 4392 + index * 2.0, minutes=5)
