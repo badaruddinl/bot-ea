@@ -91,6 +91,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         args.output.write_text(payload + "\n", encoding="utf-8")
     if args.validation_summary:
         _print_validation_summary(report_payload)
+        if evidence_expectations:
+            _print_e3_m5_bars(data["m5"], evidence_expectations[2].requested_time)
     else:
         print(payload)
     return 0
@@ -165,6 +167,18 @@ def _print_validation_summary(payload: dict[str, object]) -> None:
             f"{('-' if ready is None else str(ready.get('m5_pattern')))}/"
             f"{('-' if ready is None else str(ready.get('first_obstacle_r')))}"
         )
+
+
+def _print_e3_m5_bars(bars, requested_time: datetime) -> None:
+    window_start = requested_time - timedelta(minutes=45)
+    window_end = requested_time + timedelta(minutes=30)
+    print("E3_M5_BARS")
+    for bar in bars:
+        if window_start <= bar.time <= window_end:
+            print(
+                f"BAR {bar.time.isoformat()} o={bar.open:.2f} h={bar.high:.2f} "
+                f"l={bar.low:.2f} c={bar.close:.2f}"
+            )
 
 
 if __name__ == "__main__":
