@@ -14,7 +14,7 @@ class GoldMRevisedRuntimeTests(unittest.TestCase):
             (ROOT / "config" / "goldm-revised-shadow.json").read_text(encoding="utf-8")
         )
         self.assertEqual(config["strategy_id"], "GOLDM_REVISED")
-        self.assertEqual(config["strategy_version"], "0.4.0")
+        self.assertEqual(config["strategy_version"], "0.5.0")
         self.assertIn("goldm_revised_shadow", config["storage"]["db_path"])
         self.assertEqual(config["mt5"]["symbol"], "GOLD.i#")
         self.assertEqual(config["mt5"]["server_utc_offset_minutes"], 180)

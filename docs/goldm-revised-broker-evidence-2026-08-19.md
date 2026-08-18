@@ -1,4 +1,4 @@
-# GOLDM_REVISED 0.4.0 — broker chart evidence
+# GOLDM_REVISED 0.5.0 — broker chart evidence
 
 ## Scope
 
@@ -26,7 +26,7 @@ Production `GOLDM_SNIPER_PARITY` and `goldm_bear` remain unchanged.
    The approximately 1.66R room remains eligible, with the target buffered
    before the 4400–4404 psychological/resistance cluster.
 
-## Version 0.4.0 behavior
+## Version 0.5.0 behavior
 
 - A newly closed opposite M5 setup immediately expires the stale active side.
 - The opposite setup is retained and builds a new causal M1 window; SELL is
@@ -77,3 +77,19 @@ Version 0.4.0 is therefore research-only and must not be enabled for shadow or
 forward testing. The next investigation must address timestamp/setup alignment,
 avoid immediate cancellation while a valid SCALPER M1 window is still pending,
 and prevent already-accepted micro-swings from becoming false first obstacles.
+
+## Multi-retest WATCH revision
+
+Version 0.5.0 changes confirmation lifecycle without relaxing hard safety:
+
+- a first failed validation or temporarily insufficient obstacle room becomes
+  `WATCH_ONLY` or `SOFT_FAIL`, not immediate rejection;
+- the setup remains causal and restart-safe for up to 60 closed M1 candles;
+- Fibonacci 38.2–61.8% is derived from the ordered M5 impulse before trigger;
+- distinct Fibonacci retests must be separated by at least two M1 candles and
+  price must leave the zone before another retest is counted;
+- a strong first validation may still enter through the existing momentum path;
+- only two closes beyond setup invalidation, or three of four displaced closes,
+  produce `HARD_INVALIDATION_ACCEPTED`;
+- WATCH notifications are idempotent per validation status and retest number;
+- ENTRY and final rejection notifications remain separate state transitions.

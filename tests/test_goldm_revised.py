@@ -90,7 +90,7 @@ def range_m1(*, side: RevisedSide = RevisedSide.BUY) -> tuple[RevisedBar, ...]:
     return tuple(bar(index, *values[index]) for index in range(len(values)))
 
 
-def snapshot(*, side: RevisedSide = RevisedSide.BUY, m1=None, m5=None, entry=None, stop=None, pattern="BULL_ENGULFING", votes=3) -> RevisedSnapshot:
+def snapshot(*, side: RevisedSide = RevisedSide.BUY, m1=None, m5=None, entry=None, stop=None, invalidation=None, pattern="BULL_ENGULFING", votes=3) -> RevisedSnapshot:
     m1 = tuple(m1 or range_m1(side=side))
     m5 = tuple(m5 or flat_m5())
     return RevisedSnapshot(
@@ -105,6 +105,7 @@ def snapshot(*, side: RevisedSide = RevisedSide.BUY, m1=None, m5=None, entry=Non
         confidence=92.0,
         entry=entry,
         stop=stop,
+        invalidation=invalidation,
     )
 
 
@@ -116,7 +117,7 @@ class GoldMRevisedEngineTests(unittest.TestCase):
         self.assertNotIn("goldm_signal", source)
         self.assertNotIn("goldm_bear", source)
         self.assertEqual(module.STRATEGY_ID, "GOLDM_REVISED")
-        self.assertEqual(module.STRATEGY_VERSION, "0.4.0")
+        self.assertEqual(module.STRATEGY_VERSION, "0.5.0")
 
     def test_buy_range_requires_repeated_rejections_and_enters(self) -> None:
         decision = RevisedEngine().evaluate(snapshot())
@@ -143,11 +144,67 @@ class GoldMRevisedEngineTests(unittest.TestCase):
         self.assertTrue(decision.observation_only)
         self.assertEqual(decision.action, RevisedAction.ENTER)
 
-    def test_first_obstacle_below_one_r_cancels_even_high_confidence(self) -> None:
+    def test_first_obstacle_below_one_r_remains_watch_until_hard_invalidation(self) -> None:
         decision = RevisedEngine().evaluate(snapshot(entry=4399.9, stop=4399.0))
-        self.assertEqual(decision.state, RevisedState.CANCELLED)
-        self.assertEqual(decision.reason, "FIRST_OBSTACLE_ROOM_BELOW_1R")
+        self.assertEqual(decision.state, RevisedState.WATCH)
+        self.assertEqual(decision.reason, "SOFT_FAIL_FIRST_OBSTACLE_ROOM")
+        self.assertEqual(decision.validation_status, "WATCH_ONLY")
         self.assertLess(decision.confidence, 60.0)
+
+    def test_two_closes_beyond_setup_invalidation_hard_cancel(self) -> None:
+        bars = list(range_m1())
+        bars.extend(
+            [
+                bar(len(bars), 4390.0, 4390.2, 4387.8, 4388.2),
+                bar(len(bars) + 1, 4388.2, 4388.5, 4386.8, 4387.1),
+            ]
+        )
+        decision = RevisedEngine().evaluate(
+            snapshot(m1=tuple(bars), entry=4387.1, stop=4386.0, invalidation=4390.0)
+        )
+
+        self.assertEqual(decision.state, RevisedState.CANCELLED)
+        self.assertEqual(decision.reason, "HARD_INVALIDATION_ACCEPTED")
+        self.assertEqual(decision.validation_status, "HARD_INVALID")
+
+    def test_fibonacci_retests_are_counted_after_leaving_zone(self) -> None:
+        m5 = tuple(
+            bar(
+                index,
+                4390.0 + index,
+                4391.0 + index,
+                4389.0 + index,
+                4390.8 + index,
+                minutes=5,
+            )
+            for index in range(12)
+        )
+        trigger = m5[-1].time + timedelta(minutes=5)
+        m1 = tuple(
+            [
+                bar(101, 4397.2, 4398.0, 4396.5, 4397.5),
+                bar(102, 4397.6, 4398.8, 4397.5, 4398.5),
+                bar(103, 4398.5, 4398.9, 4398.1, 4398.4),
+                bar(104, 4397.1, 4398.0, 4396.7, 4397.6),
+                bar(105, 4397.6, 4398.8, 4397.5, 4398.5),
+            ]
+        )
+        value = RevisedSnapshot(
+            symbol="GOLD.i#",
+            side=RevisedSide.BUY,
+            current_time=m1[-1].time,
+            m1_bars=m1,
+            m5_bars=m5,
+            m5_trigger_time=trigger,
+            m5_pattern="BULL_REJECTION",
+            m5_votes=2,
+        )
+
+        stats = RevisedEngine()._fibonacci_stats(value, RevisedSide.BUY, atr_m1=1.0)
+
+        self.assertTrue(stats["available"])
+        self.assertEqual(stats["retests"], 2)
+        self.assertTrue(stats["current_rejection"])
 
     def test_sub_one_r_buy_is_labeled_scalper_and_excluded_from_core(self) -> None:
         decision = RevisedEngine().evaluate(snapshot(entry=4399.7, stop=4398.7))
@@ -253,9 +310,38 @@ class GoldMRevisedEngineTests(unittest.TestCase):
 
         self.assertIsNotNone(sell)
         self.assertTrue(sell.pattern.startswith("BEAR_"))
+        terminated = detector.pop_termination(RevisedSide.BUY)
+        self.assertIsNotNone(terminated)
+        self.assertEqual(terminated[1], "OPPOSITE_M5_SETUP_ACCEPTED")
         self.assertIsNone(
             detector.update(tuple(m5), current_m1_time=sell_time, side=RevisedSide.BUY)
         )
+
+    def test_watch_expiry_emits_explicit_terminal_reason(self) -> None:
+        m5 = list(flat_m5())
+        m5[-2] = bar(18, 4392.0, 4393.0, 4391.0, 4391.5, minutes=5)
+        m5[-1] = bar(19, 4391.4, 4395.0, 4391.0, 4394.5, minutes=5)
+        detector = RevisedSetupDetector(maximum_m1_bars=2)
+        first_time = m5[-1].time + timedelta(minutes=6)
+        setup_value = detector.update(
+            tuple(m5), current_m1_time=first_time, side=RevisedSide.BUY
+        )
+        self.assertIsNotNone(setup_value)
+
+        expired = detector.update(
+            tuple(m5),
+            current_m1_time=setup_value.trigger_time + timedelta(minutes=3),
+            side=RevisedSide.BUY,
+        )
+        termination = detector.pop_termination(RevisedSide.BUY)
+
+        self.assertIsNone(expired)
+        self.assertEqual(termination[1], "WATCH_WINDOW_EXPIRED")
+        terminal = RevisedEngine().terminal_decision(
+            snapshot(), termination[1]
+        )
+        self.assertEqual(terminal.state, RevisedState.CANCELLED)
+        self.assertEqual(terminal.validation_status, "HARD_INVALID")
 
     def test_m5_strong_rejection_and_star_patterns_are_symmetric(self) -> None:
         bull_rejection = classify_m5_setup(
@@ -382,6 +468,21 @@ class GoldMRevisedStorageTests(unittest.TestCase):
 
 
 class GoldMRevisedSafetyTests(unittest.TestCase):
+    def test_watch_notification_labels_soft_fail_and_retest(self) -> None:
+        text = RevisedAdminNotifier.format_event(
+            "REVISED_WATCH",
+            {
+                "side": "BUY",
+                "entry_profile": "CORE",
+                "validation_status": "SOFT_FAIL",
+                "retest_count": 3,
+                "reason": "M1_PENDING",
+            },
+        )
+        self.assertIn("WATCH", text)
+        self.assertIn("SOFT_FAIL", text)
+        self.assertIn("Retest: 3", text)
+
     def test_mt5_adapter_and_notifier_have_no_trade_or_polling_api(self) -> None:
         adapter_source = inspect.getsource(RevisedMt5ReadOnlySource)
         notifier_source = inspect.getsource(RevisedAdminNotifier)

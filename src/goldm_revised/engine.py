@@ -9,7 +9,7 @@ from typing import Sequence
 
 
 STRATEGY_ID = "GOLDM_REVISED"
-STRATEGY_VERSION = "0.4.0"
+STRATEGY_VERSION = "0.5.0"
 
 
 class RevisedSide(str, Enum):
@@ -115,6 +115,10 @@ class RevisedEngineConfig:
     stop_buffer_atr: float = 0.18
     adaptive_stop_buffer_atr: float = 0.10
     adaptive_stop_min_risk_atr: float = 0.35
+    watch_max_m1_bars: int = 60
+    fibonacci_lookback_m5: int = 12
+    fibonacci_retest_separation_bars: int = 2
+    fibonacci_leave_fraction: float = 0.25
     psychological_steps: tuple[float, ...] = (10.0, 50.0, 100.0)
     swing_span: int = 2
     minimum_m5_votes: int = 2
@@ -163,6 +167,12 @@ class RevisedEngineConfig:
             raise ValueError("price tick/spread floor is invalid")
         if self.adaptive_stop_buffer_atr < 0 or self.adaptive_stop_min_risk_atr <= 0:
             raise ValueError("adaptive stop configuration is invalid")
+        if self.watch_max_m1_bars < self.range_max_bars:
+            raise ValueError("watch window must cover the range window")
+        if self.fibonacci_lookback_m5 < 3 or self.fibonacci_retest_separation_bars < 1:
+            raise ValueError("fibonacci window configuration is invalid")
+        if not 0 < self.fibonacci_leave_fraction < 1:
+            raise ValueError("fibonacci leave fraction is invalid")
         if not self.psychological_steps or any(step <= 0 for step in self.psychological_steps):
             raise ValueError("psychological steps must be positive")
 
@@ -177,8 +187,11 @@ class RevisedDecision:
     action: RevisedAction
     entry_profile: str
     observation_only: bool
+    setup_trigger_time: datetime | None
     time: datetime
     reason: str
+    validation_status: str
+    retest_count: int
     confidence: float
     mode: ConfirmationMode | None
     exhausted: bool
@@ -201,6 +214,23 @@ class RevisedEngine:
     def __init__(self, config: RevisedEngineConfig | None = None) -> None:
         self.config = config or RevisedEngineConfig()
 
+    def terminal_decision(
+        self,
+        snapshot: RevisedSnapshot,
+        reason: str,
+    ) -> RevisedDecision:
+        return self._decision(
+            snapshot,
+            RevisedState.CANCELLED,
+            RevisedAction.CANCEL,
+            reason,
+            confidence=min(
+                snapshot.confidence,
+                self.config.promotion_confidence - 0.01,
+            ),
+            validation_status="HARD_INVALID",
+        )
+
     def evaluate(self, snapshot: RevisedSnapshot) -> RevisedDecision:
         self._validate_snapshot(snapshot)
         if snapshot.m5_trigger_time is None or snapshot.m5_pattern == "NONE":
@@ -221,12 +251,20 @@ class RevisedEngine:
 
         stop, risk_stats = self._entry_stop(snapshot, entry, atr_m1, atr_m5)
         risk = abs(entry - stop)
+        fibonacci = self._fibonacci_stats(snapshot, side, atr_m1)
+        hard_invalidation = self._hard_invalidation(snapshot, side, atr_m1)
         obstacle, obstacle_kind = self._first_obstacle(snapshot, entry)
         obstacle_r = abs(obstacle - entry) / risk if obstacle is not None and risk > 0 else None
         range_stats = self._range_stats(snapshot, side, atr_m1)
         momentum, exhaustion, momentum_stats = self._momentum_stats(snapshot, side, atr_m5)
         m1 = self._m1_confirmation(snapshot.m1_bars, side)
-        range_ok = self._range_confirmed(range_stats, m1)
+        fibonacci_ok = bool(
+            int(fibonacci.get("retests", 0)) >= 1
+            and bool(fibonacci.get("current_rejection"))
+            and int(m1.get("votes", 0)) == 3
+            and bool(m1.get("micro_break"))
+        )
+        range_ok = self._range_confirmed(range_stats, m1) or fibonacci_ok
         strict_room = obstacle_r is not None and obstacle_r < self.config.first_obstacle_strict_r
         momentum_ok = (
             momentum
@@ -254,6 +292,27 @@ class RevisedEngine:
             and bool(m1.get("micro_break"))
             and not bool(range_stats.get("acceptance"))
         )
+        if hard_invalidation:
+            return self._decision(
+                snapshot,
+                RevisedState.CANCELLED,
+                RevisedAction.CANCEL,
+                "HARD_INVALIDATION_ACCEPTED",
+                confidence=min(snapshot.confidence, self.config.promotion_confidence - 0.01),
+                validation_status="HARD_INVALID",
+                retest_count=int(fibonacci.get("retests", 0)),
+                entry=entry,
+                stop=stop,
+                obstacle=obstacle,
+                obstacle_kind=obstacle_kind,
+                obstacle_r=obstacle_r,
+                range_stats=range_stats,
+                m1=m1,
+                momentum=momentum,
+                exhausted=exhaustion,
+                risk_stats=risk_stats,
+                fibonacci=fibonacci,
+            )
         if obstacle_r is None or obstacle_r < self.config.first_obstacle_reject_r:
             if scalper_ok:
                 target = self._target(snapshot, side, entry, obstacle, atr_m5, scalper=True)
@@ -267,6 +326,8 @@ class RevisedEngine:
                         mode=ConfirmationMode.RANGE,
                         observation_only=True,
                         entry_profile="SCALPER",
+                        validation_status="VALID",
+                        retest_count=int(fibonacci.get("retests", 0)),
                         entry=entry,
                         stop=stop,
                         target=target,
@@ -278,13 +339,20 @@ class RevisedEngine:
                         momentum=momentum,
                         exhausted=exhaustion,
                         risk_stats=risk_stats,
+                        fibonacci=fibonacci,
                     )
             return self._decision(
                 snapshot,
-                RevisedState.CANCELLED,
-                RevisedAction.CANCEL,
-                "FIRST_OBSTACLE_ROOM_BELOW_1R",
+                RevisedState.WATCH,
+                RevisedAction.OBSERVE,
+                "SOFT_FAIL_FIRST_OBSTACLE_ROOM",
                 confidence=min(snapshot.confidence, self.config.promotion_confidence - 0.01),
+                validation_status=(
+                    "SOFT_FAIL"
+                    if int(fibonacci.get("retests", 0)) > 0
+                    else "WATCH_ONLY"
+                ),
+                retest_count=int(fibonacci.get("retests", 0)),
                 entry=entry,
                 stop=stop,
                 obstacle=obstacle,
@@ -295,6 +363,7 @@ class RevisedEngine:
                 momentum=momentum,
                 exhausted=exhaustion,
                 risk_stats=risk_stats,
+                fibonacci=fibonacci,
             )
         if exhaustion:
             mode = ConfirmationMode.RANGE
@@ -323,6 +392,13 @@ class RevisedEngine:
                 exhausted=exhaustion,
                 mode=mode,
                 risk_stats=risk_stats,
+                fibonacci=fibonacci,
+                validation_status=(
+                    "SOFT_FAIL"
+                    if int(fibonacci.get("retests", 0)) > 0
+                    else "WATCH_ONLY"
+                ),
+                retest_count=int(fibonacci.get("retests", 0)),
             )
         target = self._target(snapshot, side, entry, obstacle, atr_m5)
         confidence = min(100.0, max(0.0, float(snapshot.confidence)))
@@ -338,6 +414,8 @@ class RevisedEngine:
             confidence=confidence,
             mode=mode,
             observation_only=observation_only,
+            validation_status="VALID",
+            retest_count=int(fibonacci.get("retests", 0)),
             entry=entry,
             stop=stop,
             target=target,
@@ -349,6 +427,7 @@ class RevisedEngine:
             momentum=momentum,
             exhausted=exhaustion,
             risk_stats=risk_stats,
+            fibonacci=fibonacci,
         )
 
     def _first_obstacle(self, snapshot: RevisedSnapshot, entry: float) -> tuple[float | None, str | None]:
@@ -503,6 +582,138 @@ class RevisedEngine:
             "exhaustion_signals": exhaustion_signals,
         }
 
+    def _fibonacci_stats(
+        self,
+        snapshot: RevisedSnapshot,
+        side: RevisedSide,
+        atr_m1: float,
+    ) -> dict[str, object]:
+        trigger = snapshot.m5_trigger_time
+        closed_before_trigger = [
+            bar
+            for bar in snapshot.m5_bars
+            if trigger is None or bar.time < trigger
+        ][-self.config.fibonacci_lookback_m5 :]
+        if len(closed_before_trigger) < 3:
+            return {"available": False, "retests": 0, "current_rejection": False}
+        best: tuple[float, float] | None = None
+        best_range = 0.0
+        if side is RevisedSide.BUY:
+            for start_index, start in enumerate(closed_before_trigger[:-1]):
+                for end in closed_before_trigger[start_index + 1 :]:
+                    distance = end.high - start.low
+                    if distance > best_range:
+                        best_range = distance
+                        best = (start.low, end.high)
+        else:
+            for start_index, start in enumerate(closed_before_trigger[:-1]):
+                for end in closed_before_trigger[start_index + 1 :]:
+                    distance = start.high - end.low
+                    if distance > best_range:
+                        best_range = distance
+                        best = (start.high, end.low)
+        if best is None or best_range <= 0:
+            return {"available": False, "retests": 0, "current_rejection": False}
+        anchor_start, anchor_end = best
+        if side is RevisedSide.BUY:
+            zone_low = anchor_end - best_range * 0.618
+            zone_high = anchor_end - best_range * 0.382
+        else:
+            zone_low = anchor_end + best_range * 0.382
+            zone_high = anchor_end + best_range * 0.618
+        after_trigger = [
+            bar
+            for bar in snapshot.m1_bars
+            if trigger is None or bar.time > trigger
+        ][-self.config.watch_max_m1_bars :]
+        retests = 0
+        last_touch = -10_000
+        left_zone = True
+        leave_distance = max(
+            (zone_high - zone_low) * self.config.fibonacci_leave_fraction,
+            atr_m1 * 0.10,
+        )
+        for index, bar in enumerate(after_trigger):
+            overlaps = bar.low <= zone_high and bar.high >= zone_low
+            if not overlaps:
+                if side is RevisedSide.BUY:
+                    left_zone = bar.close >= zone_high + leave_distance
+                else:
+                    left_zone = bar.close <= zone_low - leave_distance
+                continue
+            if (
+                left_zone
+                and index - last_touch >= self.config.fibonacci_retest_separation_bars
+            ):
+                retests += 1
+                last_touch = index
+                left_zone = False
+        current = after_trigger[-1] if after_trigger else None
+        recent_touch = bool(
+            last_touch >= 0 and last_touch >= len(after_trigger) - 3
+        )
+        current_rejection = bool(
+            current is not None
+            and recent_touch
+            and (
+                current.close > zone_high
+                if side is RevisedSide.BUY
+                else current.close < zone_low
+            )
+        )
+        return {
+            "available": True,
+            "anchor_start": anchor_start,
+            "anchor_end": anchor_end,
+            "zone_low": zone_low,
+            "zone_high": zone_high,
+            "retests": retests,
+            "current_rejection": current_rejection,
+        }
+
+    def _hard_invalidation(
+        self,
+        snapshot: RevisedSnapshot,
+        side: RevisedSide,
+        atr_m1: float,
+    ) -> bool:
+        if snapshot.invalidation is None or snapshot.m5_trigger_time is None:
+            return False
+        bars = [
+            bar
+            for bar in snapshot.m1_bars
+            if bar.time > snapshot.m5_trigger_time
+        ][-self.config.acceptance_window :]
+        if len(bars) < self.config.acceptance_close_count:
+            return False
+        tolerance = max(self.config.spread_floor, atr_m1 * 0.10)
+        outside = [
+            bar
+            for bar in bars
+            if (
+                bar.close < snapshot.invalidation - tolerance
+                if side is RevisedSide.BUY
+                else bar.close > snapshot.invalidation + tolerance
+            )
+        ]
+        consecutive = all(
+            (
+                bar.close < snapshot.invalidation - tolerance
+                if side is RevisedSide.BUY
+                else bar.close > snapshot.invalidation + tolerance
+            )
+            for bar in bars[-self.config.acceptance_close_count :]
+        )
+        displacement = abs(bars[-1].close - bars[0].open)
+        return bool(
+            consecutive
+            or (
+                len(outside) >= 3
+                and len(bars) >= 4
+                and displacement >= atr_m1 * self.config.acceptance_displacement_atr
+            )
+        )
+
     def _risk(self, snapshot: RevisedSnapshot, entry: float, atr: float) -> float:
         if snapshot.stop is not None:
             return abs(entry - snapshot.stop)
@@ -595,10 +806,10 @@ class RevisedEngine:
         buffer = max(self.config.spread_floor, atr * buffer_atr)
         return _normalize(obstacle - buffer if side is RevisedSide.BUY else obstacle + buffer, self.config.price_tick)
 
-    def _decision(self, snapshot: RevisedSnapshot, state: RevisedState, action: RevisedAction, reason: str, *, confidence: float | None = None, mode: ConfirmationMode | None = None, exhausted: bool = False, observation_only: bool | None = None, entry_profile: str = "CORE", entry: float | None = None, stop: float | None = None, target: float | None = None, obstacle: float | None = None, obstacle_kind: str | None = None, obstacle_r: float | None = None, range_stats: dict[str, object] | None = None, m1: dict[str, object] | None = None, momentum: bool = False, risk_stats: dict[str, object] | None = None) -> RevisedDecision:
+    def _decision(self, snapshot: RevisedSnapshot, state: RevisedState, action: RevisedAction, reason: str, *, confidence: float | None = None, mode: ConfirmationMode | None = None, exhausted: bool = False, observation_only: bool | None = None, entry_profile: str = "CORE", validation_status: str = "WATCH_ONLY", retest_count: int = 0, entry: float | None = None, stop: float | None = None, target: float | None = None, obstacle: float | None = None, obstacle_kind: str | None = None, obstacle_r: float | None = None, range_stats: dict[str, object] | None = None, m1: dict[str, object] | None = None, momentum: bool = False, risk_stats: dict[str, object] | None = None, fibonacci: dict[str, object] | None = None) -> RevisedDecision:
         range_stats = range_stats or {}
         m1 = m1 or {}
-        evidence = {"range": range_stats, "m1": m1, "momentum": momentum, "m5_pattern": snapshot.m5_pattern, "m5_votes": snapshot.m5_votes, "risk": risk_stats or {}}
+        evidence = {"range": range_stats, "m1": m1, "momentum": momentum, "m5_pattern": snapshot.m5_pattern, "m5_votes": snapshot.m5_votes, "risk": risk_stats or {}, "fibonacci": fibonacci or {}}
         return RevisedDecision(
             strategy_id=STRATEGY_ID,
             strategy_version=STRATEGY_VERSION,
@@ -608,8 +819,11 @@ class RevisedEngine:
             action=action,
             entry_profile=entry_profile,
             observation_only=(snapshot.side is RevisedSide.SELL if observation_only is None else observation_only),
+            setup_trigger_time=snapshot.m5_trigger_time,
             time=snapshot.current_time,
             reason=reason,
+            validation_status=validation_status,
+            retest_count=retest_count,
             confidence=float(snapshot.confidence if confidence is None else confidence),
             mode=mode,
             exhausted=exhausted,

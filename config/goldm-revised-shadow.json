@@ -1,6 +1,6 @@
 {
   "strategy_id": "GOLDM_REVISED",
-  "strategy_version": "0.4.0",
+  "strategy_version": "0.5.0",
   "runtime": {
     "poll_seconds": 30
   },
@@ -48,6 +48,10 @@
     "stop_buffer_atr": 0.18,
     "adaptive_stop_buffer_atr": 0.10,
     "adaptive_stop_min_risk_atr": 0.35,
+    "watch_max_m1_bars": 60,
+    "fibonacci_lookback_m5": 12,
+    "fibonacci_retest_separation_bars": 2,
+    "fibonacci_leave_fraction": 0.25,
     "psychological_steps": [10.0, 50.0, 100.0],
     "swing_span": 2,
     "minimum_m5_votes": 2,

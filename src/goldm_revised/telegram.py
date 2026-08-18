@@ -46,6 +46,21 @@ class RevisedAdminNotifier:
     def format_event(event_type: str, payload: dict[str, object]) -> str:
         if event_type == "REVISED_HEALTH":
             return f"🛡️ GOLDM_REVISED HEALTH\n• Status: {payload.get('status')}\n• Detail: {payload.get('detail')}"
+        if event_type == "REVISED_WATCH":
+            return (
+                "👀 GOLDM_REVISED WATCH\n"
+                f"• Side/Profile: {payload.get('side')} / {payload.get('entry_profile')}\n"
+                f"• Status: {payload.get('validation_status')}\n"
+                f"• Retest: {payload.get('retest_count')}\n"
+                f"• Reason: {payload.get('reason')}"
+            )
+        if event_type == "REVISED_CANCELLED":
+            return (
+                "⛔ GOLDM_REVISED REJECTED\n"
+                f"• Side: {payload.get('side')}\n"
+                f"• Retest: {payload.get('retest_count')}\n"
+                f"• Reason: {payload.get('reason')}"
+            )
         if event_type == "REVISED_OUTCOME":
             return (
                 "📊 GOLDM_REVISED OUTCOME\n"

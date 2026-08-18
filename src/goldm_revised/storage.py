@@ -99,7 +99,10 @@ class RevisedStore:
         now = datetime.now(timezone.utc).isoformat()
         setup_id = self._setup_id(decision)
         event_type = f"REVISED_{decision.state.value}"
-        event_key = f"{setup_id}:{event_type}"
+        event_key = (
+            f"{setup_id}:{event_type}:{decision.validation_status}:"
+            f"{decision.retest_count}"
+        )
         payload = asdict(decision)
         connection = self._connect()
         inserted = False
@@ -228,7 +231,10 @@ class RevisedStore:
                 SELECT id, setup_id, event_type, payload_json, created_at
                 FROM revised_events
                 WHERE delivered_at IS NULL
-                  AND event_type IN ('REVISED_ENTRY_READY', 'REVISED_OUTCOME', 'REVISED_HEALTH')
+                  AND event_type IN (
+                      'REVISED_WATCH', 'REVISED_ENTRY_READY',
+                      'REVISED_CANCELLED', 'REVISED_OUTCOME', 'REVISED_HEALTH'
+                  )
                 ORDER BY id ASC LIMIT ?
                 """,
                 (limit,),
@@ -268,8 +274,8 @@ class RevisedStore:
 
     @staticmethod
     def _setup_id(decision: RevisedDecision) -> str:
-        level = f"{decision.first_obstacle:.2f}" if decision.first_obstacle is not None else "NONE"
-        return f"{decision.strategy_id}-{decision.symbol}-{decision.side.value}-{level}-{decision.time:%Y%m%dT%H%M}"
+        trigger = decision.setup_trigger_time or decision.time
+        return f"{decision.strategy_id}-{decision.symbol}-{decision.side.value}-{trigger:%Y%m%dT%H%M}"
 
     def _append_audit(self, record: Mapping[str, Any]) -> None:
         with self.audit_path.open("a", encoding="utf-8") as handle:

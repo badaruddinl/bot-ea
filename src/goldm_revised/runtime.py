@@ -31,7 +31,7 @@ class RevisedShadowRuntime:
             engine_config["strong_m5_patterns"] = tuple(engine_config["strong_m5_patterns"])
         self.engine = RevisedEngine(RevisedEngineConfig(**engine_config))
         self.detector = RevisedSetupDetector(
-            maximum_m1_bars=self.engine.config.range_max_bars
+            maximum_m1_bars=self.engine.config.watch_max_m1_bars
         )
         mt5_config = dict(config.get("mt5", {}))
         offset = int(mt5_config.pop("server_utc_offset_minutes", 180))
@@ -65,16 +65,21 @@ class RevisedShadowRuntime:
                 side=side,
             )
             if setup is None:
+                termination = self.detector.pop_termination(side)
+                if termination is None:
+                    continue
+                ended, reason = termination
                 snapshot = replace(
                     latest,
                     side=side,
-                    m5_trigger_time=None,
-                    m5_pattern="NONE",
-                    m5_votes=0,
-                    confidence=0.0,
-                    level=None,
-                    invalidation=None,
+                    m5_trigger_time=ended.trigger_time,
+                    m5_pattern=ended.pattern,
+                    m5_votes=ended.votes,
+                    confidence=ended.confidence,
+                    level=ended.level,
+                    invalidation=ended.invalidation,
                 )
+                decision = self.engine.terminal_decision(snapshot, reason)
             else:
                 snapshot = replace(
                     latest,
@@ -86,7 +91,7 @@ class RevisedShadowRuntime:
                     level=setup.level,
                     invalidation=setup.invalidation,
                 )
-            decision = self.engine.evaluate(snapshot)
+                decision = self.engine.evaluate(snapshot)
             self.store.record_decision(decision)
             decisions.append(decision)
             if setup is not None and decision.state.value in {"ENTRY_READY", "CANCELLED"}:

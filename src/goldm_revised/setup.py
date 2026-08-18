@@ -26,6 +26,7 @@ class RevisedSetupDetector:
             raise ValueError("maximum_m1_bars must be positive")
         self.maximum_age = timedelta(minutes=maximum_m1_bars)
         self._active: dict[RevisedSide, RevisedM5Setup] = {}
+        self._terminated: dict[RevisedSide, tuple[RevisedM5Setup, str]] = {}
         self._last_classified_m5: datetime | None = None
 
     def update(
@@ -53,7 +54,12 @@ class RevisedSetupDetector:
                     # promoting after bearish displacement (and vice versa),
                     # while allowing the reversal to start its own causal M1
                     # confirmation window.
-                    self._active.pop(opposite, None)
+                    terminated = self._active.pop(opposite, None)
+                    if terminated is not None:
+                        self._terminated[opposite] = (
+                            terminated,
+                            "OPPOSITE_M5_SETUP_ACCEPTED",
+                        )
                     self._active[candidate_side] = candidate
         setup = self._active.get(side)
         if setup is None:
@@ -62,8 +68,15 @@ class RevisedSetupDetector:
             return None
         if current_m1_time - setup.trigger_time > self.maximum_age:
             self._active.pop(side, None)
+            self._terminated[side] = (setup, "WATCH_WINDOW_EXPIRED")
             return None
         return setup
+
+    def pop_termination(
+        self,
+        side: RevisedSide,
+    ) -> tuple[RevisedM5Setup, str] | None:
+        return self._terminated.pop(side, None)
 
     def consume(self, side: RevisedSide, trigger_time: datetime) -> None:
         setup = self._active.get(side)

@@ -49,6 +49,8 @@ class ReplayInspection:
     state: RevisedState
     reason: str
     entry_profile: str
+    validation_status: str
+    retest_count: int
     entry: float | None
     stop: float | None
     target: float | None
@@ -106,7 +108,7 @@ class RevisedReplay:
     ) -> ReplayReport:
         for bars in (m1_bars, m5_bars, h1_bars, d1_bars):
             _validate_order(bars)
-        detector = RevisedSetupDetector(maximum_m1_bars=self.engine.config.range_max_bars)
+        detector = RevisedSetupDetector(maximum_m1_bars=self.engine.config.watch_max_m1_bars)
         active: dict[RevisedSide, ReplayPosition] = {}
         consumed_triggers: set[tuple[RevisedSide, datetime]] = set()
         duplicate_promotions = 0
@@ -162,6 +164,8 @@ class RevisedReplay:
                                 state=decision.state,
                                 reason=decision.reason,
                                 entry_profile=decision.entry_profile,
+                                validation_status=decision.validation_status,
+                                retest_count=decision.retest_count,
                                 entry=decision.entry,
                                 stop=decision.stop,
                                 target=decision.target,
