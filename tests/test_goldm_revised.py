@@ -349,6 +349,26 @@ class GoldMRevisedEngineTests(unittest.TestCase):
         self.assertEqual(obstacle, 4400.0)
         self.assertEqual(kind, "PSYCH_10")
 
+    def test_retested_nearby_m1_cluster_yields_to_next_external_obstacle(self) -> None:
+        with patch.object(
+            RevisedEngine,
+            "_first_obstacle",
+            side_effect=[
+                (4394.70, "M1_SWING_CLUSTER"),
+                (4400.0, "PSYCH_10"),
+            ],
+        ), patch.object(
+            RevisedEngine,
+            "_fibonacci_stats",
+            return_value={"retests": 2, "current_rejection": True},
+        ):
+            decision = RevisedEngine().evaluate(
+                snapshot(entry=4394.60, stop=4390.0)
+            )
+
+        self.assertEqual(decision.first_obstacle, 4400.0)
+        self.assertEqual(decision.first_obstacle_kind, "PSYCH_10")
+
     def test_momentum_can_bypass_range_when_room_is_large(self) -> None:
         m5 = tuple(
             bar(index, 4390 + index * 2.0, 4392 + index * 2.0, 4389 + index * 2.0, 4392 + index * 2.0, minutes=5)

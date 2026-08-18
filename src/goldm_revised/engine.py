@@ -270,6 +270,26 @@ class RevisedEngine:
         range_stats = self._range_stats(snapshot, side, atr_m1)
         momentum, exhaustion, momentum_stats = self._momentum_stats(snapshot, side, atr_m5)
         m1 = self._m1_confirmation(snapshot.m1_bars, side)
+        if (
+            obstacle is not None
+            and obstacle_kind == "M1_SWING_CLUSTER"
+            and abs(obstacle - entry)
+            <= max(self.config.spread_floor, atr_m1 * 0.10)
+            and int(fibonacci.get("retests", 0)) >= 2
+            and int(m1.get("votes", 0)) == 3
+            and bool(m1.get("micro_break"))
+        ):
+            obstacle, obstacle_kind = self._first_obstacle(
+                snapshot,
+                entry,
+                atr_m1,
+                include_m1=False,
+            )
+            obstacle_r = (
+                abs(obstacle - entry) / risk
+                if obstacle is not None and risk > 0
+                else None
+            )
         strong_m1_now = self._strong_m1_confirmation(m1)
         strong_m1_latched = self._strong_m1_latched(snapshot, side)
         fibonacci_ok = bool(
@@ -516,6 +536,8 @@ class RevisedEngine:
         snapshot: RevisedSnapshot,
         entry: float,
         atr_m1: float,
+        *,
+        include_m1: bool = True,
     ) -> tuple[float | None, str | None]:
         candidates: list[tuple[float, str]] = []
         side = snapshot.side
@@ -548,8 +570,10 @@ class RevisedEngine:
         )
         m1_pivots = (
             _swing_highs(obstacle_m1_bars, self.config.swing_span)
-            if side is RevisedSide.BUY
+            if include_m1 and side is RevisedSide.BUY
             else _swing_lows(obstacle_m1_bars, self.config.swing_span)
+            if include_m1
+            else []
         )
         directional_m1 = [
             price
