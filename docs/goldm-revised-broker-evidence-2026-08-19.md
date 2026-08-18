@@ -93,3 +93,22 @@ Version 0.5.0 changes confirmation lifecycle without relaxing hard safety:
   produce `HARD_INVALIDATION_ACCEPTED`;
 - WATCH notifications are idempotent per validation status and retest number;
 - ENTRY and final rejection notifications remain separate state transitions.
+
+### Initial 0.5.0 broker replay
+
+The first 17–19 August broker replay after enabling multi-retest WATCH produced:
+
+- 12 resolved signals: 10 BUY and 2 SELL;
+- 9 targets and 3 stops;
+- total +1.7385R;
+- expectancy +0.1449R;
+- maximum drawdown 3R.
+
+This is a material improvement over 0.4.0, but it is not a pass: all ten BUY
+signals were classified SCALPER and core BUY remained zero. The trace confirmed
+that singleton M1 micro-swings were still dominating first-obstacle selection.
+
+Commit `2dbe8a9` therefore filters M1 obstacles: an M1 swing becomes a hard
+obstacle only when repeated/clustered or confluent with M5/H1/D1/psychological
+levels. That filter passed the complete local suite but has not yet completed a
+broker replay, so the engine remains research-only and shadow stays disabled.
