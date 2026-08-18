@@ -149,6 +149,18 @@ def _print_validation_summary(payload: dict[str, object]) -> None:
             candidates,
             key=lambda item: (item.get("retest_count", 0), item.get("m1_votes", 0)),
         )
+        retested = [item for item in candidates if item.get("retest_count", 0) >= 1]
+        post_retest_room = (
+            max(
+                retested,
+                key=lambda item: (
+                    item.get("first_obstacle_r") is not None,
+                    item.get("first_obstacle_r") or float("-inf"),
+                ),
+            )
+            if retested
+            else None
+        )
         ready = next(
             (
                 item
@@ -165,6 +177,10 @@ def _print_validation_summary(payload: dict[str, object]) -> None:
             f"@{max_room.get('decision_time', '-')} "
             f"max_retests={max_retest.get('retest_count', '-')}/"
             f"votes{max_retest.get('m1_votes', '-')}@{max_retest.get('decision_time', '-')} "
+            f"post_retest_room={('-' if post_retest_room is None else str(post_retest_room.get('first_obstacle_r')))}/"
+            f"{('-' if post_retest_room is None else str(post_retest_room.get('m5_pattern')))}/"
+            f"votes{('-' if post_retest_room is None else str(post_retest_room.get('m1_votes')))}@"
+            f"{('-' if post_retest_room is None else str(post_retest_room.get('decision_time')))} "
             f"ready={('-' if ready is None else str(ready.get('entry_profile')))}/"
             f"{('-' if ready is None else str(ready.get('m5_pattern')))}/"
             f"{('-' if ready is None else str(ready.get('first_obstacle_r')))}"
