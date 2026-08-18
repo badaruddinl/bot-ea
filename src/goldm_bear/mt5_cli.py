@@ -115,6 +115,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "bar_count": len(bars),
             "first_bar": bars[0].time,
             "last_bar": bars[-1].time,
+            "signal_count": len(signals),
             "signals": [
                 {
                     **asdict(decision),

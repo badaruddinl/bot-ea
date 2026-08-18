@@ -12,6 +12,7 @@ from goldm_bear.cli import load_bars, main
 from goldm_bear.engine import (
     BearAction,
     BearBar,
+    BearDecision,
     BearEngine,
     BearEngineConfig,
     BearExitAction,
@@ -318,6 +319,24 @@ class StandaloneBearEngineTests(unittest.TestCase):
     def test_configuration_rejects_too_short_structure_window(self) -> None:
         with self.assertRaisesRegex(ValueError, "regime_lookback"):
             BearEngineConfig(atr_period=14, regime_lookback=10)
+
+    def test_scan_applies_four_bar_signal_cooldown(self) -> None:
+        class AlwaysSellEngine(BearEngine):
+            def evaluate(self, bars):
+                return BearDecision(
+                    action=BearAction.SELL,
+                    time=bars[-1].time,
+                    symbol="GOLD.i#",
+                    reason="test",
+                    score=100,
+                )
+
+        bars = broker_failed_breakout_bars()
+        signals = AlwaysSellEngine().scan(bars)
+
+        self.assertGreater(len(signals), 1)
+        for previous, current in zip(signals, signals[1:]):
+            self.assertGreaterEqual(current.time - previous.time, timedelta(hours=1))
 
 
 if __name__ == "__main__":

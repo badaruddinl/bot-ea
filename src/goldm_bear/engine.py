@@ -82,6 +82,7 @@ class BearEngineConfig:
     session_open_minute: int = 62
     session_close_minute: int = 23 * 60 + 58
     session_guard_minutes: int = 15
+    signal_cooldown_bars: int = 4
 
     def __post_init__(self) -> None:
         if not self.symbol.strip():
@@ -120,6 +121,8 @@ class BearEngineConfig:
             raise ValueError("session minutes are invalid")
         if self.session_guard_minutes < 0:
             raise ValueError("session_guard_minutes cannot be negative")
+        if self.signal_cooldown_bars < 1:
+            raise ValueError("signal_cooldown_bars must be positive")
 
 
 @dataclass(frozen=True, slots=True)
@@ -392,10 +395,16 @@ class BearEngine:
 
     def scan(self, bars: Sequence[BearBar]) -> list[BearDecision]:
         decisions: list[BearDecision] = []
+        last_signal_index = -self.config.signal_cooldown_bars
         for end in range(self.minimum_bars, len(bars) + 1):
             decision = self.evaluate(bars[:end])
-            if decision.action is BearAction.SELL:
+            signal_index = end - 1
+            if (
+                decision.action is BearAction.SELL
+                and signal_index - last_signal_index >= self.config.signal_cooldown_bars
+            ):
                 decisions.append(decision)
+                last_signal_index = signal_index
         return decisions
 
     def evaluate_exit(
