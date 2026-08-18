@@ -7,7 +7,7 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any, Sequence
 
-from .engine import RevisedBar, RevisedDecision, RevisedEngine, RevisedSide, RevisedSnapshot, RevisedState
+from .engine import STRATEGY_ID, STRATEGY_VERSION, RevisedBar, RevisedDecision, RevisedEngine, RevisedSide, RevisedSnapshot, RevisedState
 from .setup import RevisedSetupDetector
 
 
@@ -189,8 +189,8 @@ class RevisedReplay:
             peak = max(peak, equity)
             max_drawdown = max(max_drawdown, peak - equity)
         return ReplayReport(
-            strategy_id="GOLDM_REVISED",
-            strategy_version="0.1.0",
+            strategy_id=STRATEGY_ID,
+            strategy_version=STRATEGY_VERSION,
             from_time=from_time,
             to_time=to_time,
             signals=len(signal_decisions),

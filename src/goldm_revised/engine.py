@@ -9,7 +9,7 @@ from typing import Sequence
 
 
 STRATEGY_ID = "GOLDM_REVISED"
-STRATEGY_VERSION = "0.1.0"
+STRATEGY_VERSION = "0.2.0"
 
 
 class RevisedSide(str, Enum):
@@ -111,6 +111,8 @@ class RevisedEngineConfig:
     first_obstacle_strict_r: float = 1.5
     strict_target_buffer_atr: float = 0.08
     stop_buffer_atr: float = 0.18
+    adaptive_stop_buffer_atr: float = 0.10
+    adaptive_stop_min_risk_atr: float = 0.35
     psychological_steps: tuple[float, ...] = (10.0, 50.0, 100.0)
     swing_span: int = 2
     minimum_m5_votes: int = 2
@@ -151,6 +153,8 @@ class RevisedEngineConfig:
             raise ValueError("first-obstacle R thresholds are invalid")
         if self.price_tick <= 0 or self.spread_floor < 0:
             raise ValueError("price tick/spread floor is invalid")
+        if self.adaptive_stop_buffer_atr < 0 or self.adaptive_stop_min_risk_atr <= 0:
+            raise ValueError("adaptive stop configuration is invalid")
         if not self.psychological_steps or any(step <= 0 for step in self.psychological_steps):
             raise ValueError("psychological steps must be positive")
 
@@ -206,8 +210,9 @@ class RevisedEngine:
         if atr_m1 <= 0 or atr_m5 <= 0:
             return self._decision(snapshot, RevisedState.WAIT, RevisedAction.OBSERVE, "ATR_UNAVAILABLE")
 
+        stop, risk_stats = self._entry_stop(snapshot, entry, atr_m1, atr_m5)
+        risk = abs(entry - stop)
         obstacle, obstacle_kind = self._first_obstacle(snapshot, entry)
-        risk = self._risk(snapshot, entry, atr_m5)
         obstacle_r = abs(obstacle - entry) / risk if obstacle is not None and risk > 0 else None
         range_stats = self._range_stats(snapshot, side, atr_m1)
         momentum, exhaustion, momentum_stats = self._momentum_stats(snapshot, side, atr_m5)
@@ -239,7 +244,7 @@ class RevisedEngine:
                 "FIRST_OBSTACLE_ROOM_BELOW_1R",
                 confidence=min(snapshot.confidence, self.config.promotion_confidence - 0.01),
                 entry=entry,
-                stop=risk and self._stop(snapshot, entry, risk),
+                stop=stop,
                 obstacle=obstacle,
                 obstacle_kind=obstacle_kind,
                 obstacle_r=obstacle_r,
@@ -247,6 +252,7 @@ class RevisedEngine:
                 m1=m1,
                 momentum=momentum,
                 exhausted=exhaustion,
+                risk_stats=risk_stats,
             )
         if exhaustion:
             mode = ConfirmationMode.RANGE
@@ -265,7 +271,7 @@ class RevisedEngine:
                 "M1_RANGE_OR_MOMENTUM_GATE_PENDING",
                 confidence=min(snapshot.confidence, self.config.promotion_confidence - 0.01),
                 entry=entry,
-                stop=self._stop(snapshot, entry, risk),
+                stop=stop,
                 obstacle=obstacle,
                 obstacle_kind=obstacle_kind,
                 obstacle_r=obstacle_r,
@@ -274,6 +280,7 @@ class RevisedEngine:
                 momentum=momentum,
                 exhausted=exhaustion,
                 mode=mode,
+                risk_stats=risk_stats,
             )
         target = self._target(snapshot, side, entry, obstacle, atr_m5)
         confidence = min(100.0, max(0.0, float(snapshot.confidence)))
@@ -290,7 +297,7 @@ class RevisedEngine:
             mode=mode,
             observation_only=observation_only,
             entry=entry,
-            stop=self._stop(snapshot, entry, risk),
+            stop=stop,
             target=target,
             obstacle=obstacle,
             obstacle_kind=obstacle_kind,
@@ -299,6 +306,7 @@ class RevisedEngine:
             m1=m1,
             momentum=momentum,
             exhausted=exhaustion,
+            risk_stats=risk_stats,
         )
 
     def _first_obstacle(self, snapshot: RevisedSnapshot, entry: float) -> tuple[float | None, str | None]:
@@ -458,6 +466,77 @@ class RevisedEngine:
             return abs(entry - snapshot.stop)
         return max(atr * self.config.stop_buffer_atr, self.config.spread_floor * 2.0)
 
+    def _entry_stop(
+        self,
+        snapshot: RevisedSnapshot,
+        entry: float,
+        atr_m1: float,
+        atr_m5: float,
+    ) -> tuple[float, dict[str, object]]:
+        side = snapshot.side
+        fallback_risk = self._risk(snapshot, entry, atr_m5)
+        fallback = (
+            snapshot.stop
+            if snapshot.stop is not None
+            else entry - fallback_risk
+            if side is RevisedSide.BUY
+            else entry + fallback_risk
+        )
+        source = "M5_INVALIDATION" if snapshot.stop is not None else "ATR_FALLBACK"
+        trigger = snapshot.m5_trigger_time
+        bars = tuple(
+            bar
+            for bar in snapshot.m1_bars
+            if trigger is None or bar.time > trigger
+        )
+        pivots = (
+            _swing_lows(bars, self.config.swing_span)
+            if side is RevisedSide.BUY
+            else _swing_highs(bars, self.config.swing_span)
+        )
+        directional_pivots = [
+            price
+            for price in pivots
+            if (side is RevisedSide.BUY and price < entry)
+            or (side is RevisedSide.SELL and price > entry)
+        ]
+        buffer = max(
+            self.config.spread_floor,
+            atr_m1 * self.config.adaptive_stop_buffer_atr,
+        )
+        minimum_risk = max(
+            self.config.spread_floor * 2.0,
+            atr_m1 * self.config.adaptive_stop_min_risk_atr,
+        )
+        structural: float | None = None
+        if directional_pivots:
+            pivot = (
+                max(directional_pivots)
+                if side is RevisedSide.BUY
+                else min(directional_pivots)
+            )
+            structural = pivot - buffer if side is RevisedSide.BUY else pivot + buffer
+            structural = (
+                min(structural, entry - minimum_risk)
+                if side is RevisedSide.BUY
+                else max(structural, entry + minimum_risk)
+            )
+        selected = float(fallback)
+        if structural is not None:
+            fallback_distance = abs(entry - selected)
+            structural_distance = abs(entry - structural)
+            if minimum_risk <= structural_distance < fallback_distance:
+                selected = structural
+                source = "M1_CONFIRMED_STRUCTURE"
+        selected = _normalize(selected, self.config.price_tick)
+        return selected, {
+            "source": source,
+            "original_stop": _normalize(float(fallback), self.config.price_tick),
+            "selected_stop": selected,
+            "risk": abs(entry - selected),
+            "m1_pivot_count": len(directional_pivots),
+        }
+
     def _stop(self, snapshot: RevisedSnapshot, entry: float, risk: float) -> float:
         if snapshot.stop is not None:
             return _normalize(snapshot.stop, self.config.price_tick)
@@ -469,10 +548,10 @@ class RevisedEngine:
         buffer = max(self.config.spread_floor, atr * self.config.strict_target_buffer_atr)
         return _normalize(obstacle - buffer if side is RevisedSide.BUY else obstacle + buffer, self.config.price_tick)
 
-    def _decision(self, snapshot: RevisedSnapshot, state: RevisedState, action: RevisedAction, reason: str, *, confidence: float | None = None, mode: ConfirmationMode | None = None, exhausted: bool = False, observation_only: bool | None = None, entry: float | None = None, stop: float | None = None, target: float | None = None, obstacle: float | None = None, obstacle_kind: str | None = None, obstacle_r: float | None = None, range_stats: dict[str, object] | None = None, m1: dict[str, object] | None = None, momentum: bool = False) -> RevisedDecision:
+    def _decision(self, snapshot: RevisedSnapshot, state: RevisedState, action: RevisedAction, reason: str, *, confidence: float | None = None, mode: ConfirmationMode | None = None, exhausted: bool = False, observation_only: bool | None = None, entry: float | None = None, stop: float | None = None, target: float | None = None, obstacle: float | None = None, obstacle_kind: str | None = None, obstacle_r: float | None = None, range_stats: dict[str, object] | None = None, m1: dict[str, object] | None = None, momentum: bool = False, risk_stats: dict[str, object] | None = None) -> RevisedDecision:
         range_stats = range_stats or {}
         m1 = m1 or {}
-        evidence = {"range": range_stats, "m1": m1, "momentum": momentum, "m5_pattern": snapshot.m5_pattern, "m5_votes": snapshot.m5_votes}
+        evidence = {"range": range_stats, "m1": m1, "momentum": momentum, "m5_pattern": snapshot.m5_pattern, "m5_votes": snapshot.m5_votes, "risk": risk_stats or {}}
         return RevisedDecision(
             strategy_id=STRATEGY_ID,
             strategy_version=STRATEGY_VERSION,

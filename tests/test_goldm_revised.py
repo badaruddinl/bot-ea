@@ -116,7 +116,7 @@ class GoldMRevisedEngineTests(unittest.TestCase):
         self.assertNotIn("goldm_signal", source)
         self.assertNotIn("goldm_bear", source)
         self.assertEqual(module.STRATEGY_ID, "GOLDM_REVISED")
-        self.assertEqual(module.STRATEGY_VERSION, "0.1.0")
+        self.assertEqual(module.STRATEGY_VERSION, "0.2.0")
 
     def test_buy_range_requires_repeated_rejections_and_enters(self) -> None:
         decision = RevisedEngine().evaluate(snapshot())
@@ -216,6 +216,67 @@ class GoldMRevisedEngineTests(unittest.TestCase):
                 side=RevisedSide.BUY,
             )
         )
+
+    def test_opposite_m5_reversal_expires_buy_and_creates_sell_setup(self) -> None:
+        m5 = list(flat_m5())
+        m5[-2] = bar(18, 4392.0, 4393.0, 4390.5, 4391.0, minutes=5)
+        m5[-1] = bar(19, 4390.8, 4395.0, 4390.7, 4394.6, minutes=5)
+        detector = RevisedSetupDetector(maximum_m1_bars=12)
+        buy_time = m5[-1].time + timedelta(minutes=6)
+        buy = detector.update(tuple(m5), current_m1_time=buy_time, side=RevisedSide.BUY)
+        self.assertIsNotNone(buy)
+
+        m5.append(bar(20, 4394.8, 4395.1, 4388.0, 4388.5, minutes=5))
+        sell_time = m5[-1].time + timedelta(minutes=6)
+        sell = detector.update(tuple(m5), current_m1_time=sell_time, side=RevisedSide.SELL)
+
+        self.assertIsNotNone(sell)
+        self.assertTrue(sell.pattern.startswith("BEAR_"))
+        self.assertIsNone(
+            detector.update(tuple(m5), current_m1_time=sell_time, side=RevisedSide.BUY)
+        )
+
+    def test_m1_structure_can_make_early_buy_valid_without_relaxing_one_r_gate(self) -> None:
+        warmup = [
+            (4397.4, 4398.4, 4396.9, 4397.8),
+            (4397.8, 4398.5, 4397.0, 4397.9),
+            (4397.9, 4398.5, 4397.1, 4398.0),
+            (4398.0, 4398.6, 4397.2, 4398.1),
+        ]
+        confirmation = [
+            (4397.2, 4398.5, 4396.7, 4397.8),
+            (4397.8, 4398.6, 4397.4, 4398.4),
+            (4398.3, 4398.6, 4396.7, 4397.9),
+            (4397.9, 4398.7, 4397.5, 4398.5),
+            (4398.4, 4398.7, 4396.7, 4397.9),
+            (4397.9, 4398.6, 4397.6, 4398.3),
+            (4398.2, 4398.7, 4398.1, 4398.4),
+            (4398.3, 4398.6, 4398.0, 4398.2),
+            (4398.2, 4398.6, 4398.2, 4398.4),
+            (4398.3, 4398.5, 4397.8, 4398.1),
+            (4398.1, 4398.4, 4398.0, 4398.2),
+            (4398.1, 4398.7, 4398.0, 4398.5),
+        ]
+        m1 = tuple(
+            bar(index, *values)
+            for index, values in enumerate(warmup + confirmation)
+        )
+        decision = RevisedEngine().evaluate(
+            snapshot(
+                m1=m1,
+                entry=4398.5,
+                stop=4388.0,
+                pattern="BULL_ENGULFING",
+                votes=3,
+            )
+        )
+
+        self.assertEqual(decision.state, RevisedState.ENTRY_READY)
+        self.assertEqual(decision.evidence["risk"]["source"], "M1_CONFIRMED_STRUCTURE")
+        self.assertGreater(decision.stop or 0.0, 4388.0)
+        self.assertGreaterEqual(decision.first_obstacle_r or 0.0, 1.0)
+        self.assertGreater(decision.target or 0.0, decision.entry or 0.0)
+        self.assertLess(decision.target or 0.0, decision.first_obstacle or 0.0)
 
     def test_strict_room_rejects_weak_m5_pattern_but_accepts_engulfing(self) -> None:
         weak = RevisedEngine().evaluate(

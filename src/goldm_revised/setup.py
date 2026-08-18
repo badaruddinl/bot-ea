@@ -43,6 +43,17 @@ class RevisedSetupDetector:
             for candidate_side in (RevisedSide.BUY, RevisedSide.SELL):
                 candidate = classify_m5_setup(m5_bars, candidate_side)
                 if candidate is not None:
+                    opposite = (
+                        RevisedSide.SELL
+                        if candidate_side is RevisedSide.BUY
+                        else RevisedSide.BUY
+                    )
+                    # A newly closed opposite M5 setup invalidates the stale
+                    # hypothesis immediately. This prevents a late BUY from
+                    # promoting after bearish displacement (and vice versa),
+                    # while allowing the reversal to start its own causal M1
+                    # confirmation window.
+                    self._active.pop(opposite, None)
                     self._active[candidate_side] = candidate
         setup = self._active.get(side)
         if setup is None:
