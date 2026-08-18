@@ -48,3 +48,32 @@ Production `GOLDM_SNIPER_PARITY` and `goldm_bear` remain unchanged.
   number 5 targets slightly below the resistance/psychological cluster.
 
 These behaviors are regression-tested before any broker replay or forward test.
+
+## Broker replay verdict for 0.4.0
+
+Targeted replay from 17–19 August on broker `GOLD.i#` did **not** pass:
+
+- signals: 3, all SCALPER BUY;
+- core BUY: 0;
+- SELL: 0;
+- outcomes: 2 targets and 1 stop;
+- total: -0.2886R;
+- expectancy: -0.0962R;
+- maximum drawdown: 1R.
+
+Evidence reconciliation also failed:
+
+- evidence 1 created SELL hypotheses, but they were cancelled at approximately
+  0.16R and 0.03R first-obstacle room with only one M1 vote;
+- evidence 2 produced a SELL hypothesis near the inspected time, not the
+  required core BUY;
+- evidence 3 and evidence 5 had no matching setup within the five-minute
+  inspection tolerance;
+- evidence 4 briefly reached BUY `WATCH` with about 1.12R room, but M1 had zero
+  votes; the next evaluation collapsed to about 0.11R and cancelled the setup
+  before it could become SCALPER.
+
+Version 0.4.0 is therefore research-only and must not be enabled for shadow or
+forward testing. The next investigation must address timestamp/setup alignment,
+avoid immediate cancellation while a valid SCALPER M1 window is still pending,
+and prevent already-accepted micro-swings from becoming false first obstacles.
