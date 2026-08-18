@@ -66,7 +66,10 @@ Resistance candidates are independently derived from:
 A bar enters `WATCH` when it retests a resistance within 0.28 ATR but has not
 yet rejected it. A closed bearish body or upper-wick rejection upgrades the
 setup to a SELL candidate. A close through the resistance cancels it; a close
-more than 1.25 ATR below resistance is treated as a chased move.
+more than 1.25 ATR below resistance is normally treated as a chased move. A
+strong failed-breakout candle that also closes below the preceding candle low
+may enter as far as 1.75 ATR from resistance. This exception captures the 13:45
+failure confirmation without allowing an unconfirmed late SELL.
 
 Offline scans apply a four-bar cooldown after a SELL so one failed-retest setup
 does not appear as several independent signals on consecutive M15 candles.

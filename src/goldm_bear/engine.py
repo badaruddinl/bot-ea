@@ -66,13 +66,14 @@ class BearEngineConfig:
     resistance_tolerance_atr: float = 0.28
     maximum_breakout_overshoot_atr: float = 0.85
     maximum_chase_atr: float = 1.25
+    maximum_confirmed_failure_chase_atr: float = 1.75
     minimum_body_atr: float = 0.12
     minimum_upper_wick_fraction: float = 0.22
     minimum_room_atr: float = 0.60
     minimum_reward_risk: float = 0.70
     minimum_psychological_room_atr: float = 0.40
     minimum_psychological_reward_risk: float = 0.35
-    minimum_continuation_reward_risk: float = 0.55
+    minimum_continuation_reward_risk: float = 0.50
     stop_buffer_atr: float = 0.18
     target_buffer_atr: float = 0.08
     invalidation_buffer_atr: float = 0.16
@@ -100,6 +101,7 @@ class BearEngineConfig:
             self.resistance_tolerance_atr,
             self.maximum_breakout_overshoot_atr,
             self.maximum_chase_atr,
+            self.maximum_confirmed_failure_chase_atr,
             self.minimum_body_atr,
             self.minimum_upper_wick_fraction,
             self.minimum_room_atr,
@@ -229,6 +231,11 @@ class BearEngine:
             )
         resistance = min(resistance_levels, key=lambda level: abs(level.price - latest.high))
         chase_distance = resistance.price - latest.close
+        confirmed_failure = (
+            latest.close < bars[-2].low
+            and latest.close < latest.open
+            and latest.body >= 0.65 * atr
+        )
         if chase_distance < -self.config.resistance_tolerance_atr * atr:
             return self._wait(
                 latest,
@@ -237,7 +244,14 @@ class BearEngine:
                 resistance=resistance.price,
                 regime_slope_atr=slope,
             )
-        if chase_distance > self.config.maximum_chase_atr * atr:
+        if (
+            chase_distance > self.config.maximum_chase_atr * atr
+            and (
+                not confirmed_failure
+                or chase_distance
+                > self.config.maximum_confirmed_failure_chase_atr * atr
+            )
+        ):
             return self._wait(
                 latest,
                 "sell_move_already_extended",
@@ -301,11 +315,7 @@ class BearEngine:
             if nearest_is_psychological
             else self.config.minimum_reward_risk
         )
-        strong_failure = (
-            latest.close < bars[-2].low
-            and latest.close < latest.open
-            and latest.body >= 0.65 * atr
-        )
+        strong_failure = confirmed_failure
         continuation_target = False
         if (
             (
