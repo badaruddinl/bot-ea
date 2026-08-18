@@ -623,6 +623,30 @@ class GoldMRevisedEngineTests(unittest.TestCase):
         self.assertGreater(decision.target or 0.0, decision.entry or 0.0)
         self.assertLess(decision.target or 0.0, decision.first_obstacle or 0.0)
 
+    def test_strong_m5_can_use_latest_closed_m1_impulse_stop(self) -> None:
+        m1 = tuple(
+            bar(
+                index,
+                4390.0 + index * 0.20,
+                4390.45 + index * 0.20,
+                4389.90 + index * 0.20,
+                4390.40 + index * 0.20,
+            )
+            for index in range(16)
+        )
+        decision = RevisedEngine().evaluate(
+            snapshot(
+                m1=m1,
+                entry=m1[-1].close,
+                stop=4380.0,
+                pattern="BULL_ENGULFING",
+                votes=3,
+            )
+        )
+
+        self.assertEqual(decision.evidence["risk"]["source"], "M1_IMPULSE_STRUCTURE")
+        self.assertGreater(decision.stop or 0.0, 4380.0)
+
     def test_strict_room_rejects_weak_m5_pattern_but_accepts_engulfing(self) -> None:
         weak = RevisedEngine().evaluate(
             snapshot(entry=4395.0, stop=4390.0, pattern="BULL_MICRO_BREAK", votes=3)

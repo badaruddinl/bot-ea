@@ -965,13 +965,47 @@ class RevisedEngine:
                 if side is RevisedSide.BUY
                 else max(structural, entry + minimum_risk)
             )
+        if structural is None and snapshot.m5_pattern in self.config.strong_m5_patterns:
+            impulse_bars = [
+                bar
+                for bar in snapshot.m1_bars[-5:]
+                if bar.range > 0
+                and (
+                    bar.close > bar.open
+                    if side is RevisedSide.BUY
+                    else bar.close < bar.open
+                )
+                and bar.body / bar.range >= self.config.strong_m1_body_ratio
+                and (
+                    (bar.close - bar.low) / bar.range
+                    if side is RevisedSide.BUY
+                    else (bar.high - bar.close) / bar.range
+                )
+                >= self.config.strong_m1_close_location
+            ]
+            if impulse_bars:
+                impulse = impulse_bars[-1]
+                structural = (
+                    impulse.low - buffer
+                    if side is RevisedSide.BUY
+                    else impulse.high + buffer
+                )
+                structural = (
+                    min(structural, entry - minimum_risk)
+                    if side is RevisedSide.BUY
+                    else max(structural, entry + minimum_risk)
+                )
         selected = float(fallback)
         if structural is not None:
             fallback_distance = abs(entry - selected)
             structural_distance = abs(entry - structural)
             if minimum_risk <= structural_distance < fallback_distance:
                 selected = structural
-                source = "M1_CONFIRMED_STRUCTURE"
+                source = (
+                    "M1_CONFIRMED_STRUCTURE"
+                    if directional_pivots
+                    else "M1_IMPULSE_STRUCTURE"
+                )
         selected = _normalize(selected, self.config.price_tick)
         return selected, {
             "source": source,
