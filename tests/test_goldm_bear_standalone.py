@@ -88,6 +88,23 @@ def image_like_bear_bars(*, rejection: bool = True) -> list[BearBar]:
     return bars
 
 
+def broker_failed_breakout_bars() -> list[BearBar]:
+    bars = image_like_bear_bars(rejection=False)[:-1]
+    context = (
+        (4399.39, 4400.14, 4395.14, 4397.11),
+        (4397.13, 4399.29, 4397.13, 4398.89),
+        (4398.87, 4400.84, 4396.83, 4397.59),
+        (4397.55, 4403.39, 4397.43, 4403.05),
+        (4403.15, 4403.58, 4396.31, 4401.45),
+        (4401.56, 4402.60, 4395.47, 4395.55),
+        (4395.88, 4396.11, 4387.95, 4392.62),
+        (4392.55, 4393.50, 4386.80, 4389.31),
+    )
+    for values in context:
+        bars.append(_bar(len(bars), *values))
+    return bars
+
+
 class StandaloneBearEngineTests(unittest.TestCase):
     def test_package_does_not_import_production_strategy(self) -> None:
         source = inspect.getsource(__import__("goldm_bear.engine", fromlist=["*"]))
@@ -117,6 +134,21 @@ class StandaloneBearEngineTests(unittest.TestCase):
 
         self.assertEqual(decision.action, BearAction.WATCH)
         self.assertIn("waiting_rejection", decision.reason)
+
+    def test_broker_failed_breakout_waits_then_sells_confirmation(self) -> None:
+        bars = broker_failed_breakout_bars()
+        engine = BearEngine(BearEngineConfig(maximum_slope_atr_per_bar=0.0))
+        first_rejection = engine.evaluate(bars[:-5])
+        confirmed = engine.evaluate(bars[:-2])
+        outcome = signal_outcome(confirmed, bars)
+
+        self.assertNotEqual(first_rejection.action, BearAction.SELL)
+        self.assertEqual(confirmed.action, BearAction.SELL)
+        self.assertIn("continuation_through_near_support", confirmed.reason)
+        self.assertAlmostEqual(confirmed.resistance or 0.0, 4400.0, delta=0.01)
+        self.assertGreater(confirmed.take_profit or 0.0, 4390.0)
+        self.assertLess(confirmed.take_profit or 9999.0, 4391.0)
+        self.assertEqual(outcome["first_event"], "TP1")
 
     def test_psychological_target_is_placed_in_front_of_round_number(self) -> None:
         decision = BearEngine().evaluate(image_like_bear_bars())

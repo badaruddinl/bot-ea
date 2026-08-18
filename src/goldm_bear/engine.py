@@ -64,11 +64,13 @@ class BearEngineConfig:
     minimum_regime_drop_atr: float = 1.25
     maximum_slope_atr_per_bar: float = -0.018
     resistance_tolerance_atr: float = 0.28
+    maximum_breakout_overshoot_atr: float = 0.85
     maximum_chase_atr: float = 1.25
     minimum_body_atr: float = 0.12
     minimum_upper_wick_fraction: float = 0.22
     minimum_room_atr: float = 0.60
     minimum_reward_risk: float = 0.70
+    minimum_continuation_reward_risk: float = 0.55
     stop_buffer_atr: float = 0.18
     target_buffer_atr: float = 0.08
     invalidation_buffer_atr: float = 0.16
@@ -93,11 +95,13 @@ class BearEngineConfig:
         positive_fields = (
             self.minimum_regime_drop_atr,
             self.resistance_tolerance_atr,
+            self.maximum_breakout_overshoot_atr,
             self.maximum_chase_atr,
             self.minimum_body_atr,
             self.minimum_upper_wick_fraction,
             self.minimum_room_atr,
             self.minimum_reward_risk,
+            self.minimum_continuation_reward_risk,
             self.stop_buffer_atr,
             self.target_buffer_atr,
             self.invalidation_buffer_atr,
@@ -202,7 +206,13 @@ class BearEngine:
             )
 
         history = bars[-(self.config.level_lookback + 1) : -1]
-        resistance_levels = self._resistance_levels(history, latest, atr)
+        recent_retest = bars[-4:]
+        resistance_levels = self._resistance_levels(
+            history,
+            recent_retest,
+            latest,
+            atr,
+        )
         if not resistance_levels:
             return self._wait(
                 latest,
@@ -244,7 +254,7 @@ class BearEngine:
 
         entry = latest.close
         stop = _ceil_to_tick(
-            max(latest.high, resistance.price)
+            max(max(bar.high for bar in recent_retest), resistance.price)
             + max(
                 atr * self.config.stop_buffer_atr,
                 max(latest.spread, self.config.spread_floor) * 2.0,
@@ -273,6 +283,31 @@ class BearEngine:
         risk = stop - entry
         reward = entry - take_profit
         reward_risk = reward / risk if risk > 0 else 0.0
+        strong_failure = (
+            latest.close < bars[-2].low
+            and latest.close < latest.open
+            and latest.body >= 0.65 * atr
+        )
+        continuation_target = False
+        if (
+            (
+                reward < self.config.minimum_room_atr * atr
+                or reward_risk < self.config.minimum_reward_risk
+            )
+            and strong_failure
+            and len(targets) > 1
+        ):
+            continuation_reward = entry - targets[1]
+            continuation_reward_risk = continuation_reward / risk if risk > 0 else 0.0
+            if (
+                continuation_reward >= self.config.minimum_room_atr * atr
+                and continuation_reward_risk
+                >= self.config.minimum_continuation_reward_risk
+            ):
+                take_profit = targets[1]
+                reward = continuation_reward
+                reward_risk = continuation_reward_risk
+                continuation_target = True
         if reward < self.config.minimum_room_atr * atr:
             return BearDecision(
                 action=BearAction.WATCH,
@@ -289,7 +324,12 @@ class BearEngine:
                 reward_risk=reward_risk,
                 regime_slope_atr=slope,
             )
-        if reward_risk < self.config.minimum_reward_risk:
+        required_reward_risk = (
+            self.config.minimum_continuation_reward_risk
+            if continuation_target
+            else self.config.minimum_reward_risk
+        )
+        if reward_risk < required_reward_risk:
             return BearDecision(
                 action=BearAction.WATCH,
                 time=latest.time,
@@ -310,7 +350,10 @@ class BearEngine:
             action=BearAction.SELL,
             time=latest.time,
             symbol=self.config.symbol,
-            reason=f"bear_pullback_rejected_at_{resistance.kind}_resistance",
+            reason=(
+                f"bear_pullback_rejected_at_{resistance.kind}_resistance"
+                + ("_continuation_through_near_support" if continuation_target else "")
+            ),
             score=self._score(slope=slope, regime_drop=regime_drop, rejection=True),
             atr=atr,
             resistance=resistance.price,
@@ -318,7 +361,11 @@ class BearEngine:
             entry=entry,
             stop=stop,
             take_profit=take_profit,
-            take_profit_2=targets[1] if len(targets) > 1 else None,
+            take_profit_2=(
+                targets[1]
+                if not continuation_target and len(targets) > 1
+                else None
+            ),
             reward_risk=reward_risk,
             regime_slope_atr=slope,
         )
@@ -363,10 +410,12 @@ class BearEngine:
     def _resistance_levels(
         self,
         history: Sequence[BearBar],
+        recent_retest: Sequence[BearBar],
         latest: BearBar,
         atr: float,
     ) -> list[_Level]:
         tolerance = self.config.resistance_tolerance_atr * atr
+        maximum_overshoot = self.config.maximum_breakout_overshoot_atr * atr
         levels = [
             _Level(price, "swing")
             for price in _swing_highs(history, self.config.swing_span)
@@ -376,7 +425,11 @@ class BearEngine:
         return [
             level
             for level in deduped
-            if abs(latest.high - level.price) <= tolerance and latest.close <= level.price + tolerance
+            if any(
+                level.price - tolerance <= bar.high <= level.price + maximum_overshoot
+                for bar in recent_retest
+            )
+            and latest.close <= level.price + tolerance
         ]
 
     def _support_levels(self, history: Sequence[BearBar], entry: float) -> list[_Level]:
@@ -437,12 +490,14 @@ class BearEngine:
             latest.close < latest.open
             and latest.body >= self.config.minimum_body_atr * atr
             and latest.close < previous.close
+            and latest.close < previous.low
         )
         wick_fraction = latest.upper_wick / latest.full_range if latest.full_range > 0 else 0.0
         wick_rejection = (
             wick_fraction >= self.config.minimum_upper_wick_fraction
             and latest.close <= latest.low + 0.55 * latest.full_range
             and latest.close < previous.close
+            and latest.close < previous.low
         )
         return bearish_body or wick_rejection
 
