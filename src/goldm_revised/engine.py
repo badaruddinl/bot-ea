@@ -190,6 +190,14 @@ class RevisedEngine:
 
     def evaluate(self, snapshot: RevisedSnapshot) -> RevisedDecision:
         self._validate_snapshot(snapshot)
+        if snapshot.m5_trigger_time is None or snapshot.m5_pattern == "NONE":
+            return self._decision(
+                snapshot,
+                RevisedState.WAIT,
+                RevisedAction.OBSERVE,
+                "M5_SETUP_UNAVAILABLE",
+                confidence=min(snapshot.confidence, self.config.promotion_confidence - 0.01),
+            )
         side = snapshot.side
         current = snapshot.m1_bars[-1]
         atr_m1 = _atr(snapshot.m1_bars, self.config.atr_period)

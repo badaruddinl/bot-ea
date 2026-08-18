@@ -18,6 +18,7 @@ bot-ea-websocket = "bot_ea.entrypoints:websocket_main"
 goldm-bear-scan = "goldm_bear.cli:main"
 goldm-bear-mt5-scan = "goldm_bear.mt5_cli:main"
 goldm-revised-shadow = "goldm_revised.cli:main"
+goldm-revised-replay = "goldm_revised.replay_cli:main"
 goldm-telegram-worker = "goldm_signal.notify.cli:main"
 
 [project.optional-dependencies]

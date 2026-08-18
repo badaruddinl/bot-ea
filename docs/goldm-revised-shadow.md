@@ -26,6 +26,22 @@ loop. The runtime uses closed M1 bars and retries MT5 IPC reads with exponential
 backoff; an IPC failure records `REVISED_HEALTH=ERROR` and never restarts the
 terminal.
 
+## Diagnostic replay
+
+Run a causal broker-bar replay without starting the shadow task:
+
+```powershell
+python scripts/run-goldm-revised-replay.py `
+  --from-server-time 2026-08-04 `
+  --to-server-time 2026-08-19 `
+  --server-utc-offset-minutes 180 `
+  --output data/research/goldm_revised/replay_20260804_18.json
+```
+
+The replay excludes incomplete M1/M5/H1/D1 bars, persists M5 setup state for at
+most twelve closed M1 bars, prevents duplicate promotions from one trigger, and
+tracks TP/SL/MFE/MAE in R.
+
 ## Telegram configuration
 
 The one-way sender reads credentials only from process environment variables:

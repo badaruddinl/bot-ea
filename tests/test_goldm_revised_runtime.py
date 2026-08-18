@@ -22,7 +22,7 @@ class GoldMRevisedRuntimeTests(unittest.TestCase):
     def test_runtime_has_no_cross_engine_imports_or_order_api(self) -> None:
         sources = "\n".join(
             (ROOT / "src" / "goldm_revised" / name).read_text(encoding="utf-8")
-            for name in ("engine.py", "runtime.py", "mt5_source.py", "storage.py", "telegram.py")
+            for name in ("engine.py", "setup.py", "runtime.py", "replay.py", "mt5_source.py", "storage.py", "telegram.py")
         )
         self.assertNotIn("goldm_signal", sources)
         self.assertNotIn("goldm_bear", sources)

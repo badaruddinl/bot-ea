@@ -19,7 +19,9 @@ from goldm_revised.engine import (
     RevisedState,
 )
 from goldm_revised.mt5_source import RevisedMt5ReadOnlySource
+from goldm_revised.replay import ReplayPosition, RevisedReplay
 from goldm_revised.storage import RevisedStore
+from goldm_revised.setup import RevisedSetupDetector
 from goldm_revised.telegram import RevisedAdminNotifier
 
 
@@ -178,6 +180,53 @@ class GoldMRevisedEngineTests(unittest.TestCase):
         self.assertNotEqual(before.time, after.time)
         self.assertLess(before.time, after.time)
 
+    def test_missing_m5_setup_never_promotes(self) -> None:
+        value = snapshot()
+        decision = RevisedEngine().evaluate(
+            RevisedSnapshot(
+                symbol=value.symbol,
+                side=value.side,
+                current_time=value.current_time,
+                m1_bars=value.m1_bars,
+                m5_bars=value.m5_bars,
+            )
+        )
+        self.assertEqual(decision.state, RevisedState.WAIT)
+        self.assertEqual(decision.reason, "M5_SETUP_UNAVAILABLE")
+
+    def test_m5_setup_persists_across_m1_bars_and_can_be_consumed(self) -> None:
+        m5 = list(flat_m5())
+        m5[-2] = bar(18, 4392.0, 4393.0, 4391.0, 4391.5, minutes=5)
+        m5[-1] = bar(19, 4391.4, 4395.0, 4391.0, 4394.5, minutes=5)
+        detector = RevisedSetupDetector(maximum_m1_bars=12)
+        first_time = m5[-1].time + timedelta(minutes=6)
+        setup_value = detector.update(tuple(m5), current_m1_time=first_time, side=RevisedSide.BUY)
+        self.assertIsNotNone(setup_value)
+        persisted = detector.update(
+            tuple(m5),
+            current_m1_time=first_time + timedelta(minutes=4),
+            side=RevisedSide.BUY,
+        )
+        self.assertEqual(persisted, setup_value)
+        detector.consume(RevisedSide.BUY, setup_value.trigger_time)
+        self.assertIsNone(
+            detector.update(
+                tuple(m5),
+                current_m1_time=first_time + timedelta(minutes=5),
+                side=RevisedSide.BUY,
+            )
+        )
+
+    def test_strict_room_rejects_weak_m5_pattern_but_accepts_engulfing(self) -> None:
+        weak = RevisedEngine().evaluate(
+            snapshot(entry=4395.0, stop=4390.0, pattern="BULL_MICRO_BREAK", votes=3)
+        )
+        strong = RevisedEngine().evaluate(
+            snapshot(entry=4395.0, stop=4390.0, pattern="BULL_ENGULFING", votes=3)
+        )
+        self.assertEqual(weak.state, RevisedState.WATCH)
+        self.assertEqual(strong.state, RevisedState.ENTRY_READY)
+
 
 class GoldMRevisedStorageTests(unittest.TestCase):
     def test_events_are_idempotent_and_outcome_is_shadow_only(self) -> None:
@@ -199,6 +248,27 @@ class GoldMRevisedStorageTests(unittest.TestCase):
             payload = json.loads(pending[-1]["payload_json"])
             self.assertEqual(payload["close_reason"], "TARGET")
             self.assertFalse((Path(directory) / "revised.db").stat().st_size == 0)
+
+    def test_replay_outcome_starts_after_entry_and_tracks_target(self) -> None:
+        opened = datetime(2026, 8, 18, 12, 1, tzinfo=TZ)
+        position = ReplayPosition(
+            side=RevisedSide.BUY,
+            trigger_time=opened - timedelta(minutes=5),
+            opened_at=opened,
+            entry=4392.0,
+            stop=4390.0,
+            target=4396.0,
+            first_obstacle_r=2.0,
+        )
+        active = {RevisedSide.BUY: position}
+        outcomes = []
+        same_bar = RevisedBar(opened - timedelta(minutes=1), 4392, 4397, 4389, 4393)
+        RevisedReplay._update_positions(active, outcomes, same_bar)
+        self.assertEqual(outcomes, [])
+        target_bar = RevisedBar(opened, 4393, 4396.5, 4392, 4396)
+        RevisedReplay._update_positions(active, outcomes, target_bar)
+        self.assertEqual(outcomes[0].result, "TARGET")
+        self.assertEqual(outcomes[0].outcome_r, 2.0)
 
 
 class GoldMRevisedSafetyTests(unittest.TestCase):

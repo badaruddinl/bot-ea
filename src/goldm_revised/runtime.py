@@ -10,6 +10,7 @@ from typing import Any
 from .engine import RevisedEngine, RevisedEngineConfig, RevisedSide
 from .mt5_source import RevisedMt5Config, RevisedMt5ReadOnlySource
 from .storage import RevisedStore
+from .setup import RevisedSetupDetector
 from .telegram import RevisedAdminNotifier
 from .tracker import RevisedShadowTracker
 
@@ -29,6 +30,9 @@ class RevisedShadowRuntime:
         if "strong_m5_patterns" in engine_config:
             engine_config["strong_m5_patterns"] = tuple(engine_config["strong_m5_patterns"])
         self.engine = RevisedEngine(RevisedEngineConfig(**engine_config))
+        self.detector = RevisedSetupDetector(
+            maximum_m1_bars=self.engine.config.range_max_bars
+        )
         mt5_config = dict(config.get("mt5", {}))
         offset = int(mt5_config.pop("server_utc_offset_minutes", 180))
         mt5_config["server_timezone"] = timezone(timedelta(minutes=offset))
@@ -55,10 +59,38 @@ class RevisedShadowRuntime:
         self._last_m1_time = latest_m1
         decisions = []
         for side in (RevisedSide.BUY, RevisedSide.SELL):
-            snapshot = self._with_m5_trigger(replace(latest, side=side), side)
+            setup = self.detector.update(
+                latest.m5_bars,
+                current_m1_time=latest_m1,
+                side=side,
+            )
+            if setup is None:
+                snapshot = replace(
+                    latest,
+                    side=side,
+                    m5_trigger_time=None,
+                    m5_pattern="NONE",
+                    m5_votes=0,
+                    confidence=0.0,
+                    level=None,
+                    invalidation=None,
+                )
+            else:
+                snapshot = replace(
+                    latest,
+                    side=side,
+                    m5_trigger_time=setup.trigger_time,
+                    m5_pattern=setup.pattern,
+                    m5_votes=setup.votes,
+                    confidence=setup.confidence,
+                    level=setup.level,
+                    invalidation=setup.invalidation,
+                )
             decision = self.engine.evaluate(snapshot)
             self.store.record_decision(decision)
             decisions.append(decision)
+            if setup is not None and decision.state.value in {"ENTRY_READY", "CANCELLED"}:
+                self.detector.consume(side, setup.trigger_time)
         self._deliver_pending()
         return {"new_bar": True, "latest_m1": latest_m1, "closed": closed, "decisions": decisions}
 
@@ -73,38 +105,6 @@ class RevisedShadowRuntime:
                 time.sleep(self.poll_seconds)
         finally:
             self.source.close()
-
-    def _with_m5_trigger(self, snapshot, side: RevisedSide):
-        bars = snapshot.m5_bars
-        latest = bars[-1]
-        previous = bars[-2] if len(bars) >= 2 else latest
-        if side is RevisedSide.BUY:
-            directional = latest.close > latest.open
-            micro = latest.close > previous.high
-            level = previous.high
-            invalidation = previous.low
-        else:
-            directional = latest.close < latest.open
-            micro = latest.close < previous.low
-            level = previous.low
-            invalidation = previous.high
-        pattern = (
-            "BULL_ENGULFING" if side is RevisedSide.BUY and directional and latest.open <= previous.close and latest.close >= previous.open
-            else "BEAR_ENGULFING" if side is RevisedSide.SELL and directional and latest.open >= previous.close and latest.close <= previous.open
-            else "BULL_MICRO_BREAK" if side is RevisedSide.BUY and directional and micro
-            else "BEAR_MICRO_BREAK" if side is RevisedSide.SELL and directional and micro
-            else "NONE"
-        )
-        votes = int(directional) + int(micro)
-        return replace(
-            snapshot,
-            m5_trigger_time=latest.time,
-            m5_pattern=pattern,
-            m5_votes=votes,
-            confidence=60.0 + votes * 10.0,
-            level=level,
-            invalidation=invalidation,
-        )
 
     def _deliver_pending(self) -> None:
         if not self.notifier.configured:
