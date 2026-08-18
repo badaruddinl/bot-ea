@@ -41,6 +41,25 @@ class ReplayOutcome:
 
 
 @dataclass(frozen=True, slots=True)
+class ReplayInspection:
+    requested_time: datetime
+    side: RevisedSide
+    setup_trigger_time: datetime
+    decision_time: datetime
+    state: RevisedState
+    reason: str
+    entry: float | None
+    stop: float | None
+    target: float | None
+    first_obstacle_r: float | None
+    touch_count: int
+    rejection_count: int
+    m1_votes: int
+    exhausted: bool
+    risk_source: str | None
+
+
+@dataclass(frozen=True, slots=True)
 class ReplayReport:
     strategy_id: str
     strategy_version: str
@@ -61,6 +80,7 @@ class ReplayReport:
     fallback_promotions: int
     duplicate_trigger_promotions: int
     outcomes: tuple[ReplayOutcome, ...]
+    inspections: tuple[ReplayInspection, ...]
 
     def as_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -79,6 +99,7 @@ class RevisedReplay:
         d1_bars: Sequence[RevisedBar],
         from_time: datetime,
         to_time: datetime,
+        inspect_times: Sequence[datetime] = (),
     ) -> ReplayReport:
         for bars in (m1_bars, m5_bars, h1_bars, d1_bars):
             _validate_order(bars)
@@ -89,6 +110,7 @@ class RevisedReplay:
         violation_count = 0
         signal_decisions: list[RevisedDecision] = []
         outcomes: list[ReplayOutcome] = []
+        inspections: list[ReplayInspection] = []
 
         for index, current in enumerate(m1_bars):
             close_time = current.time + timedelta(minutes=1)
@@ -125,6 +147,33 @@ class RevisedReplay:
                     stop=setup.invalidation,
                 )
                 decision = self.engine.evaluate(snapshot)
+                for requested_time in inspect_times:
+                    if abs(setup.trigger_time - requested_time) <= timedelta(minutes=5):
+                        risk_evidence = decision.evidence.get("risk", {})
+                        inspections.append(
+                            ReplayInspection(
+                                requested_time=requested_time,
+                                side=side,
+                                setup_trigger_time=setup.trigger_time,
+                                decision_time=decision.time,
+                                state=decision.state,
+                                reason=decision.reason,
+                                entry=decision.entry,
+                                stop=decision.stop,
+                                target=decision.target,
+                                first_obstacle_r=decision.first_obstacle_r,
+                                touch_count=decision.touch_count,
+                                rejection_count=decision.rejection_count,
+                                m1_votes=decision.m1_votes,
+                                exhausted=decision.exhausted,
+                                risk_source=(
+                                    str(risk_evidence.get("source"))
+                                    if isinstance(risk_evidence, dict)
+                                    and risk_evidence.get("source") is not None
+                                    else None
+                                ),
+                            )
+                        )
                 if decision.state is RevisedState.CANCELLED:
                     detector.consume(side, setup.trigger_time)
                     continue
@@ -208,6 +257,7 @@ class RevisedReplay:
             fallback_promotions=0,
             duplicate_trigger_promotions=duplicate_promotions,
             outcomes=tuple(outcomes),
+            inspections=tuple(inspections),
         )
 
     @staticmethod

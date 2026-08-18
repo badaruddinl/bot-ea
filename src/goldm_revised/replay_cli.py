@@ -33,10 +33,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--to-server-time", required=True)
     parser.add_argument("--server-utc-offset-minutes", type=int, default=180)
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--inspect-server-time", action="append", default=[])
     args = parser.parse_args(argv)
     zone = timezone(timedelta(minutes=args.server_utc_offset_minutes))
     start = _server_time(args.from_server_time, zone)
     end = _server_time(args.to_server_time, zone)
+    inspect_times = tuple(_server_time(value, zone) for value in args.inspect_server_time)
     if end <= start:
         raise SystemExit("replay end must be after start")
     config = load_runtime_config(args.config)
@@ -63,6 +65,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         d1_bars=data["d1"],
         from_time=start,
         to_time=end,
+        inspect_times=inspect_times,
     )
     payload = json.dumps(asdict(report), default=_json_default, sort_keys=True)
     if args.output:
