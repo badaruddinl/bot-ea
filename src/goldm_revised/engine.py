@@ -1022,6 +1022,14 @@ class RevisedEngine:
                 )
                 >= self.config.range_min_close_location
             ]
+            latest_m1 = self._m1_confirmation(snapshot.m1_bars, side)
+            if (
+                int(latest_m1.get("votes", 0)) == 3
+                and bool(latest_m1.get("micro_break"))
+            ):
+                latest_bar = snapshot.m1_bars[-1]
+                if latest_bar not in impulse_bars:
+                    impulse_bars.append(latest_bar)
             if impulse_bars:
                 impulse = impulse_bars[-1]
                 impulse_structural = (
