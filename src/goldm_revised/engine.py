@@ -441,11 +441,19 @@ class RevisedEngine:
                 retest_count=int(fibonacci.get("retests", 0)),
             )
         target = self._target(snapshot, side, entry, obstacle, atr_m5)
+        retest_count = int(fibonacci.get("retests", 0))
+        local_retest_scalper = bool(
+            side is RevisedSide.BUY
+            and obstacle_kind == "M5_SWING"
+            and obstacle_r is not None
+            and obstacle_r < 2.0
+            and retest_count >= 2
+        )
         confidence = min(100.0, max(0.0, float(snapshot.confidence)))
         confidence = min(confidence, self.config.promotion_confidence + 20.0)
         if strict_room and not strict_ok:
             confidence = min(confidence, self.config.promotion_confidence - 0.01)
-        observation_only = side is RevisedSide.SELL
+        observation_only = side is RevisedSide.SELL or local_retest_scalper
         return self._decision(
             snapshot,
             RevisedState.ENTRY_READY,
@@ -460,8 +468,9 @@ class RevisedEngine:
             confidence=confidence,
             mode=mode,
             observation_only=observation_only,
+            entry_profile="SCALPER" if local_retest_scalper else "CORE",
             validation_status="VALID",
-            retest_count=int(fibonacci.get("retests", 0)),
+            retest_count=retest_count,
             entry=entry,
             stop=stop,
             target=target,
@@ -640,10 +649,23 @@ class RevisedEngine:
             if trigger is None or bar.time > trigger
         )[-self.config.watch_max_m1_bars :]
         return any(
-            self._strong_m1_confirmation(
+            self._qualified_range_m1_confirmation(
                 self._m1_confirmation(bars[: index + 1], side)
             )
             for index in range(1, len(bars))
+        )
+
+    def _qualified_range_m1_confirmation(
+        self,
+        m1: dict[str, object],
+    ) -> bool:
+        return bool(
+            int(m1.get("votes", 0)) == 3
+            and bool(m1.get("micro_break"))
+            and float(m1.get("body_ratio", 0.0))
+            >= self.config.range_min_body_fraction
+            and float(m1.get("close_location", 0.0))
+            >= self.config.range_min_close_location
         )
 
     def _range_confirmed(self, stats: dict[str, object], m1: dict[str, object]) -> bool:
