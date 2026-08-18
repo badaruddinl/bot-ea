@@ -30,7 +30,20 @@ class GoldMOperatorLauncherTests(unittest.TestCase):
         self.assertIn("Start-GoldMScheduledTaskAndVerify", source)
         self.assertIn("Assert-GoldMScheduledTaskRunning", source)
         self.assertIn("Get-GoldMExactWorkerProcesses", source)
+        self.assertIn("-ExpectedArguments $contract.Arguments", source)
+        self.assertIn("Get-LegacyWorkerProcesses", source)
+        self.assertIn("Stop-LegacyWorkerProcessesAndWait", source)
+        self.assertIn('"Legacy PID :', source)
         self.assertIn("-Verb RunAs", source)
+
+    def test_worker_identity_includes_the_scheduled_action_arguments(self) -> None:
+        common = (SCRIPTS / "goldm-deployment-common.psm1").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("[string]$ExpectedArguments", common)
+        self.assertIn("$candidate.CommandLine", common)
+        self.assertIn("$ExpectedArguments.Trim()", common)
+        self.assertIn("-ExpectedArguments $expectedArguments", common)
 
     def test_clickable_update_preserves_safe_update_pipeline(self) -> None:
         batch = (SCRIPTS / "update-goldm-bot.bat").read_text(encoding="utf-8")

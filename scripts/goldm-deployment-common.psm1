@@ -1334,7 +1334,10 @@ function Stop-GoldMScheduledTaskAndWait {
 }
 
 function Get-GoldMExactWorkerProcesses {
-    param([Parameter(Mandatory = $true)][string]$ExpectedExecute)
+    param(
+        [Parameter(Mandatory = $true)][string]$ExpectedExecute,
+        [Parameter(Mandatory = $true)][string]$ExpectedArguments
+    )
     Assert-GoldMAbsolutePathInput -Path $ExpectedExecute -Label "worker executable"
     $exactPath = [System.IO.Path]::GetFullPath($ExpectedExecute)
     $leaf = [System.IO.Path]::GetFileName($exactPath)
@@ -1351,11 +1354,36 @@ function Get-GoldMExactWorkerProcesses {
             # Treat missing identity as ambiguous rather than silently green.
             throw "Cannot resolve executable identity for running $leaf process PID=$($candidate.ProcessId)"
         }
-        if ([string]::Equals(
+        if (-not [string]::Equals(
             [System.IO.Path]::GetFullPath([string]$candidate.ExecutablePath),
             $exactPath,
             [StringComparison]::OrdinalIgnoreCase
         )) {
+            continue
+        }
+        if (-not $candidate.CommandLine) {
+            throw "Cannot resolve command-line identity for running $leaf process PID=$($candidate.ProcessId)"
+        }
+        $commandLine = ([string]$candidate.CommandLine).Trim()
+        $actualArguments = $null
+        foreach ($prefix in @("`"$exactPath`"", $exactPath)) {
+            if (
+                $commandLine.Length -gt $prefix.Length -and
+                $commandLine.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase) -and
+                [char]::IsWhiteSpace($commandLine[$prefix.Length])
+            ) {
+                $actualArguments = $commandLine.Substring($prefix.Length).TrimStart()
+                break
+            }
+        }
+        if (
+            $null -ne $actualArguments -and
+            [string]::Equals(
+                [string]$actualArguments,
+                $ExpectedArguments.Trim(),
+                [StringComparison]::Ordinal
+            )
+        ) {
             $matches += $candidate
         }
     }
@@ -1372,6 +1400,7 @@ function Disable-GoldMScheduledTaskAndWait {
         throw "Scheduled Task must have exactly one action before maintenance: $TaskName"
     }
     $expectedExecute = [string]@($definition.Actions)[0].Execute
+    $expectedArguments = [string]@($definition.Actions)[0].Arguments
     # Disable first.  Stopping an enabled task leaves an AtLogOn trigger or a
     # Scheduler retry free to relaunch the worker while SQLite/files are being
     # mutated.  Only enter the maintenance window after both properties prove.
@@ -1384,7 +1413,9 @@ function Disable-GoldMScheduledTaskAndWait {
     do {
         $task = Get-ScheduledTask -TaskName $TaskName -ErrorAction Stop
         $workers = @(
-            Get-GoldMExactWorkerProcesses -ExpectedExecute $expectedExecute
+            Get-GoldMExactWorkerProcesses `
+                -ExpectedExecute $expectedExecute `
+                -ExpectedArguments $expectedArguments
         )
         if (
             [string]$task.State -eq "Disabled" -and
