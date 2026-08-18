@@ -150,6 +150,29 @@ python scripts/run-goldm-bear-mt5.py `
 CSV columns are `time,open,high,low,close` with optional `tick_volume` and
 `spread`. `spread` is a price amount, not points.
 
+## Initial broker-data reconciliation
+
+The read-only MT5 scan used the 156 M15 bars available from 17 August 04:00
+through 18 August 19:45 server time. After failed-breakout confirmation and
+psychological target capping were applied, the relevant 18 August plans were:
+
+| Signal bar | Entry | Resistance | Stop | Primary TP | Observed first event |
+| --- | ---: | ---: | ---: | ---: | --- |
+| 13:45 | 4395.55 | 4404.01 | 4404.98 | 4390.43 | TP at 14:00 |
+| 17:00 | 4393.51 | 4398.54 | 4400.64 | 4390.50 | TP at 17:15 |
+
+For the 17:00 setup, the secondary 4387.46 target was reached only around
+19:30. This supports the user's diagnosis: the SELL entry had useful edge, but
+using the deeper historical target as the only TP would have exposed a winning
+trade to an unnecessary reversal. The primary target is therefore capped just
+above psychological support 4390.
+
+The 13:45 setup was deliberately not entered on the first 13:00 rejection. A
+13:15 break above 4400 invalidated that early timing. The engine waited until
+13:45 closed below the preceding candle low, then its 4390.43 target was reached
+on the 14:00 candle. This is an in-sample reconciliation, not evidence of
+general profitability.
+
 ## Promotion gate
 
 The package must remain research-only until it has:
