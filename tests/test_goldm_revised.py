@@ -53,6 +53,8 @@ def test_august_five_evidence_contract_and_matching() -> None:
         entry=4400.0,
         stop=4395.0,
         target=4407.5,
+        first_obstacle=4407.5,
+        first_obstacle_kind="PSYCH_10",
         first_obstacle_r=1.5,
         touch_count=2,
         rejection_count=2,

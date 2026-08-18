@@ -54,6 +54,8 @@ class ReplayInspection:
     entry: float | None
     stop: float | None
     target: float | None
+    first_obstacle: float | None
+    first_obstacle_kind: str | None
     first_obstacle_r: float | None
     touch_count: int
     rejection_count: int
@@ -172,6 +174,8 @@ class RevisedReplay:
                                 entry=decision.entry,
                                 stop=decision.stop,
                                 target=decision.target,
+                                first_obstacle=decision.first_obstacle,
+                                first_obstacle_kind=decision.first_obstacle_kind,
                                 first_obstacle_r=decision.first_obstacle_r,
                                 touch_count=decision.touch_count,
                                 rejection_count=decision.rejection_count,
