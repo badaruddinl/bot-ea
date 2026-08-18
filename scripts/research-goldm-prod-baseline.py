@@ -66,6 +66,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--to-server-time", required=True)
     parser.add_argument("--server-utc-offset", default="+03:00")
     parser.add_argument("--latest-setups", type=int, default=12)
+    parser.add_argument("--compact-only", action="store_true")
     return parser
 
 
@@ -188,6 +189,29 @@ def load_evidence(
         grouped.values(),
         key=lambda group: group[-1]["generated_at_server"],
     )
+    compact_signal_fields = (
+        "entry",
+        "stop",
+        "target",
+        "projectedR",
+        "score",
+        "m5Votes",
+        "pattern",
+        "entryDistanceATR",
+        "stopDistanceATR",
+        "fibonacciReaction",
+    )
+    compact_outcome_fields = (
+        "result",
+        "outcomeR",
+        "mfeR",
+        "maeR",
+        "durationMinutes",
+        "entry",
+        "exitPrice",
+        "stop",
+        "target",
+    )
     return {
         "database": str(resolved),
         "range_server": {"from": start.isoformat(), "to": end.isoformat()},
@@ -199,6 +223,32 @@ def load_evidence(
             "sum": sum(outcome_r),
             "average": sum(outcome_r) / len(outcome_r) if outcome_r else None,
         },
+        "signals": [
+            {
+                "setup_id": event["setup_id"],
+                "side": event["side"],
+                "generated_at_server": event["generated_at_server"],
+                **{
+                    key: event["fields"][key]
+                    for key in compact_signal_fields
+                    if key in event["fields"]
+                },
+            }
+            for event in signals
+        ],
+        "outcomes": [
+            {
+                "setup_id": event["setup_id"],
+                "side": event["side"],
+                "generated_at_server": event["generated_at_server"],
+                **{
+                    key: event["fields"][key]
+                    for key in compact_outcome_fields
+                    if key in event["fields"]
+                },
+            }
+            for event in outcomes
+        ],
         "setups": ordered_setups,
     }
 
@@ -218,6 +268,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             server_timezone=server_timezone,
         )
         payload["setups"] = payload["setups"][-max(1, args.latest_setups) :]
+        if args.compact_only:
+            payload.pop("setups", None)
         print(json.dumps(payload, sort_keys=True))
         return 0
     except (OSError, RuntimeError, sqlite3.Error, ValueError) as exc:

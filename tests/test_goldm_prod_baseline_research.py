@@ -85,6 +85,7 @@ class GoldMProductionBaselineResearchTests(unittest.TestCase):
 
         encoded = json.dumps(evidence)
         self.assertEqual(evidence["signal_side_counts"], {"BUY": 1})
+        self.assertEqual(evidence["signals"][0]["target"], "4405.00")
         self.assertIn('"target": "4405.00"', encoded)
         self.assertNotIn("108098316", encoded)
         self.assertNotIn("secretish", encoded)
