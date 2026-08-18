@@ -294,12 +294,11 @@ class RevisedMt5HistoryLoader:
             raise RuntimeError(f"MT5 symbol selection failed: {mt5.last_error()}")
         info = mt5.symbol_info(symbol)
         point = float(info.point) if info is not None else 0.01
-        source_start = start - timedelta(days=warmup_days)
         return {
-            "m1": self._rates(symbol, mt5.TIMEFRAME_M1, source_start, end, server_timezone, point),
-            "m5": self._rates(symbol, mt5.TIMEFRAME_M5, source_start, end, server_timezone, point),
-            "h1": self._rates(symbol, mt5.TIMEFRAME_H1, source_start, end, server_timezone, point),
-            "d1": self._rates(symbol, mt5.TIMEFRAME_D1, source_start, end, server_timezone, point),
+            "m1": self._rates(symbol, mt5.TIMEFRAME_M1, start - timedelta(days=2), end, server_timezone, point),
+            "m5": self._rates(symbol, mt5.TIMEFRAME_M5, start - timedelta(days=10), end, server_timezone, point),
+            "h1": self._rates(symbol, mt5.TIMEFRAME_H1, start - timedelta(days=60), end, server_timezone, point),
+            "d1": self._rates(symbol, mt5.TIMEFRAME_D1, start - timedelta(days=warmup_days), end, server_timezone, point),
         }
 
     def _rates(self, symbol: str, timeframe: int, start: datetime, end: datetime, server_timezone: timezone, point: float) -> list[RevisedBar]:
