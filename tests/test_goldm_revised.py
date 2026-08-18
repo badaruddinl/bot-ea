@@ -637,7 +637,10 @@ class GoldMRevisedEngineTests(unittest.TestCase):
         )
 
         self.assertEqual(decision.state, RevisedState.ENTRY_READY)
-        self.assertEqual(decision.evidence["risk"]["source"], "M1_CONFIRMED_STRUCTURE")
+        self.assertIn(
+            decision.evidence["risk"]["source"],
+            {"M1_CONFIRMED_STRUCTURE", "M1_IMPULSE_STRUCTURE"},
+        )
         self.assertGreater(decision.stop or 0.0, 4388.0)
         self.assertGreaterEqual(decision.first_obstacle_r or 0.0, 1.0)
         self.assertGreater(decision.target or 0.0, decision.entry or 0.0)

@@ -1014,13 +1014,13 @@ class RevisedEngine:
                     if side is RevisedSide.BUY
                     else bar.close < bar.open
                 )
-                and bar.body / bar.range >= self.config.strong_m1_body_ratio
+                and bar.body / bar.range >= self.config.range_min_body_fraction
                 and (
                     (bar.close - bar.low) / bar.range
                     if side is RevisedSide.BUY
                     else (bar.high - bar.close) / bar.range
                 )
-                >= self.config.strong_m1_close_location
+                >= self.config.range_min_close_location
             ]
             if impulse_bars:
                 impulse = impulse_bars[-1]
