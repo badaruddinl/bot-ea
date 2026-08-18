@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import deque
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta, timezone
 from importlib import import_module
@@ -121,18 +122,44 @@ class RevisedReplay:
         signal_decisions: list[RevisedDecision] = []
         outcomes: list[ReplayOutcome] = []
         inspections: list[ReplayInspection] = []
+        m1_window: deque[RevisedBar] = deque(maxlen=160)
+        m5_window: deque[RevisedBar] = deque(maxlen=120)
+        h1_window: deque[RevisedBar] = deque(maxlen=120)
+        d1_window: deque[RevisedBar] = deque(maxlen=120)
+        m5_cursor = 0
+        h1_cursor = 0
+        d1_cursor = 0
 
-        for index, current in enumerate(m1_bars):
+        for current in m1_bars:
             close_time = current.time + timedelta(minutes=1)
-            if close_time < from_time:
-                continue
             if close_time >= to_time:
                 break
+            m1_window.append(current)
+            while (
+                m5_cursor < len(m5_bars)
+                and m5_bars[m5_cursor].time + timedelta(minutes=5) <= close_time
+            ):
+                m5_window.append(m5_bars[m5_cursor])
+                m5_cursor += 1
+            while (
+                h1_cursor < len(h1_bars)
+                and h1_bars[h1_cursor].time + timedelta(hours=1) <= close_time
+            ):
+                h1_window.append(h1_bars[h1_cursor])
+                h1_cursor += 1
+            while (
+                d1_cursor < len(d1_bars)
+                and d1_bars[d1_cursor].time + timedelta(days=1) <= close_time
+            ):
+                d1_window.append(d1_bars[d1_cursor])
+                d1_cursor += 1
+            if close_time < from_time:
+                continue
             self._update_positions(active, outcomes, current)
-            m1_history = tuple(m1_bars[: index + 1])
-            m5_history = tuple(bar for bar in m5_bars if bar.time + timedelta(minutes=5) <= close_time)
-            h1_history = tuple(bar for bar in h1_bars if bar.time + timedelta(hours=1) <= close_time)
-            d1_history = tuple(bar for bar in d1_bars if bar.time + timedelta(days=1) <= close_time)
+            m1_history = tuple(m1_window)
+            m5_history = tuple(m5_window)
+            h1_history = tuple(h1_window)
+            d1_history = tuple(d1_window)
             if len(m1_history) < self.engine.config.atr_period + 1 or len(m5_history) < self.engine.config.atr_period + 1:
                 continue
             for side in (RevisedSide.BUY, RevisedSide.SELL):
@@ -143,10 +170,10 @@ class RevisedReplay:
                     symbol=self.engine.config.symbol,
                     side=side,
                     current_time=current.time,
-                    m1_bars=m1_history[-160:],
-                    m5_bars=m5_history[-120:],
-                    h1_bars=h1_history[-120:],
-                    d1_bars=d1_history[-120:],
+                    m1_bars=m1_history,
+                    m5_bars=m5_history,
+                    h1_bars=h1_history,
+                    d1_bars=d1_history,
                     m5_trigger_time=setup.trigger_time,
                     m5_pattern=setup.pattern,
                     m5_votes=setup.votes,

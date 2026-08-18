@@ -64,6 +64,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
     finally:
         loader.close()
+    if not data["m1"] or data["m1"][0].time > start + timedelta(days=7):
+        earliest = data["m1"][0].time if data["m1"] else None
+        raise SystemExit(
+            "MT5 M1 history does not cover requested replay start: "
+            f"requested={start.isoformat()} earliest={earliest}"
+        )
     report = RevisedReplay(engine).run(
         m1_bars=data["m1"],
         m5_bars=data["m5"],
@@ -75,6 +81,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         inspect_tolerance_minutes=30 if evidence_expectations else 5,
     )
     report_payload = asdict(report)
+    report_payload["history_coverage"] = {
+        timeframe: {
+            "first": bars[0].time if bars else None,
+            "last": bars[-1].time if bars else None,
+            "bars": len(bars),
+        }
+        for timeframe, bars in data.items()
+    }
     if evidence_expectations:
         report_payload["evidence_validation"] = validate_evidence(
             evidence_expectations,
