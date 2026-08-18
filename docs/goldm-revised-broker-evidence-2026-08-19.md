@@ -1,4 +1,4 @@
-# GOLDM_REVISED 0.3.0 — broker chart evidence
+# GOLDM_REVISED 0.4.0 — broker chart evidence
 
 ## Scope
 
@@ -18,15 +18,15 @@ Production `GOLDM_SNIPER_PARITY` and `goldm_bear` remain unchanged.
 3. **18 August about 03:15 server — SELL candidate.**
    A BUY micro-break at the 4434–4435 exhaustion area must expire when the
    bearish M5 reversal closes. The SELL hypothesis is evaluated independently.
-4. **18 August about 09:15 server — early-structure BUY.**
+4. **18 August about 09:15 server — SCALPER BUY.**
    The direction was correct but the late entry had only about 0.28R room. It
-   is valid only when a causal confirmed M1 structural stop and earlier entry
-   recalculate first-obstacle room to at least 1R. The 1R gate is not relaxed.
+   is labeled `SCALPER`, tracked as observation-only, and excluded from the
+   official core-BUY forward gate.
 5. **18 August about 12:45 server — normal BUY.**
    The approximately 1.66R room remains eligible, with the target buffered
    before the 4400–4404 psychological/resistance cluster.
 
-## Version 0.3.0 behavior
+## Version 0.4.0 behavior
 
 - A newly closed opposite M5 setup immediately expires the stale active side.
 - The opposite setup is retained and builds a new causal M1 window; SELL is
@@ -40,5 +40,11 @@ Production `GOLDM_SNIPER_PARITY` and `goldm_bear` remain unchanged.
   obstacle. No target or threshold is stretched to manufacture a valid trade.
 - Strong M5 rejection and three-candle morning/evening-star patterns are
   recognized symmetrically. A bare micro-break remains non-strong.
+- Core BUY signals retain the 1R first-obstacle gate. A separately labelled
+  `SCALPER` BUY may be shadow-tracked from 0.25R, requires a strong M5 pattern
+  plus all three M1 votes and a micro-break, and never sends an admin entry
+  notification or enters core forward metrics.
+- Core target buffering is increased from 0.08 ATR to 0.12 ATR so evidence
+  number 5 targets slightly below the resistance/psychological cluster.
 
 These behaviors are regression-tested before any broker replay or forward test.

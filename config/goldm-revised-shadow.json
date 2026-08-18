@@ -1,6 +1,6 @@
 {
   "strategy_id": "GOLDM_REVISED",
-  "strategy_version": "0.3.0",
+  "strategy_version": "0.4.0",
   "runtime": {
     "poll_seconds": 30
   },
@@ -42,7 +42,9 @@
     "exhaustion_min_signals": 2,
     "first_obstacle_reject_r": 1.0,
     "first_obstacle_strict_r": 1.5,
-    "strict_target_buffer_atr": 0.08,
+    "scalper_min_obstacle_r": 0.25,
+    "strict_target_buffer_atr": 0.12,
+    "scalper_target_buffer_atr": 0.03,
     "stop_buffer_atr": 0.18,
     "adaptive_stop_buffer_atr": 0.10,
     "adaptive_stop_min_risk_atr": 0.35,

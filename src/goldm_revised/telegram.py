@@ -58,6 +58,7 @@ class RevisedAdminNotifier:
             "🧪 GOLDM_REVISED ENTRY READY\n"
             f"• Setup: {payload.get('setup_id')}\n"
             f"• Side: {payload.get('side')}\n"
+            f"• Profile: {payload.get('entry_profile', 'CORE')}\n"
             f"• Entry/SL/TP: {payload.get('entry')} / {payload.get('stop')} / {payload.get('target')}\n"
             f"• Obstacle: {payload.get('first_obstacle')} ({payload.get('first_obstacle_r')}R)\n"
             f"• Mode: {payload.get('mode')}\n"

@@ -48,6 +48,7 @@ class ReplayInspection:
     decision_time: datetime
     state: RevisedState
     reason: str
+    entry_profile: str
     entry: float | None
     stop: float | None
     target: float | None
@@ -67,7 +68,9 @@ class ReplayReport:
     to_time: datetime
     signals: int
     buy_signals: int
+    core_buy_signals: int
     sell_signals: int
+    scalper_signals: int
     resolved: int
     total_r: float
     expectancy_r: float
@@ -158,6 +161,7 @@ class RevisedReplay:
                                 decision_time=decision.time,
                                 state=decision.state,
                                 reason=decision.reason,
+                                entry_profile=decision.entry_profile,
                                 entry=decision.entry,
                                 stop=decision.stop,
                                 target=decision.target,
@@ -244,7 +248,14 @@ class RevisedReplay:
             to_time=to_time,
             signals=len(signal_decisions),
             buy_signals=sum(decision.side is RevisedSide.BUY for decision in signal_decisions),
+            core_buy_signals=sum(
+                decision.side is RevisedSide.BUY and not decision.observation_only
+                for decision in signal_decisions
+            ),
             sell_signals=sum(decision.side is RevisedSide.SELL for decision in signal_decisions),
+            scalper_signals=sum(
+                decision.entry_profile == "SCALPER" for decision in signal_decisions
+            ),
             resolved=len(outcomes),
             total_r=total_r,
             expectancy_r=total_r / len(outcomes) if outcomes else 0.0,

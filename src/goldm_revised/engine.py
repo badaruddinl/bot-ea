@@ -9,7 +9,7 @@ from typing import Sequence
 
 
 STRATEGY_ID = "GOLDM_REVISED"
-STRATEGY_VERSION = "0.3.0"
+STRATEGY_VERSION = "0.4.0"
 
 
 class RevisedSide(str, Enum):
@@ -109,7 +109,9 @@ class RevisedEngineConfig:
     exhaustion_min_signals: int = 2
     first_obstacle_reject_r: float = 1.0
     first_obstacle_strict_r: float = 1.5
-    strict_target_buffer_atr: float = 0.08
+    scalper_min_obstacle_r: float = 0.25
+    strict_target_buffer_atr: float = 0.12
+    scalper_target_buffer_atr: float = 0.03
     stop_buffer_atr: float = 0.18
     adaptive_stop_buffer_atr: float = 0.10
     adaptive_stop_min_risk_atr: float = 0.35
@@ -153,6 +155,10 @@ class RevisedEngineConfig:
             raise ValueError("exhaustion_min_signals must be positive")
         if self.first_obstacle_reject_r <= 0 or self.first_obstacle_strict_r <= self.first_obstacle_reject_r:
             raise ValueError("first-obstacle R thresholds are invalid")
+        if not 0 < self.scalper_min_obstacle_r < self.first_obstacle_reject_r:
+            raise ValueError("scalper obstacle threshold is invalid")
+        if self.scalper_target_buffer_atr < 0:
+            raise ValueError("scalper target buffer is invalid")
         if self.price_tick <= 0 or self.spread_floor < 0:
             raise ValueError("price tick/spread floor is invalid")
         if self.adaptive_stop_buffer_atr < 0 or self.adaptive_stop_min_risk_atr <= 0:
@@ -169,6 +175,7 @@ class RevisedDecision:
     side: RevisedSide
     state: RevisedState
     action: RevisedAction
+    entry_profile: str
     observation_only: bool
     time: datetime
     reason: str
@@ -238,7 +245,40 @@ class RevisedEngine:
             and snapshot.m5_votes >= self.config.minimum_m5_votes
             and range_ok
         )
+        scalper_ok = bool(
+            side is RevisedSide.BUY
+            and obstacle_r is not None
+            and self.config.scalper_min_obstacle_r <= obstacle_r < self.config.first_obstacle_reject_r
+            and strong_pattern
+            and int(m1.get("votes", 0)) == 3
+            and bool(m1.get("micro_break"))
+            and not bool(range_stats.get("acceptance"))
+        )
         if obstacle_r is None or obstacle_r < self.config.first_obstacle_reject_r:
+            if scalper_ok:
+                target = self._target(snapshot, side, entry, obstacle, atr_m5, scalper=True)
+                if target is not None and target > entry:
+                    return self._decision(
+                        snapshot,
+                        RevisedState.ENTRY_READY,
+                        RevisedAction.ENTER,
+                        "SCALPER_FIRST_OBSTACLE_ENTRY",
+                        confidence=min(snapshot.confidence, self.config.promotion_confidence - 0.01),
+                        mode=ConfirmationMode.RANGE,
+                        observation_only=True,
+                        entry_profile="SCALPER",
+                        entry=entry,
+                        stop=stop,
+                        target=target,
+                        obstacle=obstacle,
+                        obstacle_kind=obstacle_kind,
+                        obstacle_r=obstacle_r,
+                        range_stats=range_stats,
+                        m1=m1,
+                        momentum=momentum,
+                        exhausted=exhaustion,
+                        risk_stats=risk_stats,
+                    )
             return self._decision(
                 snapshot,
                 RevisedState.CANCELLED,
@@ -544,13 +584,18 @@ class RevisedEngine:
             return _normalize(snapshot.stop, self.config.price_tick)
         return _normalize(entry - risk if snapshot.side is RevisedSide.BUY else entry + risk, self.config.price_tick)
 
-    def _target(self, snapshot: RevisedSnapshot, side: RevisedSide, entry: float, obstacle: float | None, atr: float) -> float | None:
+    def _target(self, snapshot: RevisedSnapshot, side: RevisedSide, entry: float, obstacle: float | None, atr: float, *, scalper: bool = False) -> float | None:
         if obstacle is None:
             return None
-        buffer = max(self.config.spread_floor, atr * self.config.strict_target_buffer_atr)
+        buffer_atr = (
+            self.config.scalper_target_buffer_atr
+            if scalper
+            else self.config.strict_target_buffer_atr
+        )
+        buffer = max(self.config.spread_floor, atr * buffer_atr)
         return _normalize(obstacle - buffer if side is RevisedSide.BUY else obstacle + buffer, self.config.price_tick)
 
-    def _decision(self, snapshot: RevisedSnapshot, state: RevisedState, action: RevisedAction, reason: str, *, confidence: float | None = None, mode: ConfirmationMode | None = None, exhausted: bool = False, observation_only: bool | None = None, entry: float | None = None, stop: float | None = None, target: float | None = None, obstacle: float | None = None, obstacle_kind: str | None = None, obstacle_r: float | None = None, range_stats: dict[str, object] | None = None, m1: dict[str, object] | None = None, momentum: bool = False, risk_stats: dict[str, object] | None = None) -> RevisedDecision:
+    def _decision(self, snapshot: RevisedSnapshot, state: RevisedState, action: RevisedAction, reason: str, *, confidence: float | None = None, mode: ConfirmationMode | None = None, exhausted: bool = False, observation_only: bool | None = None, entry_profile: str = "CORE", entry: float | None = None, stop: float | None = None, target: float | None = None, obstacle: float | None = None, obstacle_kind: str | None = None, obstacle_r: float | None = None, range_stats: dict[str, object] | None = None, m1: dict[str, object] | None = None, momentum: bool = False, risk_stats: dict[str, object] | None = None) -> RevisedDecision:
         range_stats = range_stats or {}
         m1 = m1 or {}
         evidence = {"range": range_stats, "m1": m1, "momentum": momentum, "m5_pattern": snapshot.m5_pattern, "m5_votes": snapshot.m5_votes, "risk": risk_stats or {}}
@@ -561,6 +606,7 @@ class RevisedEngine:
             side=snapshot.side,
             state=state,
             action=action,
+            entry_profile=entry_profile,
             observation_only=(snapshot.side is RevisedSide.SELL if observation_only is None else observation_only),
             time=snapshot.current_time,
             reason=reason,

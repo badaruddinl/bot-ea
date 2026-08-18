@@ -116,7 +116,7 @@ class GoldMRevisedEngineTests(unittest.TestCase):
         self.assertNotIn("goldm_signal", source)
         self.assertNotIn("goldm_bear", source)
         self.assertEqual(module.STRATEGY_ID, "GOLDM_REVISED")
-        self.assertEqual(module.STRATEGY_VERSION, "0.3.0")
+        self.assertEqual(module.STRATEGY_VERSION, "0.4.0")
 
     def test_buy_range_requires_repeated_rejections_and_enters(self) -> None:
         decision = RevisedEngine().evaluate(snapshot())
@@ -144,10 +144,31 @@ class GoldMRevisedEngineTests(unittest.TestCase):
         self.assertEqual(decision.action, RevisedAction.ENTER)
 
     def test_first_obstacle_below_one_r_cancels_even_high_confidence(self) -> None:
-        decision = RevisedEngine().evaluate(snapshot(entry=4399.8, stop=4399.0))
+        decision = RevisedEngine().evaluate(snapshot(entry=4399.9, stop=4399.0))
         self.assertEqual(decision.state, RevisedState.CANCELLED)
         self.assertEqual(decision.reason, "FIRST_OBSTACLE_ROOM_BELOW_1R")
         self.assertLess(decision.confidence, 60.0)
+
+    def test_sub_one_r_buy_is_labeled_scalper_and_excluded_from_core(self) -> None:
+        decision = RevisedEngine().evaluate(snapshot(entry=4399.7, stop=4398.7))
+
+        self.assertEqual(decision.state, RevisedState.ENTRY_READY)
+        self.assertEqual(decision.entry_profile, "SCALPER")
+        self.assertTrue(decision.observation_only)
+        self.assertEqual(decision.reason, "SCALPER_FIRST_OBSTACLE_ENTRY")
+        self.assertLess(decision.first_obstacle_r or 1.0, 1.0)
+        self.assertGreater(decision.target or 0.0, decision.entry or 0.0)
+        self.assertLess(decision.target or 0.0, decision.first_obstacle or 0.0)
+
+    def test_core_buy_target_is_lowered_further_before_obstacle(self) -> None:
+        earlier = RevisedEngine(
+            RevisedEngineConfig(strict_target_buffer_atr=0.08)
+        ).evaluate(snapshot())
+        revised = RevisedEngine().evaluate(snapshot())
+
+        self.assertEqual(revised.entry_profile, "CORE")
+        self.assertEqual(revised.state, RevisedState.ENTRY_READY)
+        self.assertLess(revised.target or 0.0, earlier.target or 0.0)
 
     def test_momentum_can_bypass_range_when_room_is_large(self) -> None:
         m5 = tuple(
