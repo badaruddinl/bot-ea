@@ -1,0 +1,58 @@
+{
+  "strategy_id": "GOLDM_REVISED",
+  "strategy_version": "0.1.0",
+  "runtime": {
+    "poll_seconds": 30
+  },
+  "mt5": {
+    "symbol": "GOLD.i#",
+    "server_utc_offset_minutes": 180,
+    "m1_count": 160,
+    "m5_count": 120,
+    "h1_count": 120,
+    "d1_count": 120,
+    "max_attempts": 3,
+    "initial_backoff_seconds": 1.0
+  },
+  "storage": {
+    "db_path": "runtime_data/goldm_revised_shadow.db",
+    "audit_path": "runtime_data/goldm_revised_shadow.jsonl"
+  },
+  "engine": {
+    "symbol": "GOLD.i#",
+    "price_tick": 0.01,
+    "spread_floor": 0.20,
+    "atr_period": 14,
+    "range_min_bars": 4,
+    "range_max_bars": 12,
+    "range_touch_separation_bars": 2,
+    "range_retreat_fraction": 0.25,
+    "range_min_rejections": 2,
+    "range_min_excursion_fraction": 0.50,
+    "range_min_body_fraction": 0.35,
+    "range_min_close_location": 0.65,
+    "acceptance_close_count": 2,
+    "acceptance_window": 4,
+    "acceptance_displacement_atr": 0.50,
+    "momentum_bars": 3,
+    "momentum_min_displacement_atr": 0.80,
+    "momentum_min_body_fraction": 0.55,
+    "momentum_close_location": 0.75,
+    "momentum_max_opposite_wick_fraction": 1.0,
+    "exhaustion_min_signals": 2,
+    "first_obstacle_reject_r": 1.0,
+    "first_obstacle_strict_r": 1.5,
+    "strict_target_buffer_atr": 0.08,
+    "stop_buffer_atr": 0.18,
+    "psychological_steps": [10.0, 50.0, 100.0],
+    "swing_span": 2,
+    "minimum_m5_votes": 2,
+    "strong_m5_patterns": [
+      "BULL_ENGULFING",
+      "BEAR_ENGULFING",
+      "BULL_MORNING_STAR",
+      "BEAR_EVENING_STAR"
+    ],
+    "promotion_confidence": 60.0
+  }
+}
