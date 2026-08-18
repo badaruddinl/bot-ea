@@ -15,16 +15,30 @@ param(
     [string]$OosName = "oos_2026_aug_01_11",
     [ValidateSet('Development', 'Validation', 'Diagnostic', 'BlindOos')]
     [string]$BacktestPurpose = 'Diagnostic',
+    [ValidateSet('DEVELOPMENT_SELECTION', 'LOCKED_LEGACY_VALIDATION', 'DIAGNOSTIC_ONLY', 'BLIND_OOS')]
+    [string]$BacktestStatisticalClassification = 'DIAGNOSTIC_ONLY',
     [ValidateSet('Development', 'Validation', 'Diagnostic', 'BlindOos')]
     [string]$OosPurpose = 'Diagnostic',
+    [ValidateSet('DEVELOPMENT_SELECTION', 'LOCKED_LEGACY_VALIDATION', 'DIAGNOSTIC_ONLY', 'BLIND_OOS')]
+    [string]$OosStatisticalClassification = 'DIAGNOSTIC_ONLY',
     [switch]$CloseRunningTerminal
 )
 
 $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot 'goldm-research-guard.ps1')
 
-Assert-GoldMResearchRange -FromDate $BacktestFrom -ToDate $BacktestTo -Purpose $BacktestPurpose -Label $BacktestName
-Assert-GoldMResearchRange -FromDate $OosFrom -ToDate $OosTo -Purpose $OosPurpose -Label $OosName
+Assert-GoldMResearchRange `
+    -FromDate $BacktestFrom `
+    -ToDate $BacktestTo `
+    -Purpose $BacktestPurpose `
+    -StatisticalClassification $BacktestStatisticalClassification `
+    -Label $BacktestName
+Assert-GoldMResearchRange `
+    -FromDate $OosFrom `
+    -ToDate $OosTo `
+    -Purpose $OosPurpose `
+    -StatisticalClassification $OosStatisticalClassification `
+    -Label $OosName
 
 function Resolve-TerminalDataPath {
     param([string]$ExplicitPath)

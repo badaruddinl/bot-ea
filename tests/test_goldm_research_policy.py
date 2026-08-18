@@ -40,15 +40,15 @@ class GoldMResearchPolicyTests(unittest.TestCase):
             purpose=ResearchPurpose.DIAGNOSTIC,
         )
         blind = assert_research_range(
-            "2026-08-12",
-            "2026-08-13",
+            "2026-08-19",
+            "2026-08-20",
             purpose=ResearchPurpose.BLIND_OOS,
         )
 
         self.assertEqual(development.end, validation.start)
         self.assertEqual(validation.end.date().isoformat(), "2026-02-28")
         self.assertEqual(after_quarantine.start.date().isoformat(), "2026-07-01")
-        self.assertEqual(blind.start.date().isoformat(), "2026-08-12")
+        self.assertEqual(blind.start.date().isoformat(), "2026-08-19")
         self.assertIs(
             development.statistical_classification,
             StatisticalClassification.DEVELOPMENT_SELECTION,
@@ -110,7 +110,7 @@ class GoldMResearchPolicyTests(unittest.TestCase):
         for start, end in (
             ("2022-02-28", "2022-03-01"),
             ("2024-02-28", "2024-03-01"),
-            ("2026-08-11", "2026-08-13"),
+            ("2026-08-18", "2026-08-20"),
         ):
             with self.subTest(start=start, end=end):
                 with self.assertRaisesRegex(ValueError, "known-exposure"):
@@ -165,6 +165,9 @@ class GoldMResearchPolicyTests(unittest.TestCase):
                     source.index("Assert-GoldMResearchRange"),
                     source.index("Start-Process"),
                 )
+                if name == "run-mt5-goldm-sniper-backtests.ps1":
+                    self.assertIn("BacktestStatisticalClassification", source)
+                    self.assertIn("OosStatisticalClassification", source)
 
     def test_repository_contains_no_static_executable_mt5_tester_ini(self) -> None:
         config_root = REPO_ROOT / "mt5" / "tester_configs"

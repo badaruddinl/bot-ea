@@ -5,6 +5,7 @@ import json
 import sqlite3
 import tempfile
 import unittest
+from decimal import Decimal, InvalidOperation
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -21,6 +22,42 @@ SPEC.loader.exec_module(MODULE)
 
 
 class GoldMProductionBaselineResearchTests(unittest.TestCase):
+    def test_production_tester_set_matches_the_sealed_input_contract(self) -> None:
+        repo = Path(__file__).resolve().parents[1]
+        contract = json.loads(
+            (repo / "config" / "goldm-production-ea-inputs.json").read_text(
+                encoding="utf-8"
+            )
+        )["inputs"]
+        set_values = dict(
+            line.split("=", 1)
+            for line in (
+                repo
+                / "mt5"
+                / "Profiles"
+                / "Tester"
+                / "GoldMSniperParity_GOLD_i_PRODUCTION.set"
+            ).read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        )
+
+        def normalized(value: str):
+            lowered = value.lower()
+            if lowered in {"true", "false"}:
+                return lowered
+            try:
+                return Decimal(value)
+            except InvalidOperation:
+                return value
+
+        research_run_id = set_values.pop("InpResearchRunId")
+        self.assertEqual(research_run_id, "baseline_prod_diag_20260818")
+        self.assertEqual(set(set_values), set(contract))
+        self.assertEqual(
+            {key: normalized(value) for key, value in set_values.items()},
+            {key: normalized(value) for key, value in contract.items()},
+        )
+
     def test_export_is_read_only_and_omits_account_identity(self) -> None:
         server_timezone = timezone(timedelta(hours=3))
         with tempfile.TemporaryDirectory() as temp_dir:

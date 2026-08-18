@@ -27,8 +27,8 @@ All intervals use half-open semantics: `[from, to)`.
 | Development | `[2022-02-28, 2024-02-28)` | Candidate construction, ablation, and selection |
 | Locked legacy validation | `[2024-02-28, 2026-02-28)` | Previously inspected at aggregate v1.7 level; regression/corroboration only, never claimed as blind v1.8 OOS |
 | Protected quarantine | `[2026-02-28, 2026-07-01)` | No read, mining, backtest, tuning, validation, OOS, or diagnostics |
-| Known/exposed history | `[2026-07-01, 2026-08-12)` | Diagnostics and regression only; never candidate selection or blind OOS |
-| New blind OOS | Starts no earlier than `2026-08-12` | Accumulating forward/demo evidence; not enough by date alone |
+| Known/exposed history | `[2026-07-01, 2026-08-19)` | Diagnostics and regression only; never candidate selection or blind OOS |
+| New blind OOS | Starts no earlier than `2026-08-19` | Accumulating forward/demo evidence; not enough by date alone |
 
 The machine-readable authority is `config/goldm-research-policy.json`. Both PowerShell runners and Python data readers must validate against it before creating output, initializing MT5, or starting a tester process.
 
@@ -506,7 +506,7 @@ At most two already-frozen finalists per research family may be run there once a
 
 Validation is pass/fail; it is not a new tuning set. A validation failure cannot be repaired by changing thresholds and rerunning the same validation as if it were still unseen. Any exploratory follow-up is labelled post-validation analysis and cannot claim confirmatory status.
 
-Until enough observations accumulate strictly after `2026-08-12`, candidate selection relies on nested/segmented development evidence and the final conclusion must explicitly say that a new blind OOS result is not yet available.
+Until enough observations accumulate strictly after `2026-08-19`, candidate selection relies on nested/segmented development evidence and the final conclusion must explicitly say that a new blind OOS result is not yet available.
 
 Minimum validation gates mirror development and additionally require:
 
