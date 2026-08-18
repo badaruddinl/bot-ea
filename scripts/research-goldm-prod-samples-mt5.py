@@ -73,6 +73,69 @@ def _average_true_range(bars: Sequence[dict[str, float]], period: int = 14) -> f
     return sum(true_ranges) / len(true_ranges)
 
 
+def _rsi(closes: Sequence[float], period: int = 7) -> float:
+    if len(closes) < period + 1:
+        return 0.0
+    changes = [current - previous for previous, current in zip(closes, closes[1:])]
+    gains = [max(change, 0.0) for change in changes]
+    losses = [max(-change, 0.0) for change in changes]
+    average_gain = sum(gains[:period]) / period
+    average_loss = sum(losses[:period]) / period
+    for gain, loss in zip(gains[period:], losses[period:]):
+        average_gain = (average_gain * (period - 1) + gain) / period
+        average_loss = (average_loss * (period - 1) + loss) / period
+    if average_loss <= 0.0:
+        return 100.0 if average_gain > 0.0 else 50.0
+    relative_strength = average_gain / average_loss
+    return 100.0 - 100.0 / (1.0 + relative_strength)
+
+
+def _m1_confirmation_features(
+    bars: Sequence[dict[str, Any]],
+    *,
+    side: str,
+) -> dict[str, Any]:
+    if len(bars) < 2:
+        return {}
+    latest = bars[-1]
+    previous = bars[-2]
+    full_range = latest["high"] - latest["low"]
+    body = abs(latest["close"] - latest["open"])
+    rsi_value = _rsi([bar["close"] for bar in bars])
+    if side == "BUY":
+        directional = latest["close"] > latest["open"]
+        micro_break = latest["close"] > previous["high"]
+        close_location = (
+            (latest["close"] - latest["low"]) / full_range
+            if full_range > 0.0
+            else 0.0
+        )
+        rsi_evidence = rsi_value >= 50.0
+    else:
+        directional = latest["close"] < latest["open"]
+        micro_break = latest["close"] < previous["low"]
+        close_location = (
+            (latest["high"] - latest["close"]) / full_range
+            if full_range > 0.0
+            else 0.0
+        )
+        rsi_evidence = rsi_value <= 50.0
+    return {
+        "bar_time": latest["time"],
+        "open": latest["open"],
+        "high": latest["high"],
+        "low": latest["low"],
+        "close": latest["close"],
+        "body_ratio": body / full_range if full_range > 0.0 else 0.0,
+        "close_location_directional": close_location,
+        "directional_candle": directional,
+        "micro_break": micro_break,
+        "rsi7": rsi_value,
+        "rsi_evidence": rsi_evidence,
+        "votes_without_invalidation": sum((directional, micro_break, rsi_evidence)),
+    }
+
+
 def _swing_highs(bars: Sequence[dict[str, float]], span: int = 2) -> list[float]:
     values: list[float] = []
     for index in range(span, len(bars) - span):
@@ -265,8 +328,19 @@ def reconcile(mt5, *, symbol: str, plans, end_utc: datetime, psych_step: float):
             )
             if bar["time"] + timedelta(minutes=15) <= signal_utc
         ]
+        m1_before = [
+            bar
+            for bar in _rates(
+                mt5,
+                symbol,
+                mt5.TIMEFRAME_M1,
+                signal_utc - timedelta(hours=4),
+                signal_utc,
+            )
+            if bar["time"] + timedelta(minutes=1) <= signal_utc
+        ]
         tick_end = min(end_utc, signal_utc + timedelta(hours=24))
-        ticks = _ticks(mt5, symbol, signal_utc, tick_end)
+        ticks = _ticks(mt5, symbol, signal_utc + timedelta(seconds=1), tick_end)
         atr = _average_true_range(m15)
         psych = _nearest_psychological_above(plan["entry"], psych_step)
         swing_candidates = [level for level in _swing_highs(m15[-48:]) if level > plan["entry"]]
@@ -274,6 +348,7 @@ def reconcile(mt5, *, symbol: str, plans, end_utc: datetime, psych_step: float):
         obstacle = min([value for value in (psych, swing) if value is not None])
         buffer = max(0.20, 0.08 * atr)
         safe_target = obstacle - buffer
+        initial_risk = abs(plan["entry"] - plan["stop"])
         original = _first_tick_touch(
             ticks,
             side=plan["side"],
@@ -290,7 +365,8 @@ def reconcile(mt5, *, symbol: str, plans, end_utc: datetime, psych_step: float):
         after_exit = [
             tick
             for tick in ticks
-            if exit_utc is not None and tick["time"] >= exit_utc
+            if exit_utc is not None
+            and tick["time"] >= exit_utc + timedelta(seconds=1)
         ]
         result = {
             "setup_id": plan["setup_id"],
@@ -305,6 +381,15 @@ def reconcile(mt5, *, symbol: str, plans, end_utc: datetime, psych_step: float):
             "nearest_swing_resistance": swing,
             "first_obstacle": obstacle,
             "safe_target_before_obstacle": safe_target,
+            "first_obstacle_room_r": (
+                abs(obstacle - plan["entry"]) / initial_risk
+                if initial_risk > 0.0
+                else None
+            ),
+            "m1_confirmation": _m1_confirmation_features(
+                m1_before,
+                side=plan["side"],
+            ),
             "original_first_touch": original,
             "safe_target_touch": _first_tick_level_touch(
                 ticks,
@@ -376,6 +461,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             touch = result.get("original_first_touch")
             if isinstance(touch, dict) and isinstance(touch.get("time"), datetime):
                 touch["time"] = touch["time"].astimezone(server_timezone)
+            confirmation = result.get("m1_confirmation")
+            if isinstance(confirmation, dict) and isinstance(
+                confirmation.get("bar_time"), datetime
+            ):
+                confirmation["bar_time"] = confirmation["bar_time"].astimezone(
+                    server_timezone
+                )
         print(json.dumps({"samples": results}, default=_jsonable, sort_keys=True))
         return 0
     except (ImportError, OSError, RuntimeError, sqlite3.Error, ValueError) as exc:

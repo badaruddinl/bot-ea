@@ -69,6 +69,29 @@ class GoldMProductionSampleResearchTests(unittest.TestCase):
         )
         self.assertEqual(result, {"event": "TARGET", "time": first})
 
+    def test_m1_features_distinguish_full_confirmation(self) -> None:
+        first = datetime(2026, 8, 18, tzinfo=timezone.utc)
+        bars = [
+            {
+                "time": first,
+                "open": 99.0,
+                "high": 100.0,
+                "low": 98.0,
+                "close": 99.5,
+            },
+            {
+                "time": first,
+                "open": 99.4,
+                "high": 100.2,
+                "low": 99.2,
+                "close": 100.1,
+            },
+        ]
+        features = MODULE._m1_confirmation_features(bars, side="BUY")
+        self.assertTrue(features["directional_candle"])
+        self.assertTrue(features["micro_break"])
+        self.assertGreaterEqual(features["close_location_directional"], 0.8)
+
 
 if __name__ == "__main__":
     unittest.main()
