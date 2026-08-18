@@ -3,6 +3,7 @@ from __future__ import annotations
 import inspect
 import tempfile
 import unittest
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -17,6 +18,7 @@ from goldm_bear.engine import (
     ShortPosition,
 )
 from goldm_bear.mt5_source import load_mt5_m15_bars
+from goldm_bear.mt5_cli import signal_outcome
 
 
 SERVER_TIME = timezone(timedelta(hours=3))
@@ -156,6 +158,25 @@ class StandaloneBearEngineTests(unittest.TestCase):
         decision = engine.evaluate_exit(position, bars)
 
         self.assertEqual(decision.action, BearExitAction.INVALIDATED)
+
+    def test_signal_outcome_uses_only_bars_after_signal_close(self) -> None:
+        bars = image_like_bear_bars()
+        signal = replace(
+            BearEngine().evaluate(bars),
+            take_profit=4394.0,
+            take_profit_2=4390.0,
+        )
+        future = [
+            _bar(len(bars), 4395.0, 4396.0, 4393.8, 4394.2),
+            _bar(len(bars) + 1, 4394.2, 4394.5, 4389.8, 4390.2),
+        ]
+
+        outcome = signal_outcome(signal, bars + future)
+
+        self.assertEqual(outcome["first_event"], "TP1")
+        self.assertEqual(outcome["first_event_time"], future[0].time)
+        self.assertEqual(outcome["tp2_time"], future[1].time)
+        self.assertGreater(outcome["maximum_favorable_excursion"], 5.0)
 
     def test_session_guard_blocks_near_market_open(self) -> None:
         bars = image_like_bear_bars()
