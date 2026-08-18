@@ -18,7 +18,7 @@ from goldm_bear.engine import (
     ShortPosition,
 )
 from goldm_bear.mt5_source import load_mt5_m15_bars
-from goldm_bear.mt5_cli import signal_outcome
+from goldm_bear.mt5_cli import signal_context, signal_outcome
 
 
 SERVER_TIME = timezone(timedelta(hours=3))
@@ -177,6 +177,8 @@ class StandaloneBearEngineTests(unittest.TestCase):
         self.assertEqual(outcome["first_event_time"], future[0].time)
         self.assertEqual(outcome["tp2_time"], future[1].time)
         self.assertGreater(outcome["maximum_favorable_excursion"], 5.0)
+        context = signal_context(signal, bars + future)
+        self.assertEqual(context[2]["time"], signal.time)
 
     def test_session_guard_blocks_near_market_open(self) -> None:
         bars = image_like_bear_bars()

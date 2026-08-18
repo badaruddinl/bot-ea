@@ -76,6 +76,27 @@ def signal_outcome(signal: BearDecision, bars) -> dict[str, object]:
     }
 
 
+def signal_context(signal: BearDecision, bars, *, before: int = 2, after: int = 5):
+    signal_index = next(
+        (index for index, bar in enumerate(bars) if bar.time == signal.time),
+        None,
+    )
+    if signal_index is None:
+        return []
+    selected = bars[max(0, signal_index - before) : signal_index + after + 1]
+    return [
+        {
+            "time": bar.time,
+            "open": bar.open,
+            "high": bar.high,
+            "low": bar.low,
+            "close": bar.close,
+            "spread": bar.spread,
+        }
+        for bar in selected
+    ]
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
@@ -98,6 +119,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 {
                     **asdict(decision),
                     "outcome": signal_outcome(decision, bars),
+                    "context": signal_context(decision, bars),
                 }
                 for decision in signals
             ],
