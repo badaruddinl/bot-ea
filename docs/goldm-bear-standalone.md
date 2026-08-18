@@ -127,7 +127,7 @@ Read bars directly from the already configured MT5 terminal without placing an
 order:
 
 ```powershell
-goldm-bear-mt5-scan `
+python scripts/run-goldm-bear-mt5.py `
   --symbol GOLD.i# `
   --from-server-time 2026-08-17T00:00:00 `
   --to-server-time 2026-08-19T00:00:00 `

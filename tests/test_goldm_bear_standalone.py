@@ -92,6 +92,13 @@ class StandaloneBearEngineTests(unittest.TestCase):
         self.assertNotIn("goldm_signal", source)
         self.assertNotIn("GoldMSniperParity", source)
 
+    def test_mt5_runner_bootstraps_only_the_standalone_package(self) -> None:
+        runner = (
+            Path(__file__).resolve().parents[1] / "scripts" / "run-goldm-bear-mt5.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn("from goldm_bear.mt5_cli import main", runner)
+        self.assertNotIn("goldm_signal", runner)
+
     def test_image_like_pullback_rejection_emits_sell(self) -> None:
         decision = BearEngine().evaluate(image_like_bear_bars())
 
