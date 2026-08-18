@@ -62,7 +62,7 @@ class BearEngineConfig:
     level_lookback: int = 24
     swing_span: int = 2
     minimum_regime_drop_atr: float = 1.25
-    maximum_slope_atr_per_bar: float = -0.018
+    maximum_slope_atr_per_bar: float = 0.025
     resistance_tolerance_atr: float = 0.28
     maximum_breakout_overshoot_atr: float = 0.85
     maximum_chase_atr: float = 1.25

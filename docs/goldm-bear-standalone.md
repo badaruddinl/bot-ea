@@ -47,12 +47,14 @@ least USD 0.20 spread when constructing the stop buffer.
 
 The latest 32 closed bars must show both:
 
-- a negative normalized linear-regression slope; and
+- a normalized linear-regression slope no steeper than a mild 0.025 ATR/bar
+  countertrend pullback; and
 - a drop of at least 1.25 ATR from the recent regime high.
 
-This deliberately permits a sideways consolidation after a strong bearish
-impulse. Requiring every recent swing to be a lower low would reject the chart
-setup and be unnecessarily conservative.
+This deliberately permits a sideways or mildly rising consolidation after a
+strong bearish impulse. Requiring every recent swing to be a lower low would
+reject the chart setup and be unnecessarily conservative. Entry still requires
+a failed resistance retest followed by a close below the preceding candle low.
 
 ### 2. Pullback resistance
 
