@@ -4,6 +4,7 @@ import inspect
 import json
 import tempfile
 import unittest
+from unittest.mock import patch
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -45,6 +46,7 @@ def test_august_five_evidence_contract_and_matching() -> None:
         side=RevisedSide.BUY,
         setup_trigger_time=expected.requested_time + timedelta(minutes=5),
         decision_time=expected.requested_time + timedelta(minutes=8),
+        m5_pattern="BULL_ENGULFING",
         state=RevisedState.ENTRY_READY,
         reason="confirmed",
         entry_profile="CORE",
@@ -270,8 +272,25 @@ class GoldMRevisedEngineTests(unittest.TestCase):
         self.assertEqual(stats["retests"], 2)
         self.assertTrue(stats["current_rejection"])
 
-    def test_sub_one_r_buy_is_labeled_scalper_and_excluded_from_core(self) -> None:
+    def test_sub_one_r_psychological_obstacle_remains_watch(self) -> None:
         decision = RevisedEngine().evaluate(snapshot(entry=4399.7, stop=4398.7))
+
+        self.assertEqual(decision.state, RevisedState.WATCH)
+        self.assertEqual(decision.first_obstacle_kind, "PSYCH_10")
+
+    def test_sub_one_r_structural_retest_is_labeled_scalper(self) -> None:
+        with patch.object(
+            RevisedEngine,
+            "_first_obstacle",
+            return_value=(4400.0, "M1_SWING_CLUSTER"),
+        ), patch.object(
+            RevisedEngine,
+            "_fibonacci_stats",
+            return_value={"retests": 1, "current_rejection": True},
+        ):
+            decision = RevisedEngine().evaluate(
+                snapshot(entry=4399.7, stop=4398.7)
+            )
 
         self.assertEqual(decision.state, RevisedState.ENTRY_READY)
         self.assertEqual(decision.entry_profile, "SCALPER")
@@ -424,7 +443,7 @@ class GoldMRevisedEngineTests(unittest.TestCase):
             tuple(m5), current_m1_time=sell_time, side=RevisedSide.BUY
         )
 
-        self.assertEqual(sell.pattern, "BEAR_MICRO_BREAK")
+        self.assertIsNone(sell)
         self.assertIsNotNone(persisted_buy)
         self.assertEqual(persisted_buy.trigger_time, buy.trigger_time)
         self.assertIsNone(detector.pop_termination(RevisedSide.BUY))

@@ -52,6 +52,7 @@ class RevisedSetupDetector:
                     # A weak opposite micro-break is part of normal range
                     # discovery and must not destroy a live WATCH. Only a
                     # strong reversal pattern terminates the opposite side.
+                    opposite_active = self._active.get(opposite)
                     if _is_strong(candidate):
                         terminated = self._active.pop(opposite, None)
                         if terminated is not None:
@@ -59,6 +60,10 @@ class RevisedSetupDetector:
                                 terminated,
                                 "OPPOSITE_M5_SETUP_ACCEPTED",
                             )
+                    elif opposite_active is not None:
+                        # This is evidence for the opposite WATCH's retest,
+                        # not enough displacement to open a parallel thesis.
+                        continue
                     existing = self._active.get(candidate_side)
                     self._active[candidate_side] = (
                         candidate

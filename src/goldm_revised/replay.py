@@ -46,6 +46,7 @@ class ReplayInspection:
     side: RevisedSide
     setup_trigger_time: datetime
     decision_time: datetime
+    m5_pattern: str
     state: RevisedState
     reason: str
     entry_profile: str
@@ -166,6 +167,7 @@ class RevisedReplay:
                                 side=side,
                                 setup_trigger_time=setup.trigger_time,
                                 decision_time=decision.time,
+                                m5_pattern=setup.pattern,
                                 state=decision.state,
                                 reason=decision.reason,
                                 entry_profile=decision.entry_profile,

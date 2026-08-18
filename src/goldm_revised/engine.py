@@ -109,7 +109,7 @@ class RevisedEngineConfig:
     exhaustion_min_signals: int = 2
     first_obstacle_reject_r: float = 1.0
     first_obstacle_strict_r: float = 1.5
-    scalper_min_obstacle_r: float = 0.25
+    scalper_min_obstacle_r: float = 0.10
     strict_target_buffer_atr: float = 0.12
     scalper_target_buffer_atr: float = 0.03
     stop_buffer_atr: float = 0.18
@@ -287,9 +287,16 @@ class RevisedEngine:
             side is RevisedSide.BUY
             and obstacle_r is not None
             and self.config.scalper_min_obstacle_r <= obstacle_r < self.config.first_obstacle_reject_r
+            and obstacle_kind is not None
+            and not obstacle_kind.startswith("PSYCH_")
             and strong_pattern
             and int(m1.get("votes", 0)) == 3
             and bool(m1.get("micro_break"))
+            and int(fibonacci.get("retests", 0)) >= 1
+            and (
+                bool(fibonacci.get("current_rejection"))
+                or self._range_confirmed(range_stats, m1)
+            )
             and not bool(range_stats.get("acceptance"))
         )
         if hard_invalidation:
