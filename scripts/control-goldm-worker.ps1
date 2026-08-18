@@ -108,7 +108,10 @@ function Stop-LegacyWorkerProcessesAndWait {
     }
     $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
     do {
-        $legacyProcessIds = @((Get-LegacyWorkerProcesses).ProcessId)
+        $legacyProcessIds = @(
+            Get-LegacyWorkerProcesses |
+                ForEach-Object { [int]$_.ProcessId }
+        )
         $remaining = @($processIds | Where-Object { $_ -in $legacyProcessIds })
         if ($remaining.Count -eq 0) {
             return
@@ -127,13 +130,17 @@ function Write-WorkerStatus {
             -ExpectedArguments $contract.Arguments
     )
     $legacyWorkers = @(Get-LegacyWorkerProcesses)
+    $workerPids = @($workers | ForEach-Object { [string]$_.ProcessId })
+    $legacyWorkerPids = @(
+        $legacyWorkers | ForEach-Object { [string]$_.ProcessId }
+    )
     Write-Host ""
     Write-Host "GOLDM worker status" -ForegroundColor Cyan
     Write-Host "Task       : $TaskName"
     Write-Host "State      : $($contract.Task.State)"
     Write-Host "Enabled    : $($contract.Task.Settings.Enabled)"
-    Write-Host "Worker PID : $(@($workers.ProcessId) -join ', ')"
-    Write-Host "Legacy PID : $(@($legacyWorkers.ProcessId) -join ', ')"
+    Write-Host "Worker PID : $($workerPids -join ', ')"
+    Write-Host "Legacy PID : $($legacyWorkerPids -join ', ')"
     Write-Host "Last result: $($info.LastTaskResult)"
     return [pscustomobject]@{
         Contract = $contract
