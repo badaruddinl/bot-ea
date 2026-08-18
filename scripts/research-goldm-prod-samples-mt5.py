@@ -143,7 +143,7 @@ def _load_plans(
         connection.execute("PRAGMA query_only = ON")
         rows = connection.execute(
             """
-            SELECT setup_id, event_type, payload_json
+            SELECT setup_id, event_type, created_at, payload_json
             FROM signal_outbox
             WHERE event_type IN ('SNIPER_SIGNAL', 'SNIPER_OUTCOME')
             ORDER BY id ASC
@@ -154,9 +154,11 @@ def _load_plans(
     grouped: dict[str, dict[str, dict[str, Any]]] = {}
     for row in rows:
         payload = json.loads(str(row["payload_json"]))
-        generated = _utc_timestamp(str(payload["generated_at_utc"]))
+        generated_raw = str(payload.get("generated_at_utc") or row["created_at"])
+        generated = _utc_timestamp(generated_raw)
         if not start_utc <= generated < end_utc:
             continue
+        payload.setdefault("generated_at_utc", generated_raw)
         grouped.setdefault(str(row["setup_id"]), {})[str(row["event_type"])] = payload
     plans: list[dict[str, Any]] = []
     for setup_id, events in grouped.items():
