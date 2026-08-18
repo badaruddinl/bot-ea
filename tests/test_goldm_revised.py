@@ -18,14 +18,52 @@ from goldm_revised.engine import (
     RevisedSnapshot,
     RevisedState,
 )
+from goldm_revised.evidence import august_five, validate_evidence
 from goldm_revised.mt5_source import RevisedMt5ReadOnlySource
-from goldm_revised.replay import ReplayPosition, RevisedReplay
+from goldm_revised.replay import ReplayInspection, ReplayPosition, RevisedReplay
 from goldm_revised.storage import RevisedStore
 from goldm_revised.setup import RevisedSetupDetector, classify_m5_setup
 from goldm_revised.telegram import RevisedAdminNotifier
 
 
 TZ = timezone(timedelta(hours=3))
+
+
+def test_august_five_evidence_contract_and_matching() -> None:
+    expectations = august_five(TZ)
+    assert [(item.evidence_id, item.expected_side.value, item.expected_profile) for item in expectations] == [
+        ("E1", "SELL", "CORE"),
+        ("E2", "BUY", "CORE"),
+        ("E3", "SELL", "CORE"),
+        ("E4", "BUY", "SCALPER"),
+        ("E5", "BUY", "CORE"),
+    ]
+    expected = expectations[1]
+    inspection = ReplayInspection(
+        requested_time=expected.requested_time,
+        side=RevisedSide.BUY,
+        setup_trigger_time=expected.requested_time + timedelta(minutes=5),
+        decision_time=expected.requested_time + timedelta(minutes=8),
+        state=RevisedState.ENTRY_READY,
+        reason="confirmed",
+        entry_profile="CORE",
+        validation_status="CONFIRMED",
+        retest_count=2,
+        entry=4400.0,
+        stop=4395.0,
+        target=4407.5,
+        first_obstacle_r=1.5,
+        touch_count=2,
+        rejection_count=2,
+        m1_votes=3,
+        exhausted=False,
+        risk_source="m1_structure",
+    )
+
+    result = validate_evidence((expected,), (inspection,), ())
+
+    assert result[0]["status"] == "PASS"
+    assert result[0]["matched"] is True
 
 
 def bar(index: int, open_: float, high: float, low: float, close: float, *, minutes: int = 1) -> RevisedBar:

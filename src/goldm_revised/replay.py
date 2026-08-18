@@ -105,6 +105,7 @@ class RevisedReplay:
         from_time: datetime,
         to_time: datetime,
         inspect_times: Sequence[datetime] = (),
+        inspect_tolerance_minutes: int = 5,
     ) -> ReplayReport:
         for bars in (m1_bars, m5_bars, h1_bars, d1_bars):
             _validate_order(bars)
@@ -153,7 +154,9 @@ class RevisedReplay:
                 )
                 decision = self.engine.evaluate(snapshot)
                 for requested_time in inspect_times:
-                    if abs(setup.trigger_time - requested_time) <= timedelta(minutes=5):
+                    if abs(setup.trigger_time - requested_time) <= timedelta(
+                        minutes=inspect_tolerance_minutes
+                    ):
                         risk_evidence = decision.evidence.get("risk", {})
                         inspections.append(
                             ReplayInspection(

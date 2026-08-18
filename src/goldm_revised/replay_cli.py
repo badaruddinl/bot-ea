@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Sequence
 
 from .engine import RevisedEngine, RevisedEngineConfig
+from .evidence import august_five, validate_evidence
 from .replay import RevisedMt5HistoryLoader, RevisedReplay
 from .runtime import load_runtime_config
 
@@ -34,11 +35,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--server-utc-offset-minutes", type=int, default=180)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--inspect-server-time", action="append", default=[])
+    parser.add_argument("--validate-august-five", action="store_true")
     args = parser.parse_args(argv)
     zone = timezone(timedelta(minutes=args.server_utc_offset_minutes))
     start = _server_time(args.from_server_time, zone)
     end = _server_time(args.to_server_time, zone)
-    inspect_times = tuple(_server_time(value, zone) for value in args.inspect_server_time)
+    evidence_expectations = august_five(zone) if args.validate_august_five else ()
+    inspect_times = tuple(_server_time(value, zone) for value in args.inspect_server_time) + tuple(
+        item.requested_time for item in evidence_expectations
+    )
     if end <= start:
         raise SystemExit("replay end must be after start")
     config = load_runtime_config(args.config)
@@ -66,8 +71,20 @@ def main(argv: Sequence[str] | None = None) -> int:
         from_time=start,
         to_time=end,
         inspect_times=inspect_times,
+        inspect_tolerance_minutes=30 if evidence_expectations else 5,
     )
-    payload = json.dumps(asdict(report), default=_json_default, sort_keys=True)
+    report_payload = asdict(report)
+    if evidence_expectations:
+        report_payload["evidence_validation"] = validate_evidence(
+            evidence_expectations,
+            report.inspections,
+            report.outcomes,
+        )
+        report_payload["evidence_pass_count"] = sum(
+            bool(item["matched"])
+            for item in report_payload["evidence_validation"]
+        )
+    payload = json.dumps(report_payload, default=_json_default, sort_keys=True)
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(payload + "\n", encoding="utf-8")
