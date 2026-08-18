@@ -299,6 +299,7 @@ class RevisedEngine:
             and strong_pattern
             and snapshot.m5_votes >= self.config.minimum_m5_votes
             and strong_m5_displacement
+            and int(m1.get("votes", 0)) >= 2
             and not exhaustion
             and not bool(range_stats.get("acceptance"))
         )
