@@ -1,4 +1,4 @@
-# GOLDM_REVISED 0.2.0 — broker chart evidence
+# GOLDM_REVISED 0.3.0 — broker chart evidence
 
 ## Scope
 
@@ -26,7 +26,7 @@ Production `GOLDM_SNIPER_PARITY` and `goldm_bear` remain unchanged.
    The approximately 1.66R room remains eligible, with the target buffered
    before the 4400–4404 psychological/resistance cluster.
 
-## Version 0.2.0 behavior
+## Version 0.3.0 behavior
 
 - A newly closed opposite M5 setup immediately expires the stale active side.
 - The opposite setup is retained and builds a new causal M1 window; SELL is
@@ -38,5 +38,7 @@ Production `GOLDM_SNIPER_PARITY` and `goldm_bear` remain unchanged.
 - `firstObstacleR >= 1` is still mandatory after stop selection.
 - Targets remain buffered before the first horizontal or psychological
   obstacle. No target or threshold is stretched to manufacture a valid trade.
+- Strong M5 rejection and three-candle morning/evening-star patterns are
+  recognized symmetrically. A bare micro-break remains non-strong.
 
 These behaviors are regression-tested before any broker replay or forward test.

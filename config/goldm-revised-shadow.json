@@ -1,6 +1,6 @@
 {
   "strategy_id": "GOLDM_REVISED",
-  "strategy_version": "0.2.0",
+  "strategy_version": "0.3.0",
   "runtime": {
     "poll_seconds": 30
   },
@@ -53,7 +53,9 @@
       "BULL_ENGULFING",
       "BEAR_ENGULFING",
       "BULL_MORNING_STAR",
-      "BEAR_EVENING_STAR"
+      "BEAR_EVENING_STAR",
+      "BULL_REJECTION",
+      "BEAR_REJECTION"
     ],
     "promotion_confidence": 60.0
   }

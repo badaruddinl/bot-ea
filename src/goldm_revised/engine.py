@@ -9,7 +9,7 @@ from typing import Sequence
 
 
 STRATEGY_ID = "GOLDM_REVISED"
-STRATEGY_VERSION = "0.2.0"
+STRATEGY_VERSION = "0.3.0"
 
 
 class RevisedSide(str, Enum):
@@ -121,6 +121,8 @@ class RevisedEngineConfig:
         "BEAR_ENGULFING",
         "BULL_MORNING_STAR",
         "BEAR_EVENING_STAR",
+        "BULL_REJECTION",
+        "BEAR_REJECTION",
     )
     promotion_confidence: float = 60.0
 

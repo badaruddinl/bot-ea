@@ -21,7 +21,7 @@ from goldm_revised.engine import (
 from goldm_revised.mt5_source import RevisedMt5ReadOnlySource
 from goldm_revised.replay import ReplayPosition, RevisedReplay
 from goldm_revised.storage import RevisedStore
-from goldm_revised.setup import RevisedSetupDetector
+from goldm_revised.setup import RevisedSetupDetector, classify_m5_setup
 from goldm_revised.telegram import RevisedAdminNotifier
 
 
@@ -116,7 +116,7 @@ class GoldMRevisedEngineTests(unittest.TestCase):
         self.assertNotIn("goldm_signal", source)
         self.assertNotIn("goldm_bear", source)
         self.assertEqual(module.STRATEGY_ID, "GOLDM_REVISED")
-        self.assertEqual(module.STRATEGY_VERSION, "0.2.0")
+        self.assertEqual(module.STRATEGY_VERSION, "0.3.0")
 
     def test_buy_range_requires_repeated_rejections_and_enters(self) -> None:
         decision = RevisedEngine().evaluate(snapshot())
@@ -235,6 +235,34 @@ class GoldMRevisedEngineTests(unittest.TestCase):
         self.assertIsNone(
             detector.update(tuple(m5), current_m1_time=sell_time, side=RevisedSide.BUY)
         )
+
+    def test_m5_strong_rejection_and_star_patterns_are_symmetric(self) -> None:
+        bull_rejection = classify_m5_setup(
+            (
+                bar(0, 4394.0, 4394.5, 4391.5, 4392.0, minutes=5),
+                bar(1, 4392.5, 4394.0, 4389.0, 4393.5, minutes=5),
+            ),
+            RevisedSide.BUY,
+        )
+        bear_rejection = classify_m5_setup(
+            (
+                bar(0, 4392.0, 4394.5, 4391.5, 4394.0, minutes=5),
+                bar(1, 4393.5, 4397.0, 4392.0, 4392.5, minutes=5),
+            ),
+            RevisedSide.SELL,
+        )
+        evening_star = classify_m5_setup(
+            (
+                bar(0, 4390.0, 4394.5, 4389.5, 4394.0, minutes=5),
+                bar(1, 4394.0, 4394.3, 4393.5, 4393.8, minutes=5),
+                bar(2, 4393.5, 4393.8, 4391.0, 4391.5, minutes=5),
+            ),
+            RevisedSide.SELL,
+        )
+
+        self.assertEqual(bull_rejection.pattern, "BULL_REJECTION")
+        self.assertEqual(bear_rejection.pattern, "BEAR_REJECTION")
+        self.assertEqual(evening_star.pattern, "BEAR_EVENING_STAR")
 
     def test_m1_structure_can_make_early_buy_valid_without_relaxing_one_r_gate(self) -> None:
         warmup = [

@@ -78,6 +78,20 @@ def classify_m5_setup(
     if len(bars) < 2:
         return None
     latest, previous = bars[-1], bars[-2]
+    third = bars[-3] if len(bars) >= 3 else None
+    body = max(latest.body, 1e-12)
+    lower_wick = min(latest.open, latest.close) - latest.low
+    upper_wick = latest.high - max(latest.open, latest.close)
+    close_from_low = (
+        (latest.close - latest.low) / latest.range
+        if latest.range > 0
+        else 0.0
+    )
+    close_from_high = (
+        (latest.high - latest.close) / latest.range
+        if latest.range > 0
+        else 0.0
+    )
     if side is RevisedSide.BUY:
         directional = latest.close > latest.open
         micro_break = latest.close > previous.high
@@ -87,9 +101,32 @@ def classify_m5_setup(
             and latest.close >= previous.open
             and latest.body >= previous.body
         )
+        rejection = bool(
+            directional
+            and latest.low <= previous.low
+            and lower_wick >= body
+            and close_from_low >= 0.65
+        )
+        star = bool(
+            third is not None
+            and third.close < third.open
+            and previous.body <= third.body * 0.60
+            and directional
+            and latest.close >= (third.open + third.close) / 2.0
+        )
         level = previous.high
         invalidation = previous.low
-        pattern = "BULL_ENGULFING" if engulfing else "BULL_MICRO_BREAK" if directional and micro_break else "NONE"
+        pattern = (
+            "BULL_MORNING_STAR"
+            if star
+            else "BULL_ENGULFING"
+            if engulfing
+            else "BULL_REJECTION"
+            if rejection
+            else "BULL_MICRO_BREAK"
+            if directional and micro_break
+            else "NONE"
+        )
     else:
         directional = latest.close < latest.open
         micro_break = latest.close < previous.low
@@ -99,12 +136,35 @@ def classify_m5_setup(
             and latest.close <= previous.open
             and latest.body >= previous.body
         )
+        rejection = bool(
+            directional
+            and latest.high >= previous.high
+            and upper_wick >= body
+            and close_from_high >= 0.65
+        )
+        star = bool(
+            third is not None
+            and third.close > third.open
+            and previous.body <= third.body * 0.60
+            and directional
+            and latest.close <= (third.open + third.close) / 2.0
+        )
         level = previous.low
         invalidation = previous.high
-        pattern = "BEAR_ENGULFING" if engulfing else "BEAR_MICRO_BREAK" if directional and micro_break else "NONE"
+        pattern = (
+            "BEAR_EVENING_STAR"
+            if star
+            else "BEAR_ENGULFING"
+            if engulfing
+            else "BEAR_REJECTION"
+            if rejection
+            else "BEAR_MICRO_BREAK"
+            if directional and micro_break
+            else "NONE"
+        )
     if pattern == "NONE":
         return None
-    votes = int(directional) + int(micro_break) + int(engulfing)
+    votes = int(directional) + int(micro_break) + int(engulfing or rejection or star)
     return RevisedM5Setup(
         side=side,
         # MqlRates/MetaTrader bars are timestamped at bar open. M1 confirmation
