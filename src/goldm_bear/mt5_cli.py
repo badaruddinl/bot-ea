@@ -28,6 +28,8 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--from-server-time", required=True)
     parser.add_argument("--to-server-time", required=True)
     parser.add_argument("--server-utc-offset", default="+03:00")
+    parser.add_argument("--diagnostic-from-server-time")
+    parser.add_argument("--diagnostic-to-server-time")
     return parser
 
 
@@ -111,11 +113,31 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         engine = BearEngine(BearEngineConfig(symbol=args.symbol))
         signals = engine.scan(bars)
+        diagnostics = []
+        if args.diagnostic_from_server_time or args.diagnostic_to_server_time:
+            if not (
+                args.diagnostic_from_server_time
+                and args.diagnostic_to_server_time
+            ):
+                raise ValueError("both diagnostic range timestamps are required")
+            diagnostic_start = _server_timestamp(
+                args.diagnostic_from_server_time,
+                server_timezone,
+            )
+            diagnostic_end = _server_timestamp(
+                args.diagnostic_to_server_time,
+                server_timezone,
+            )
+            for bar_end in range(engine.minimum_bars, len(bars) + 1):
+                decision = engine.evaluate(bars[:bar_end])
+                if diagnostic_start <= decision.time <= diagnostic_end:
+                    diagnostics.append(asdict(decision))
         payload = {
             "bar_count": len(bars),
             "first_bar": bars[0].time,
             "last_bar": bars[-1].time,
             "signal_count": len(signals),
+            "diagnostics": diagnostics,
             "signals": [
                 {
                     **asdict(decision),
