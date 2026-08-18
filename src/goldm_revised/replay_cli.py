@@ -127,6 +127,44 @@ def _print_validation_summary(payload: dict[str, object]) -> None:
             f"outcome={outcome.get('result', '-')} r={outcome.get('outcome_r', '-')} "
             f"reason={observed.get('reason', 'no candidate')}"
         )
+        candidates = [
+            item
+            for item in payload.get("inspections", [])
+            if item.get("requested_time") == evidence.get("requested_time")
+            and item.get("side") is evidence.get("expected_side")
+        ]
+        if not candidates:
+            print(f"{evidence['evidence_id']}_PROGRESS side_candidates=0")
+            continue
+        max_room = max(
+            candidates,
+            key=lambda item: (
+                item.get("first_obstacle_r") is not None,
+                item.get("first_obstacle_r") or float("-inf"),
+            ),
+        )
+        max_retest = max(
+            candidates,
+            key=lambda item: (item.get("retest_count", 0), item.get("m1_votes", 0)),
+        )
+        ready = next(
+            (
+                item
+                for item in candidates
+                if getattr(item.get("state"), "value", None) == "ENTRY_READY"
+            ),
+            None,
+        )
+        print(
+            f"{evidence['evidence_id']}_PROGRESS side_candidates={len(candidates)} "
+            f"max_room={max_room.get('first_obstacle_r', '-')}/"
+            f"{max_room.get('first_obstacle_kind', '-')}@{max_room.get('decision_time', '-')} "
+            f"max_retests={max_retest.get('retest_count', '-')}/"
+            f"votes{max_retest.get('m1_votes', '-')}@{max_retest.get('decision_time', '-')} "
+            f"ready={('-' if ready is None else str(ready.get('entry_profile')))}/"
+            f"{('-' if ready is None else str(ready.get('m5_pattern')))}/"
+            f"{('-' if ready is None else str(ready.get('first_obstacle_r')))}"
+        )
 
 
 if __name__ == "__main__":
