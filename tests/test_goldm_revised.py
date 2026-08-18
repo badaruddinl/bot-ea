@@ -301,6 +301,23 @@ class GoldMRevisedEngineTests(unittest.TestCase):
         self.assertEqual(obstacle, 4400.0)
         self.assertEqual(kind, "PSYCH_10")
 
+    def test_post_trigger_m1_retest_cluster_is_not_an_external_obstacle(self) -> None:
+        highs = [4392.0, 4393.0, 4395.0, 4393.0, 4392.0, 4393.0, 4395.1, 4393.0, 4392.0]
+        m1 = tuple(
+            bar(index, high - 1.0, high, high - 2.0, high - 0.5)
+            for index, high in enumerate(highs)
+        )
+        value = snapshot(m1=m1)
+
+        obstacle, kind = RevisedEngine()._first_obstacle(
+            value,
+            entry=4394.6,
+            atr_m1=1.0,
+        )
+
+        self.assertEqual(obstacle, 4400.0)
+        self.assertEqual(kind, "PSYCH_10")
+
     def test_momentum_can_bypass_range_when_room_is_large(self) -> None:
         m5 = tuple(
             bar(index, 4390 + index * 2.0, 4392 + index * 2.0, 4389 + index * 2.0, 4392 + index * 2.0, minutes=5)

@@ -453,10 +453,22 @@ class RevisedEngine:
             for price in pivots:
                 if (side is RevisedSide.BUY and price > entry) or (side is RevisedSide.SELL and price < entry):
                     candidates.append((price, label))
+        # M1 candles formed after the M5 trigger belong to the confirmation
+        # range. Treating their internal retest pivots as external obstacles
+        # makes the measured room collapse while a WATCH is developing.
+        # Only structure already confirmed before the setup may constrain its
+        # first-obstacle room; post-trigger levels are handled by range,
+        # acceptance, micro-break, and Fibonacci validation instead.
+        obstacle_m1_bars = tuple(
+            bar
+            for bar in snapshot.m1_bars
+            if snapshot.m5_trigger_time is None
+            or bar.time < snapshot.m5_trigger_time
+        )
         m1_pivots = (
-            _swing_highs(snapshot.m1_bars, self.config.swing_span)
+            _swing_highs(obstacle_m1_bars, self.config.swing_span)
             if side is RevisedSide.BUY
-            else _swing_lows(snapshot.m1_bars, self.config.swing_span)
+            else _swing_lows(obstacle_m1_bars, self.config.swing_span)
         )
         directional_m1 = [
             price
