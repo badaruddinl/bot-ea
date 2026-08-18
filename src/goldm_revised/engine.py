@@ -115,6 +115,8 @@ class RevisedEngineConfig:
     stop_buffer_atr: float = 0.18
     adaptive_stop_buffer_atr: float = 0.10
     adaptive_stop_min_risk_atr: float = 0.35
+    strong_m1_body_ratio: float = 0.55
+    strong_m1_close_location: float = 0.75
     watch_max_m1_bars: int = 60
     fibonacci_lookback_m5: int = 12
     fibonacci_retest_separation_bars: int = 2
@@ -167,6 +169,10 @@ class RevisedEngineConfig:
             raise ValueError("price tick/spread floor is invalid")
         if self.adaptive_stop_buffer_atr < 0 or self.adaptive_stop_min_risk_atr <= 0:
             raise ValueError("adaptive stop configuration is invalid")
+        if not 0 < self.strong_m1_body_ratio <= 1:
+            raise ValueError("strong M1 body ratio is invalid")
+        if not 0 < self.strong_m1_close_location <= 1:
+            raise ValueError("strong M1 close location is invalid")
         if self.watch_max_m1_bars < self.range_max_bars:
             raise ValueError("watch window must cover the range window")
         if self.fibonacci_lookback_m5 < 3 or self.fibonacci_retest_separation_bars < 1:
@@ -258,6 +264,8 @@ class RevisedEngine:
         range_stats = self._range_stats(snapshot, side, atr_m1)
         momentum, exhaustion, momentum_stats = self._momentum_stats(snapshot, side, atr_m5)
         m1 = self._m1_confirmation(snapshot.m1_bars, side)
+        strong_m1_now = self._strong_m1_confirmation(m1)
+        strong_m1_latched = self._strong_m1_latched(snapshot, side)
         fibonacci_ok = bool(
             int(fibonacci.get("retests", 0)) >= 1
             and bool(fibonacci.get("current_rejection"))
@@ -274,6 +282,24 @@ class RevisedEngine:
             and snapshot.m5_votes >= self.config.minimum_m5_votes
         )
         strong_pattern = snapshot.m5_pattern in self.config.strong_m5_patterns
+        strong_first_ok = bool(
+            obstacle_r is not None
+            and obstacle_r >= self.config.first_obstacle_strict_r
+            and strong_pattern
+            and snapshot.m5_votes >= self.config.minimum_m5_votes
+            and strong_m1_now
+            and not bool(range_stats.get("acceptance"))
+        )
+        latched_retest_ok = bool(
+            obstacle_r is not None
+            and obstacle_r >= self.config.first_obstacle_strict_r
+            and strong_pattern
+            and snapshot.m5_votes >= self.config.minimum_m5_votes
+            and strong_m1_latched
+            and int(fibonacci.get("retests", 0)) >= 1
+            and bool(m1.get("directional"))
+            and not bool(range_stats.get("acceptance"))
+        )
         strict_ok = (
             obstacle_r is not None
             and obstacle_r >= self.config.first_obstacle_reject_r
@@ -376,11 +402,18 @@ class RevisedEngine:
             mode = ConfirmationMode.RANGE
         elif momentum_ok:
             mode = ConfirmationMode.MOMENTUM
+        elif strong_first_ok or latched_retest_ok:
+            mode = ConfirmationMode.RANGE
         elif range_ok:
             mode = ConfirmationMode.RANGE
         else:
             mode = ConfirmationMode.RANGE if strict_room else None
-        eligible = momentum_ok or (range_ok and (not strict_room or strict_ok))
+        eligible = bool(
+            momentum_ok
+            or strong_first_ok
+            or latched_retest_ok
+            or (range_ok and (not strict_room or strict_ok))
+        )
         if not eligible:
             return self._decision(
                 snapshot,
@@ -417,7 +450,13 @@ class RevisedEngine:
             snapshot,
             RevisedState.ENTRY_READY,
             RevisedAction.ENTER,
-            "MOMENTUM_ENTRY" if mode is ConfirmationMode.MOMENTUM else "RANGE_REJECTIONS_CONFIRMED",
+            "MOMENTUM_ENTRY"
+            if mode is ConfirmationMode.MOMENTUM
+            else "STRONG_FIRST_CONFIRMATION"
+            if strong_first_ok
+            else "LATCHED_CONFIRMATION_RETEST"
+            if latched_retest_ok
+            else "RANGE_REJECTIONS_CONFIRMED",
             confidence=confidence,
             mode=mode,
             observation_only=observation_only,
@@ -578,6 +617,34 @@ class RevisedEngine:
             "body_ratio": body_ratio,
             "close_location": close_location,
         }
+
+    def _strong_m1_confirmation(self, m1: dict[str, object]) -> bool:
+        return bool(
+            int(m1.get("votes", 0)) == 3
+            and bool(m1.get("micro_break"))
+            and float(m1.get("body_ratio", 0.0))
+            >= self.config.strong_m1_body_ratio
+            and float(m1.get("close_location", 0.0))
+            >= self.config.strong_m1_close_location
+        )
+
+    def _strong_m1_latched(
+        self,
+        snapshot: RevisedSnapshot,
+        side: RevisedSide,
+    ) -> bool:
+        trigger = snapshot.m5_trigger_time
+        bars = tuple(
+            bar
+            for bar in snapshot.m1_bars
+            if trigger is None or bar.time > trigger
+        )[-self.config.watch_max_m1_bars :]
+        return any(
+            self._strong_m1_confirmation(
+                self._m1_confirmation(bars[: index + 1], side)
+            )
+            for index in range(1, len(bars))
+        )
 
     def _range_confirmed(self, stats: dict[str, object], m1: dict[str, object]) -> bool:
         width = float(stats.get("width", 0.0))

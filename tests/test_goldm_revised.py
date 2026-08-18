@@ -202,6 +202,7 @@ class GoldMRevisedEngineTests(unittest.TestCase):
         self.assertEqual(decision.state, RevisedState.ENTRY_READY)
         self.assertEqual(decision.action, RevisedAction.ENTER)
         self.assertEqual(decision.mode, ConfirmationMode.RANGE)
+        self.assertEqual(decision.reason, "STRONG_FIRST_CONFIRMATION")
         self.assertGreaterEqual(decision.touch_count, 2)
         self.assertGreaterEqual(decision.rejection_count, 2)
         self.assertGreaterEqual(decision.m1_votes, 3)
@@ -358,6 +359,33 @@ class GoldMRevisedEngineTests(unittest.TestCase):
         )
         self.assertEqual(decision.mode, ConfirmationMode.MOMENTUM)
         self.assertEqual(decision.action, RevisedAction.ENTER)
+
+    def test_latched_strong_confirmation_can_enter_on_later_retest(self) -> None:
+        m1 = list(range_m1())
+        m1[-1] = bar(len(m1) - 1, 4394.0, 4394.5, 4393.5, 4394.2)
+        with patch.object(
+            RevisedEngine,
+            "_first_obstacle",
+            return_value=(4410.0, "H1_SWING"),
+        ), patch.object(
+            RevisedEngine,
+            "_fibonacci_stats",
+            return_value={"retests": 1, "current_rejection": False},
+        ), patch.object(
+            RevisedEngine,
+            "_range_confirmed",
+            return_value=False,
+        ), patch.object(
+            RevisedEngine,
+            "_strong_m1_latched",
+            return_value=True,
+        ):
+            decision = RevisedEngine().evaluate(
+                snapshot(m1=tuple(m1), entry=4394.2, stop=4390.0)
+            )
+
+        self.assertEqual(decision.state, RevisedState.ENTRY_READY)
+        self.assertEqual(decision.reason, "LATCHED_CONFIRMATION_RETEST")
 
     def test_exhaustion_forces_range_mode(self) -> None:
         m5 = list(flat_m5())
