@@ -155,6 +155,7 @@ class StandaloneBearEngineTests(unittest.TestCase):
 
         self.assertGreater(decision.take_profit or 0.0, 4390.0)
         self.assertLess(decision.take_profit or 9999.0, 4391.0)
+        self.assertIn("target_capped_at_nearest_psychological_support", decision.reason)
 
     def test_ordinary_pullback_does_not_trigger_early_close(self) -> None:
         engine = BearEngine()

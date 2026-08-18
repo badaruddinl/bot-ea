@@ -76,11 +76,16 @@ more than 1.25 ATR below resistance is treated as a chased move.
 - TP2: slightly above the next barrier, reported separately.
 - Minimum space: 0.60 ATR before TP1.
 - Minimum planned reward/risk: 0.70.
+- Exception for the nearest psychological or swing+psychological support:
+  minimum space 0.40 ATR and reward/risk 0.35, because the target is capped in
+  front of that barrier rather than extended through it.
 
-The relatively low 0.70 threshold is intentional. It allows high-probability
-continuation entries with nearby support while still rejecting trades whose
-first barrier leaves almost no room. It must be validated out of sample before
-use with money.
+The lower psychological-barrier threshold is intentional. The 18 August 17:00
+example reached the 4390 area but not the more distant target before reversing.
+The engine therefore accepts the entry while taking profit slightly above 4390
+instead of demanding a prettier reward/risk ratio and extending TP below the
+barrier. These thresholds must be validated out of sample before use with
+money.
 
 ### 4. Early close
 

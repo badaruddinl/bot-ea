@@ -70,6 +70,8 @@ class BearEngineConfig:
     minimum_upper_wick_fraction: float = 0.22
     minimum_room_atr: float = 0.60
     minimum_reward_risk: float = 0.70
+    minimum_psychological_room_atr: float = 0.40
+    minimum_psychological_reward_risk: float = 0.35
     minimum_continuation_reward_risk: float = 0.55
     stop_buffer_atr: float = 0.18
     target_buffer_atr: float = 0.08
@@ -101,6 +103,8 @@ class BearEngineConfig:
             self.minimum_upper_wick_fraction,
             self.minimum_room_atr,
             self.minimum_reward_risk,
+            self.minimum_psychological_room_atr,
+            self.minimum_psychological_reward_risk,
             self.minimum_continuation_reward_risk,
             self.stop_buffer_atr,
             self.target_buffer_atr,
@@ -283,6 +287,17 @@ class BearEngine:
         risk = stop - entry
         reward = entry - take_profit
         reward_risk = reward / risk if risk > 0 else 0.0
+        nearest_is_psychological = "psych" in support_levels[0].kind
+        required_room_atr = (
+            self.config.minimum_psychological_room_atr
+            if nearest_is_psychological
+            else self.config.minimum_room_atr
+        )
+        required_reward_risk = (
+            self.config.minimum_psychological_reward_risk
+            if nearest_is_psychological
+            else self.config.minimum_reward_risk
+        )
         strong_failure = (
             latest.close < bars[-2].low
             and latest.close < latest.open
@@ -291,8 +306,8 @@ class BearEngine:
         continuation_target = False
         if (
             (
-                reward < self.config.minimum_room_atr * atr
-                or reward_risk < self.config.minimum_reward_risk
+                reward < required_room_atr * atr
+                or reward_risk < required_reward_risk
             )
             and strong_failure
             and len(targets) > 1
@@ -308,7 +323,9 @@ class BearEngine:
                 reward = continuation_reward
                 reward_risk = continuation_reward_risk
                 continuation_target = True
-        if reward < self.config.minimum_room_atr * atr:
+                required_room_atr = self.config.minimum_room_atr
+                required_reward_risk = self.config.minimum_continuation_reward_risk
+        if reward < required_room_atr * atr:
             return BearDecision(
                 action=BearAction.WATCH,
                 time=latest.time,
@@ -324,11 +341,6 @@ class BearEngine:
                 reward_risk=reward_risk,
                 regime_slope_atr=slope,
             )
-        required_reward_risk = (
-            self.config.minimum_continuation_reward_risk
-            if continuation_target
-            else self.config.minimum_reward_risk
-        )
         if reward_risk < required_reward_risk:
             return BearDecision(
                 action=BearAction.WATCH,
@@ -352,7 +364,15 @@ class BearEngine:
             symbol=self.config.symbol,
             reason=(
                 f"bear_pullback_rejected_at_{resistance.kind}_resistance"
-                + ("_continuation_through_near_support" if continuation_target else "")
+                + (
+                    "_continuation_through_near_support"
+                    if continuation_target
+                    else (
+                        "_target_capped_at_nearest_psychological_support"
+                        if nearest_is_psychological
+                        else ""
+                    )
+                )
             ),
             score=self._score(slope=slope, regime_drop=regime_drop, rejection=True),
             atr=atr,
