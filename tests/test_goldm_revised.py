@@ -21,6 +21,7 @@ from goldm_revised.engine import (
 from goldm_revised.evidence import august_five, validate_evidence
 from goldm_revised.mt5_source import RevisedMt5ReadOnlySource
 from goldm_revised.replay import ReplayInspection, ReplayPosition, RevisedReplay
+from goldm_revised.replay_cli import _print_validation_summary
 from goldm_revised.storage import RevisedStore
 from goldm_revised.setup import RevisedSetupDetector, classify_m5_setup
 from goldm_revised.telegram import RevisedAdminNotifier
@@ -64,6 +65,29 @@ def test_august_five_evidence_contract_and_matching() -> None:
 
     assert result[0]["status"] == "PASS"
     assert result[0]["matched"] is True
+
+
+def test_five_evidence_summary_reports_all_signals(capsys) -> None:
+    _print_validation_summary(
+        {
+            "signals": 12,
+            "resolved": 12,
+            "buy_signals": 10,
+            "core_buy_signals": 2,
+            "scalper_signals": 8,
+            "sell_signals": 2,
+            "target_count": 9,
+            "stop_count": 3,
+            "total_r": 1.75,
+            "expectancy_r": 0.145,
+            "maximum_drawdown_r": 3.0,
+            "evidence_validation": [],
+        }
+    )
+
+    assert capsys.readouterr().out.startswith(
+        "ALL signals=12 resolved=12 buy=10 core_buy=2 scalper=8 sell=2"
+    )
 
 
 def bar(index: int, open_: float, high: float, low: float, close: float, *, minutes: int = 1) -> RevisedBar:

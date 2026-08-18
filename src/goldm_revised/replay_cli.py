@@ -36,6 +36,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--output", type=Path)
     parser.add_argument("--inspect-server-time", action="append", default=[])
     parser.add_argument("--validate-august-five", action="store_true")
+    parser.add_argument("--validation-summary", action="store_true")
     args = parser.parse_args(argv)
     zone = timezone(timedelta(minutes=args.server_utc_offset_minutes))
     start = _server_time(args.from_server_time, zone)
@@ -88,8 +89,38 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(payload + "\n", encoding="utf-8")
-    print(payload)
+    if args.validation_summary:
+        _print_validation_summary(report_payload)
+    else:
+        print(payload)
     return 0
+
+
+def _print_validation_summary(payload: dict[str, object]) -> None:
+    print(
+        "ALL "
+        f"signals={payload['signals']} resolved={payload['resolved']} "
+        f"buy={payload['buy_signals']} core_buy={payload['core_buy_signals']} "
+        f"scalper={payload['scalper_signals']} sell={payload['sell_signals']} "
+        f"tp={payload['target_count']} sl={payload['stop_count']} "
+        f"total_r={payload['total_r']:.6f} expectancy_r={payload['expectancy_r']:.6f} "
+        f"max_dd_r={payload['maximum_drawdown_r']:.6f}"
+    )
+    for evidence in payload.get("evidence_validation", []):
+        observed = evidence.get("observed") or {}
+        outcome = evidence.get("outcome") or {}
+        print(
+            f"{evidence['evidence_id']} {evidence['status']} "
+            f"expected={evidence['expected_side'].value}/{evidence['expected_profile']} "
+            f"observed={getattr(observed.get('side'), 'value', '-')}/"
+            f"{observed.get('entry_profile', '-')} "
+            f"state={getattr(observed.get('state'), 'value', '-')} "
+            f"trigger={observed.get('setup_trigger_time', '-')} "
+            f"retests={observed.get('retest_count', '-')} votes={observed.get('m1_votes', '-')} "
+            f"room_r={observed.get('first_obstacle_r', '-')} "
+            f"outcome={outcome.get('result', '-')} r={outcome.get('outcome_r', '-')} "
+            f"reason={observed.get('reason', 'no candidate')}"
+        )
 
 
 if __name__ == "__main__":
