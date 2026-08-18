@@ -37,6 +37,25 @@ runs the critical tests, compiles the EA with zero errors and zero warnings, bac
 database/config/active EA, deploys the EA, and restarts the worker. Add
 `-TelegramSmokeTest` when a Telegram diagnostic message is desired.
 
+## Clickable operator launchers
+
+Windows operators can double-click these files under `scripts\`:
+
+- `disable-goldm-worker.bat` — disables the Scheduled Task and waits until the
+  exact worker process has stopped.
+- `enable-goldm-worker.bat` — enables the task and verifies that the exact
+  configured worker remains running.
+- `status-goldm-worker.bat` — displays task state, exact worker PID, and the
+  last Task Scheduler result.
+- `update-goldm-bot.bat` — discovers the sealed active-release inputs, fetches
+  `origin/feature/goldm-watch-entry-distance-defer`, displays the immutable
+  commit, and requires the operator to type `UPDATE` before calling the normal
+  backup/verification/deploy/restart/rollback pipeline.
+
+The launchers request Administrator permission through UAC when needed. They
+do not enable Telegram auto-entry; execution mode remains an independent
+runtime control.
+
 ## Telegram administration
 
 Only chat IDs in `TELEGRAM_ADMIN_CHAT_IDS` can mutate runtime trading configuration.
