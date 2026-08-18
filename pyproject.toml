@@ -15,6 +15,8 @@ dependencies = [
 [project.scripts]
 bot-ea-qt = "bot_ea.entrypoints:qt_main"
 bot-ea-websocket = "bot_ea.entrypoints:websocket_main"
+goldm-bear-scan = "goldm_bear.cli:main"
+goldm-bear-mt5-scan = "goldm_bear.mt5_cli:main"
 goldm-telegram-worker = "goldm_signal.notify.cli:main"
 
 [project.optional-dependencies]
@@ -35,4 +37,4 @@ package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["bot_ea*", "goldm_signal*"]
+include = ["bot_ea*", "goldm_bear*", "goldm_signal*"]
