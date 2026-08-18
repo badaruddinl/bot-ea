@@ -53,6 +53,9 @@ SAFE_FIELD_NAMES = frozenset(
         "durationMinutes",
         "reason",
         "maxHoldingMinutes",
+        "serverUtcOffsetMinutes",
+        "setupUtcEpoch",
+        "generatedUtcEpoch",
     }
 )
 
@@ -200,6 +203,8 @@ def load_evidence(
         "entryDistanceATR",
         "stopDistanceATR",
         "fibonacciReaction",
+        "m1Confirmed",
+        "serverUtcOffsetMinutes",
     )
     compact_outcome_fields = (
         "result",

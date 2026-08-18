@@ -58,6 +58,31 @@ class GoldMProductionBaselineResearchTests(unittest.TestCase):
             {key: normalized(value) for key, value in contract.items()},
         )
 
+    def test_strict_m1_ablation_changes_only_wait_limit_and_run_id(self) -> None:
+        repo = Path(__file__).resolve().parents[1]
+
+        def values(name: str) -> dict[str, str]:
+            return dict(
+                line.split("=", 1)
+                for line in (
+                    repo / "mt5" / "Profiles" / "Tester" / name
+                ).read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            )
+
+        production = values("GoldMSniperParity_GOLD_i_PRODUCTION.set")
+        strict = values("GoldMSniperParity_GOLD_i_STRICT_M1.set")
+        differences = {
+            key
+            for key in production
+            if production.get(key) != strict.get(key)
+        }
+        self.assertEqual(
+            differences,
+            {"InpMaximumM1EntryBars", "InpResearchRunId"},
+        )
+        self.assertEqual(strict["InpMaximumM1EntryBars"], "96")
+
     def test_export_is_read_only_and_omits_account_identity(self) -> None:
         server_timezone = timezone(timedelta(hours=3))
         with tempfile.TemporaryDirectory() as temp_dir:
