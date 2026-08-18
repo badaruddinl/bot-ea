@@ -7,6 +7,7 @@ from time import sleep
 from types import ModuleType
 
 from .engine import RevisedBar, RevisedSide, RevisedSnapshot
+from .timebase import mt5_epoch_to_server_wall
 
 
 @dataclass(frozen=True, slots=True)
@@ -126,7 +127,9 @@ class RevisedMt5ReadOnlySource:
         point = float(info.point) if info is not None else 0.01
         return [
             RevisedBar(
-                time=datetime.fromtimestamp(int(rate["time"]), tz=timezone.utc).astimezone(self.config.server_timezone),
+                time=mt5_epoch_to_server_wall(
+                    int(rate["time"]), self.config.server_timezone
+                ),
                 open=float(rate["open"]),
                 high=float(rate["high"]),
                 low=float(rate["low"]),

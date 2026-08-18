@@ -9,6 +9,7 @@ from typing import Any, Sequence
 
 from .engine import STRATEGY_ID, STRATEGY_VERSION, RevisedBar, RevisedDecision, RevisedEngine, RevisedSide, RevisedSnapshot, RevisedState
 from .setup import RevisedSetupDetector
+from .timebase import mt5_epoch_to_server_wall, server_wall_to_mt5_datetime
 
 
 @dataclass(slots=True)
@@ -376,12 +377,17 @@ class RevisedMt5HistoryLoader:
         }
 
     def _rates(self, symbol: str, timeframe: int, start: datetime, end: datetime, server_timezone: timezone, point: float) -> list[RevisedBar]:
-        raw = self._module().copy_rates_range(symbol, timeframe, start.astimezone(timezone.utc), end.astimezone(timezone.utc))
+        raw = self._module().copy_rates_range(
+            symbol,
+            timeframe,
+            server_wall_to_mt5_datetime(start, server_timezone),
+            server_wall_to_mt5_datetime(end, server_timezone),
+        )
         if raw is None:
             raise RuntimeError(f"MT5 CopyRates range failed: {self._module().last_error()}")
         return [
             RevisedBar(
-                time=datetime.fromtimestamp(int(rate["time"]), tz=timezone.utc).astimezone(server_timezone),
+                time=mt5_epoch_to_server_wall(int(rate["time"]), server_timezone),
                 open=float(rate["open"]),
                 high=float(rate["high"]),
                 low=float(rate["low"]),

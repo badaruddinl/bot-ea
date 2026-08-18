@@ -26,9 +26,20 @@ from goldm_revised.replay_cli import _print_validation_summary
 from goldm_revised.storage import RevisedStore
 from goldm_revised.setup import RevisedSetupDetector, classify_m5_setup
 from goldm_revised.telegram import RevisedAdminNotifier
+from goldm_revised.timebase import mt5_epoch_to_server_wall, server_wall_to_mt5_datetime
 
 
 TZ = timezone(timedelta(hours=3))
+
+
+def test_broker_wall_clock_epoch_is_not_offset_twice() -> None:
+    encoded = datetime(2026, 8, 18, 3, 15, tzinfo=timezone.utc)
+
+    decoded = mt5_epoch_to_server_wall(int(encoded.timestamp()), TZ)
+    query = server_wall_to_mt5_datetime(decoded, TZ)
+
+    assert decoded == datetime(2026, 8, 18, 3, 15, tzinfo=TZ)
+    assert query == encoded
 
 
 def test_august_five_evidence_contract_and_matching() -> None:
