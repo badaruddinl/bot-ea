@@ -408,6 +408,46 @@ class GoldMRevisedEngineTests(unittest.TestCase):
             detector.update(tuple(m5), current_m1_time=sell_time, side=RevisedSide.BUY)
         )
 
+    def test_weak_opposite_micro_break_does_not_cancel_watch(self) -> None:
+        m5 = list(flat_m5())
+        m5[-2] = bar(18, 4392.0, 4393.0, 4390.5, 4391.0, minutes=5)
+        m5[-1] = bar(19, 4390.8, 4395.0, 4390.7, 4394.6, minutes=5)
+        detector = RevisedSetupDetector(maximum_m1_bars=12)
+        buy_time = m5[-1].time + timedelta(minutes=6)
+        buy = detector.update(tuple(m5), current_m1_time=buy_time, side=RevisedSide.BUY)
+        self.assertIsNotNone(buy)
+
+        m5.append(bar(20, 4391.0, 4391.2, 4390.5, 4390.6, minutes=5))
+        sell_time = m5[-1].time + timedelta(minutes=6)
+        sell = detector.update(tuple(m5), current_m1_time=sell_time, side=RevisedSide.SELL)
+        persisted_buy = detector.update(
+            tuple(m5), current_m1_time=sell_time, side=RevisedSide.BUY
+        )
+
+        self.assertEqual(sell.pattern, "BEAR_MICRO_BREAK")
+        self.assertIsNotNone(persisted_buy)
+        self.assertEqual(persisted_buy.trigger_time, buy.trigger_time)
+        self.assertIsNone(detector.pop_termination(RevisedSide.BUY))
+
+    def test_same_side_confirmation_reinforces_without_resetting_watch(self) -> None:
+        m5 = list(flat_m5())
+        m5[-2] = bar(18, 4392.0, 4393.0, 4391.0, 4391.5, minutes=5)
+        m5[-1] = bar(19, 4391.4, 4393.5, 4391.0, 4393.2, minutes=5)
+        detector = RevisedSetupDetector(maximum_m1_bars=12)
+        first_time = m5[-1].time + timedelta(minutes=6)
+        first = detector.update(tuple(m5), current_m1_time=first_time, side=RevisedSide.BUY)
+
+        m5.append(bar(20, 4392.8, 4396.0, 4392.5, 4395.8, minutes=5))
+        reinforced_time = m5[-1].time + timedelta(minutes=6)
+        reinforced = detector.update(
+            tuple(m5), current_m1_time=reinforced_time, side=RevisedSide.BUY
+        )
+
+        self.assertIsNotNone(first)
+        self.assertIsNotNone(reinforced)
+        self.assertEqual(reinforced.trigger_time, first.trigger_time)
+        self.assertGreaterEqual(reinforced.votes, first.votes)
+
     def test_watch_expiry_emits_explicit_terminal_reason(self) -> None:
         m5 = list(flat_m5())
         m5[-2] = bar(18, 4392.0, 4393.0, 4391.0, 4391.5, minutes=5)

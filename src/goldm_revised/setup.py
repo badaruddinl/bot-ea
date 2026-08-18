@@ -49,18 +49,22 @@ class RevisedSetupDetector:
                         if candidate_side is RevisedSide.BUY
                         else RevisedSide.BUY
                     )
-                    # A newly closed opposite M5 setup invalidates the stale
-                    # hypothesis immediately. This prevents a late BUY from
-                    # promoting after bearish displacement (and vice versa),
-                    # while allowing the reversal to start its own causal M1
-                    # confirmation window.
-                    terminated = self._active.pop(opposite, None)
-                    if terminated is not None:
-                        self._terminated[opposite] = (
-                            terminated,
-                            "OPPOSITE_M5_SETUP_ACCEPTED",
-                        )
-                    self._active[candidate_side] = candidate
+                    # A weak opposite micro-break is part of normal range
+                    # discovery and must not destroy a live WATCH. Only a
+                    # strong reversal pattern terminates the opposite side.
+                    if _is_strong(candidate):
+                        terminated = self._active.pop(opposite, None)
+                        if terminated is not None:
+                            self._terminated[opposite] = (
+                                terminated,
+                                "OPPOSITE_M5_SETUP_ACCEPTED",
+                            )
+                    existing = self._active.get(candidate_side)
+                    self._active[candidate_side] = (
+                        candidate
+                        if existing is None
+                        else _merge_setup(existing, candidate)
+                    )
         setup = self._active.get(side)
         if setup is None:
             return None
@@ -188,4 +192,38 @@ def classify_m5_setup(
         confidence=min(100.0, 60.0 + votes * 10.0),
         level=level,
         invalidation=invalidation,
+    )
+
+
+def _is_strong(setup: RevisedM5Setup) -> bool:
+    return setup.votes >= 3 and setup.pattern not in {
+        "BULL_MICRO_BREAK",
+        "BEAR_MICRO_BREAK",
+    }
+
+
+def _merge_setup(
+    existing: RevisedM5Setup,
+    candidate: RevisedM5Setup,
+) -> RevisedM5Setup:
+    """Reinforce one WATCH without resetting its causal trigger clock."""
+    existing_strong = _is_strong(existing)
+    candidate_strong = _is_strong(candidate)
+    use_candidate_structure = candidate_strong or not existing_strong
+    return RevisedM5Setup(
+        side=existing.side,
+        trigger_time=existing.trigger_time,
+        pattern=(
+            candidate.pattern
+            if use_candidate_structure
+            else existing.pattern
+        ),
+        votes=max(existing.votes, candidate.votes),
+        confidence=max(existing.confidence, candidate.confidence),
+        level=(candidate.level if use_candidate_structure else existing.level),
+        invalidation=(
+            candidate.invalidation
+            if use_candidate_structure
+            else existing.invalidation
+        ),
     )
