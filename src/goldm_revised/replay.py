@@ -404,14 +404,35 @@ class RevisedMt5HistoryLoader:
         }
 
     def _rates(self, symbol: str, timeframe: int, start: datetime, end: datetime, server_timezone: timezone, point: float) -> list[RevisedBar]:
-        raw = self._module().copy_rates_range(
-            symbol,
-            timeframe,
-            server_wall_to_mt5_datetime(start, server_timezone),
-            server_wall_to_mt5_datetime(end, server_timezone),
+        mt5 = self._module()
+        chunk_days = (
+            31
+            if timeframe == mt5.TIMEFRAME_M1
+            else 180
+            if timeframe == mt5.TIMEFRAME_M5
+            else 365
+            if timeframe == mt5.TIMEFRAME_H1
+            else 3650
         )
-        if raw is None:
-            raise RuntimeError(f"MT5 CopyRates range failed: {self._module().last_error()}")
+        rows_by_time: dict[int, object] = {}
+        cursor = start
+        while cursor < end:
+            chunk_end = min(cursor + timedelta(days=chunk_days), end)
+            raw = mt5.copy_rates_range(
+                symbol,
+                timeframe,
+                server_wall_to_mt5_datetime(cursor, server_timezone),
+                server_wall_to_mt5_datetime(chunk_end, server_timezone),
+            )
+            if raw is None:
+                raise RuntimeError(
+                    "MT5 CopyRates range failed: "
+                    f"from={cursor.isoformat()} to={chunk_end.isoformat()} "
+                    f"error={mt5.last_error()}"
+                )
+            for rate in raw:
+                rows_by_time[int(rate["time"])] = rate
+            cursor = chunk_end
         return [
             RevisedBar(
                 time=mt5_epoch_to_server_wall(int(rate["time"]), server_timezone),
@@ -422,7 +443,7 @@ class RevisedMt5HistoryLoader:
                 volume=float(rate["tick_volume"]),
                 spread=max(float(rate["spread"]) * point, 0.0),
             )
-            for rate in raw
+            for _, rate in sorted(rows_by_time.items())
         ]
 
     def _module(self) -> ModuleType:
