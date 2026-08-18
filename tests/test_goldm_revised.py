@@ -387,6 +387,27 @@ class GoldMRevisedEngineTests(unittest.TestCase):
         self.assertEqual(decision.state, RevisedState.ENTRY_READY)
         self.assertEqual(decision.reason, "LATCHED_CONFIRMATION_RETEST")
 
+    def test_single_strong_m5_displacement_can_confirm_large_room(self) -> None:
+        m5 = list(flat_m5())
+        m5[-2] = bar(18, 4394.0, 4394.3, 4392.7, 4393.0, minutes=5)
+        m5[-1] = bar(19, 4392.8, 4401.0, 4392.5, 4400.5, minutes=5)
+        with patch.object(
+            RevisedEngine,
+            "_first_obstacle",
+            return_value=(4410.0, "H1_SWING"),
+        ), patch.object(
+            RevisedEngine,
+            "_range_confirmed",
+            return_value=False,
+        ):
+            decision = RevisedEngine().evaluate(
+                snapshot(m5=tuple(m5), entry=4400.5, stop=4395.0)
+            )
+
+        self.assertEqual(decision.state, RevisedState.ENTRY_READY)
+        self.assertEqual(decision.reason, "M5_DISPLACEMENT_ENTRY")
+        self.assertEqual(decision.mode, ConfirmationMode.MOMENTUM)
+
     def test_exhaustion_forces_range_mode(self) -> None:
         m5 = list(flat_m5())
         m5[-4:] = [

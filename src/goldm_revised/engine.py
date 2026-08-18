@@ -117,6 +117,8 @@ class RevisedEngineConfig:
     adaptive_stop_min_risk_atr: float = 0.35
     strong_m1_body_ratio: float = 0.55
     strong_m1_close_location: float = 0.75
+    strong_m5_displacement_atr: float = 0.65
+    strong_m5_body_ratio: float = 0.60
     watch_max_m1_bars: int = 60
     fibonacci_lookback_m5: int = 12
     fibonacci_retest_separation_bars: int = 2
@@ -173,6 +175,10 @@ class RevisedEngineConfig:
             raise ValueError("strong M1 body ratio is invalid")
         if not 0 < self.strong_m1_close_location <= 1:
             raise ValueError("strong M1 close location is invalid")
+        if self.strong_m5_displacement_atr <= 0:
+            raise ValueError("strong M5 displacement is invalid")
+        if not 0 < self.strong_m5_body_ratio <= 1:
+            raise ValueError("strong M5 body ratio is invalid")
         if self.watch_max_m1_bars < self.range_max_bars:
             raise ValueError("watch window must cover the range window")
         if self.fibonacci_lookback_m5 < 3 or self.fibonacci_retest_separation_bars < 1:
@@ -282,6 +288,20 @@ class RevisedEngine:
             and snapshot.m5_votes >= self.config.minimum_m5_votes
         )
         strong_pattern = snapshot.m5_pattern in self.config.strong_m5_patterns
+        strong_m5_displacement = self._strong_m5_displacement(
+            snapshot,
+            side,
+            atr_m5,
+        )
+        m5_displacement_ok = bool(
+            obstacle_r is not None
+            and obstacle_r >= self.config.first_obstacle_strict_r
+            and strong_pattern
+            and snapshot.m5_votes >= self.config.minimum_m5_votes
+            and strong_m5_displacement
+            and not exhaustion
+            and not bool(range_stats.get("acceptance"))
+        )
         strong_first_ok = bool(
             obstacle_r is not None
             and obstacle_r >= self.config.first_obstacle_strict_r
@@ -402,6 +422,8 @@ class RevisedEngine:
             mode = ConfirmationMode.RANGE
         elif momentum_ok:
             mode = ConfirmationMode.MOMENTUM
+        elif m5_displacement_ok:
+            mode = ConfirmationMode.MOMENTUM
         elif strong_first_ok or latched_retest_ok:
             mode = ConfirmationMode.RANGE
         elif range_ok:
@@ -410,6 +432,7 @@ class RevisedEngine:
             mode = ConfirmationMode.RANGE if strict_room else None
         eligible = bool(
             momentum_ok
+            or m5_displacement_ok
             or strong_first_ok
             or latched_retest_ok
             or (range_ok and (not strict_room or strict_ok))
@@ -459,7 +482,9 @@ class RevisedEngine:
             RevisedState.ENTRY_READY,
             RevisedAction.ENTER,
             "MOMENTUM_ENTRY"
-            if mode is ConfirmationMode.MOMENTUM
+            if momentum_ok
+            else "M5_DISPLACEMENT_ENTRY"
+            if m5_displacement_ok
             else "STRONG_FIRST_CONFIRMATION"
             if strong_first_ok
             else "LATCHED_CONFIRMATION_RETEST"
@@ -681,6 +706,35 @@ class RevisedEngine:
             and float(m1.get("body_ratio", 0.0)) >= self.config.range_min_body_fraction
             and float(m1.get("close_location", 0.0)) >= self.config.range_min_close_location
             and int(m1.get("votes", 0)) >= 3
+        )
+
+    def _strong_m5_displacement(
+        self,
+        snapshot: RevisedSnapshot,
+        side: RevisedSide,
+        atr: float,
+    ) -> bool:
+        if not snapshot.m5_bars or atr <= 0:
+            return False
+        latest = snapshot.m5_bars[-1]
+        if latest.range <= 0:
+            return False
+        body_ratio = latest.body / latest.range
+        close_location = (
+            (latest.close - latest.low) / latest.range
+            if side is RevisedSide.BUY
+            else (latest.high - latest.close) / latest.range
+        )
+        directional = (
+            latest.close > latest.open
+            if side is RevisedSide.BUY
+            else latest.close < latest.open
+        )
+        return bool(
+            directional
+            and latest.body >= atr * self.config.strong_m5_displacement_atr
+            and body_ratio >= self.config.strong_m5_body_ratio
+            and close_location >= self.config.momentum_close_location
         )
 
     def _momentum_stats(self, snapshot: RevisedSnapshot, side: RevisedSide, atr: float) -> tuple[bool, bool, dict[str, object]]:
