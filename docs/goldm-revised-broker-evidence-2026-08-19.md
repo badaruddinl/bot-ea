@@ -28,7 +28,8 @@ Production `GOLDM_SNIPER_PARITY` and `goldm_bear` remain unchanged.
 
 ## Version 0.5.0 behavior
 
-- A newly closed opposite M5 setup immediately expires the stale active side.
+- A weak opposite M5 micro-break is treated as retest evidence and does not
+  expire the active WATCH. Only a strong opposite M5 pattern terminates it.
 - The opposite setup is retained and builds a new causal M1 window; SELL is
   still `OBSERVATION_ONLY` in the initial rollout.
 - Entry risk may tighten from broad M5 invalidation to the nearest *confirmed*
@@ -41,9 +42,9 @@ Production `GOLDM_SNIPER_PARITY` and `goldm_bear` remain unchanged.
 - Strong M5 rejection and three-candle morning/evening-star patterns are
   recognized symmetrically. A bare micro-break remains non-strong.
 - Core BUY signals retain the 1R first-obstacle gate. A separately labelled
-  `SCALPER` BUY may be shadow-tracked from 0.25R, requires a strong M5 pattern
-  plus all three M1 votes and a micro-break, and never sends an admin entry
-  notification or enters core forward metrics.
+  `SCALPER` BUY may be shadow-tracked from 0.10R, requires a structural (not
+  psychological) obstacle, a Fibonacci retest, a strong M5 pattern, all three
+  M1 votes and a micro-break, and never enters core forward metrics.
 - Core target buffering is increased from 0.08 ATR to 0.12 ATR so evidence
   number 5 targets slightly below the resistance/psychological cluster.
 
@@ -112,3 +113,38 @@ Commit `2dbe8a9` therefore filters M1 obstacles: an M1 swing becomes a hard
 obstacle only when repeated/clustered or confluent with M5/H1/D1/psychological
 levels. That filter passed the complete local suite but has not yet completed a
 broker replay, so the engine remains research-only and shadow stays disabled.
+
+## Final focused five-evidence replay
+
+The MT5 adapter initially applied the GMT+3 offset twice. The evidence was a
+false 03:00–04:00 server-time history gap even though the broker chart and
+published session were active. Commit `c3da373` makes the terminal's encoded
+epoch fields explicit broker wall-clock values; the chart and replay then
+align without using the OS timezone.
+
+The stable 17–19 August replay after the time correction and WATCH lifecycle
+work produced:
+
+- 30 resolved entries: 16 BUY and 14 SELL;
+- 8 core BUY and 8 SCALPER entries;
+- 18 targets, 11 stops, and one other resolved outcome;
+- total `+10.978966R`;
+- expectancy `+0.365966R` per entry;
+- maximum drawdown `3.0R`.
+
+Focused evidence verdict:
+
+1. E1 PASS — SELL CORE, bearish engulfing, room about `1.96R`.
+2. E2 PASS — BUY CORE, target reached for about `+1.80R`.
+3. E3 NEAR/REJECT — the SELL hypothesis is detected, but confirmation and
+   safe room never coincide. At the later room opportunity price immediately
+   expands bullish, so forcing the SELL would be a false positive.
+4. E4 PASS — BUY SCALPER, target reached for about `+1.73R`.
+5. E5 NEAR/REJECT — BUY direction and retests are detected, but the safe room
+   at final confirmation is below `1R`. The earlier forced entry tested during
+   tuning stopped out; it was removed rather than overfitted.
+
+An experimental risk relaxation generated 57 entries, `-2.491R`, and `7.565R`
+drawdown. It was explicitly rejected and the engine was restored to the stable
+gate set. The final result therefore intentionally keeps two weak production
+samples out, as allowed by the five-evidence acceptance rule.
