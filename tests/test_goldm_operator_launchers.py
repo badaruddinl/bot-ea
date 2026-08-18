@@ -43,10 +43,10 @@ class GoldMOperatorLauncherTests(unittest.TestCase):
         self.assertIn('Read-Host "Type UPDATE', controller)
         self.assertIn("source-metadata.json", controller)
         self.assertIn("sealed-inputs", controller)
+        self.assertIn('[string]$RemoteBranch = "main"', controller)
         self.assertIn("-Verb RunAs", controller)
         self.assertNotIn("git pull", controller.lower())
 
 
 if __name__ == "__main__":
     unittest.main()
-

@@ -2,7 +2,7 @@ param(
     [string]$RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path,
     [string]$TaskName = "goldm telegram worker",
     [string]$Remote = "origin",
-    [string]$RemoteBranch = "feature/goldm-watch-entry-distance-defer"
+    [string]$RemoteBranch = "main"
 )
 
 $ErrorActionPreference = "Stop"
@@ -188,4 +188,3 @@ catch {
     Write-Host "GOLDM bot update failed: $($_.Exception.Message)" -ForegroundColor Red
     exit 1
 }
-

@@ -48,7 +48,7 @@ Windows operators can double-click these files under `scripts\`:
 - `status-goldm-worker.bat` — displays task state, exact worker PID, and the
   last Task Scheduler result.
 - `update-goldm-bot.bat` — discovers the sealed active-release inputs, fetches
-  `origin/feature/goldm-watch-entry-distance-defer`, displays the immutable
+  `origin/main`, displays the immutable
   commit, and requires the operator to type `UPDATE` before calling the normal
   backup/verification/deploy/restart/rollback pipeline.
 
