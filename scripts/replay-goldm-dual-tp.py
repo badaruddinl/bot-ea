@@ -14,7 +14,85 @@ sys.path.insert(0, str(ROOT / "src"))
 from goldm_revised.replay import RevisedMt5HistoryLoader  # noqa: E402
 
 
-POLICIES = ("FULL_TP2", "FULL_TP1", "SPLIT_KEEP_STOP", "SPLIT_BE_AFTER_TP1")
+POLICIES = (
+    "FULL_TP2",
+    "FULL_TP1",
+    "SPLIT_KEEP_STOP",
+    "SPLIT_BE_AFTER_TP1",
+    "FULL_TP2_BE_AFTER_TP1",
+    "ENGINE_BE_AFTER_TP1",
+    "ADAPTIVE_ENGINE",
+)
+
+
+def adaptive_runner_fraction(side: str, outcome, tp1_r: float, tp2_r: float) -> float:
+    """Map causal engine evidence to executable 0/0.01/0.02 runner allocation."""
+
+    score = 0
+    if side == "BUY":
+        obstacle_r = float(
+            outcome.get("execution_first_obstacle_r")
+            or outcome.get("first_obstacle_r", 0.0)
+        )
+        target_obstacle_ratio = tp2_r / obstacle_r if obstacle_r > 0 else 99.0
+        score += 2 if obstacle_r >= 1.5 else 1 if obstacle_r >= 1.0 else -2
+        score += 1 if target_obstacle_ratio <= 2.0 else -2 if target_obstacle_ratio > 3.0 else 0
+        if outcome.get("confirmation_mode") == "MOMENTUM":
+            score += 1
+        if outcome.get("m5_pattern") in {
+            "BULL_ENGULFING",
+            "BULL_MORNING_STAR",
+        }:
+            score += 1
+        regime = outcome.get("market_regime") or {}
+        if float(regime.get("h1_trend_atr", 0.0)) >= 2.0:
+            score += 1
+        if float(regime.get("m5_atr_expansion", 0.0)) >= 1.0:
+            score += 1
+        if int(outcome.get("retest_count", 0)) >= 2:
+            score += 1
+        return 1.0 if score >= 5 else 0.5 if score >= 2 else 0.0
+
+    target_ratio = tp2_r / tp1_r if tp1_r > 0 else 99.0
+    score += 2 if int(outcome.get("m5_rejections", 0)) >= 2 else 0
+    score += 1 if int(outcome.get("m5_touches", 0)) >= 2 else 0
+    score += 1 if int(outcome.get("m1_touches", 0)) >= 2 else 0
+    score += 1 if target_ratio <= 2.0 else -1 if target_ratio > 3.0 else 0
+    if outcome.get("target_crosses_structural_support"):
+        score -= 1
+    reason = str(outcome.get("setup_reason", ""))
+    if "continuation_through_near_support" in reason:
+        score += 1
+    if "target_capped_at_nearest_psychological_support" in reason:
+        score -= 1
+    return 1.0 if score >= 4 else 0.5 if score >= 2 else 0.0
+
+
+def policy_runner_fraction(policy: str, side: str, outcome, tp1_r: float, tp2_r: float) -> float:
+    if policy == "FULL_TP2":
+        return 1.0
+    if policy in {"FULL_TP2_BE_AFTER_TP1", "ENGINE_BE_AFTER_TP1"}:
+        return 1.0
+    if policy == "FULL_TP1":
+        return 0.0
+    if policy in {"SPLIT_KEEP_STOP", "SPLIT_BE_AFTER_TP1"}:
+        return 0.5
+    return adaptive_runner_fraction(side, outcome, tp1_r, tp2_r)
+
+
+def engine_should_move_be(side: str, outcome, tp1_r: float, tp2_r: float) -> bool:
+    target_ratio = tp2_r / tp1_r if tp1_r > 0 else 99.0
+    if side == "BUY":
+        return bool(
+            outcome.get("confirmation_mode") == "RANGE"
+            and float(outcome.get("execution_first_obstacle_r", 0.0)) >= 1.0
+            and target_ratio >= 2.0
+        )
+    return bool(
+        int(outcome.get("m1_touches", 0)) >= 2
+        and bool(outcome.get("target_crosses_structural_support"))
+        and target_ratio >= 1.5
+    )
 
 
 def parse_args() -> argparse.Namespace:
@@ -60,6 +138,14 @@ def replay_policy(report, bars, times, *, side, tp1_field, tp2_field, policy):
             continue
         tp1_r = abs(tp1 - entry) / risk
         tp2_r = abs(tp2 - entry) / risk
+        runner_fraction = policy_runner_fraction(
+            policy,
+            side,
+            original,
+            tp1_r,
+            tp2_r,
+        )
+        tp1_fraction = 1.0 - runner_fraction
         active_stop = stop
         tp1_taken = False
         result = "END_OF_TEST"
@@ -97,23 +183,28 @@ def replay_policy(report, bars, times, *, side, tp1_field, tp2_field, policy):
                 if tp2_hit:
                     closed_at = bar.time + timedelta(minutes=1)
                     result = "TP2"
-                    outcome_r = (
-                        tp2_r
-                        if policy == "FULL_TP2"
-                        else tp1_r
-                        if policy == "FULL_TP1"
-                        else 0.5 * tp1_r + 0.5 * tp2_r
-                    )
+                    outcome_r = tp1_fraction * tp1_r + runner_fraction * tp2_r
                     tp1_taken = True
                     break
                 if tp1_hit:
                     tp1_taken = True
-                    if policy == "FULL_TP1":
+                    if runner_fraction <= 0.0:
                         closed_at = bar.time + timedelta(minutes=1)
                         result = "TP1"
                         outcome_r = tp1_r
                         break
-                    if policy == "SPLIT_BE_AFTER_TP1":
+                    if policy in {
+                        "SPLIT_BE_AFTER_TP1",
+                        "FULL_TP2_BE_AFTER_TP1",
+                    } or (
+                        policy == "ENGINE_BE_AFTER_TP1"
+                        and engine_should_move_be(
+                            side,
+                            original,
+                            tp1_r,
+                            tp2_r,
+                        )
+                    ):
                         active_stop = entry
                     continue
             else:
@@ -121,30 +212,18 @@ def replay_policy(report, bars, times, *, side, tp1_field, tp2_field, policy):
                     closed_at = bar.time + timedelta(minutes=1)
                     result = "AMBIGUOUS_AFTER_TP1"
                     remaining_r = (active_stop - entry) / risk if side == "BUY" else (entry - active_stop) / risk
-                    outcome_r = (
-                        remaining_r
-                        if policy == "FULL_TP2"
-                        else 0.5 * tp1_r + 0.5 * remaining_r
-                    )
+                    outcome_r = tp1_fraction * tp1_r + runner_fraction * remaining_r
                     break
                 if stop_hit:
                     closed_at = bar.time + timedelta(minutes=1)
                     result = "STOP_AFTER_TP1"
                     remaining_r = (active_stop - entry) / risk if side == "BUY" else (entry - active_stop) / risk
-                    outcome_r = (
-                        remaining_r
-                        if policy == "FULL_TP2"
-                        else 0.5 * tp1_r + 0.5 * remaining_r
-                    )
+                    outcome_r = tp1_fraction * tp1_r + runner_fraction * remaining_r
                     break
                 if tp2_hit:
                     closed_at = bar.time + timedelta(minutes=1)
                     result = "TP2"
-                    outcome_r = (
-                        tp2_r
-                        if policy == "FULL_TP2"
-                        else 0.5 * tp1_r + 0.5 * tp2_r
-                    )
+                    outcome_r = tp1_fraction * tp1_r + runner_fraction * tp2_r
                     break
         if result == "END_OF_TEST":
             last_close = bars[-1].close if bars else entry
@@ -154,8 +233,8 @@ def replay_policy(report, bars, times, *, side, tp1_field, tp2_field, policy):
                 else (entry - last_close) / risk
             )
             outcome_r = (
-                0.5 * tp1_r + 0.5 * current_r
-                if tp1_taken and policy.startswith("SPLIT")
+                tp1_fraction * tp1_r + runner_fraction * current_r
+                if tp1_taken
                 else current_r
             )
         item = dict(original)
@@ -172,6 +251,14 @@ def replay_policy(report, bars, times, *, side, tp1_field, tp2_field, policy):
                 "tp1_r": tp1_r,
                 "tp2_r": tp2_r,
                 "tp1_taken": tp1_taken,
+                "tp1_fraction": tp1_fraction,
+                "runner_fraction": runner_fraction,
+                "engine_be_enabled": engine_should_move_be(
+                    side,
+                    original,
+                    tp1_r,
+                    tp2_r,
+                ),
                 "mfe": mfe_r,
                 "mae": mae_r,
                 "dual_tp_policy": policy,
@@ -193,6 +280,10 @@ def replay_policy(report, bars, times, *, side, tp1_field, tp2_field, policy):
         "tp2_count": sum(item["result"] == "TP2" for item in replayed),
         "stop_before_tp1_count": sum(item["result"] == "STOP_BEFORE_TP1" for item in replayed),
         "stop_after_tp1_count": sum(item["result"] == "STOP_AFTER_TP1" for item in replayed),
+        "tp1_only_count": sum(item["runner_fraction"] == 0.0 for item in replayed),
+        "split_count": sum(item["runner_fraction"] == 0.5 for item in replayed),
+        "tp2_only_count": sum(item["runner_fraction"] == 1.0 for item in replayed),
+        "engine_be_enabled_count": sum(item["engine_be_enabled"] for item in replayed),
         "total_r": total_r,
         "expectancy_r": total_r / len(replayed) if replayed else 0.0,
         "maximum_drawdown_r": maximum_drawdown,
@@ -249,6 +340,10 @@ def main() -> int:
                 "tp2": payload["tp2_count"],
                 "stop_before_tp1": payload["stop_before_tp1_count"],
                 "stop_after_tp1": payload["stop_after_tp1_count"],
+                "tp1_only": payload["tp1_only_count"],
+                "split": payload["split_count"],
+                "tp2_only": payload["tp2_only_count"],
+                "engine_be_enabled": payload["engine_be_enabled_count"],
                 "total_r": payload["total_r"],
                 "expectancy_r": payload["expectancy_r"],
                 "maximum_drawdown_r": payload["maximum_drawdown_r"],

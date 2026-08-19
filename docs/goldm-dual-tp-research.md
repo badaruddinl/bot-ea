@@ -70,7 +70,7 @@ fixed-lot net profit. FULL TP2 remains the primary performance policy.
 For bear, TP1-only and split policies are inferior in both return and full-suite
 drawdown. FULL TP2 remains the only selected policy.
 
-## Decision
+## Initial split-policy decision
 
 - REVISED primary: FULL TP2, no split.
 - REVISED optional protection research profile: 50/50 split with original
@@ -78,3 +78,59 @@ drawdown. FULL TP2 remains the only selected policy.
 - Bear primary: FULL TP2, no split.
 - Bear TP1-only and split variants are rejected.
 - No runtime, worker, or order behavior is changed by this research.
+
+## Engine-decided BEP milestone research
+
+TP1 is reinterpreted as a milestone, not a mandatory partial close. The entire
+0.02 lot remains assigned to TP2. When TP1 is reached, the engine may move the
+whole-position stop to BEP beginning on the next M1 bar.
+
+The decision is made from entry-time evidence:
+
+- REVISED moves BEP only for RANGE setups with first-obstacle room at least 1R
+  and TP2 at least twice as far as TP1. MOMENTUM setups retain their structural
+  stop so an ordinary retracement does not remove the runner.
+- Bear moves BEP only when M1 has at least two touches, TP2 crosses structural
+  support, and TP2 is at least 1.5 times TP1 distance.
+
+No result/future field participates in the decision.
+
+### 4–19 August tuning evidence
+
+| Engine | Full TP2 | Universal BEP | Engine-decided BEP |
+|---|---:|---:|---:|
+| REVISED | +11.95R | +10.91R | **+12.95R** |
+| Bear | +3.00R | +1.00R | **+3.00R** |
+
+REVISED engine-BEP saves one RANGE stop without removing the MOMENTUM runner
+that universal BEP incorrectly closes. Bear engine-BEP avoids the universal
+BEP false close and leaves the valid August outcomes unchanged.
+
+### Frozen-rule partial revalidation
+
+| Engine/window | Full TP2 R | Engine-BEP R | Full TP2 cash | Engine-BEP cash |
+|---|---:|---:|---:|---:|
+| REVISED Jan | +121.30R | **+127.96R** | $1,444.46 | **$1,505.75** |
+| REVISED Nov–Feb | **+33.47R** | +30.63R | $486.18 | **$489.08** |
+| REVISED Jun | +13.99R | **+15.99R** | $197.17 | **$219.19** |
+| Bear Jan | +29.57R | +29.57R | unchanged | unchanged |
+| Bear Nov–Feb | +8.67R | +8.67R | unchanged | unchanged |
+| Bear Jun | +6.00R | +6.00R | unchanged | unchanged |
+
+REVISED November R declines slightly, but fixed-lot ending balance and PF
+improve in all three partial windows. January cash drawdown worsens, so this is
+not a free risk reduction.
+
+### Full suite
+
+| Engine | Policy | Total R | Expectancy | R DD | Ending balance | PF | Cash DD |
+|---|---|---:|---:|---:|---:|---:|---:|
+| REVISED | Full TP2 | +180.94R | +0.189R | 29.50R | $2,017.66 | 1.40 | 59.58% |
+| REVISED | **Engine-BEP** | **+209.48R** | **+0.218R** | **25.18R** | **$2,126.15** | **1.51** | **47.73%** |
+| Bear | Full TP2 | +94.80R | +0.310R | 9.15R | $662.38 | 1.36 | 27.93% |
+| Bear | **Engine-BEP** | **+95.80R** | **+0.313R** | **9.15R** | **$673.22** | **1.37** | **27.93%** |
+
+Engine-decided BEP is the first TP1/TP2 mechanism to improve full-suite R,
+expectancy, cash profit, and PF for both engines without partial close. It is
+retained as a research candidate only; runtime remains unchanged pending an
+explicit application instruction and execution-cost stress.
