@@ -100,6 +100,32 @@ creates more first-obstacle-room violations (460 versus 336 in the full suite).
 Neither candidate dominates across all objectives, so both remain separate
 research candidates while 1.5× is dropped from the shortlist.
 
+## USD 100,000 with fixed 0.20 lot
+
+Increasing only starting balance does not change fixed-lot trade P/L. It
+removes the early margin failures and makes percentage drawdown very small,
+but also leaves almost all capital unused.
+
+| Window | Setup | Completed | Ending balance | Net | Return | PF | Max DD USD | Max DD / peak |
+|---|---|---:|---:|---:|---:|---:|---:|---:|
+| Jan 2025–now | 1.5× : 2.5× | 298 / 298 | $109,251.80 | +$9,251.80 | 9.252% | 1.56 | $1,188.00 | 1.188% |
+| Jan 2025–now | 1.75× : 2.5× | 285 / 285 | $113,449.00 | +$13,449.00 | 13.449% | 1.81 | $953.75 | **0.884%** |
+| Jan 2025–now | 2× : 2.5× | 280 / 280 | **$114,223.50** | **+$14,223.50** | **14.223%** | **1.81** | **$951.50** | 0.949% |
+| Nov 2025–15 Feb 2026 | 1.5× : 2.5× | 63 / 63 | $103,444.80 | +$3,444.80 | 3.445% | 1.94 | **$817.50** | **0.816%** |
+| Nov 2025–15 Feb 2026 | 1.75× : 2.5× | 63 / 63 | $103,862.80 | +$3,862.80 | 3.863% | 1.96 | $953.75 | 0.952% |
+| Nov 2025–15 Feb 2026 | 2× : 2.5× | 63 / 63 | **$104,918.70** | **+$4,918.70** | **4.919%** | **2.26** | $876.80 | 0.869% |
+| Jun 2026–now | 1.5× : 2.5× | 18 / 18 | **$101,112.60** | **+$1,112.60** | **1.113%** | **2.32** | **$198.30** | **0.198%** |
+| Jun 2026–now | 1.75× : 2.5× | 18 / 18 | $100,971.95 | +$971.95 | 0.972% | 1.99 | $231.35 | 0.231% |
+| Jun 2026–now | 2× : 2.5× | 18 / 18 | $100,831.30 | +$831.30 | 0.831% | 1.74 | $264.40 | 0.264% |
+| Full suite | 1.5× : 2.5× | 1,004 / 1,004 | $114,281.20 | +$14,281.20 | 14.281% | 1.31 | $2,525.80 | 2.447% |
+| Full suite | 1.75× : 2.5× | 959 / 959 | $119,191.80 | +$19,191.80 | 19.192% | 1.40 | **$2,256.90** | **2.196%** |
+| Full suite | 2× : 2.5× | 919 / 919 | **$120,517.80** | **+$20,517.80** | **20.518%** | **1.41** | $2,786.80 | 2.686% |
+
+On the full suite, 2× : 2.5× maximizes fixed-lot cash profit and profit factor.
+The 1.75× : 2.5× setup has the lower dollar/percentage drawdown and the better
+return-to-drawdown relationship. The 1.5× setup remains inferior across the
+full-suite risk/return comparison despite leading the short June window.
+
 Neither shortlisted candidate passes the official forward gate. Drawdown
 exceeds 4R in two segmented windows and the full suite, first-obstacle
 violations remain, and almost every target crosses the first obstacle without
