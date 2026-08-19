@@ -75,15 +75,36 @@ survival therefore does not make USD 50 safe.
 
 ## Decision
 
-The 1.75× : 2.5× candidate is the more robust research candidate: it is the
-only one that completes all segmented USD 100 cash paths and it leads the full
-suite in total R, expectancy, R drawdown, ending balance, and profit factor.
+The 1.75× : 2.5× candidate is more robust than 1.5× : 2.5×: it is the only one
+of those two that completes all segmented USD 100 cash paths. The earlier
+2× : 2.5× candidate must, however, remain in the comparison.
 
-It still does not pass the official forward gate. Drawdown exceeds 4R in two
-segmented windows and the full suite, first-obstacle violations remain, and
-almost every target crosses the first obstacle without causal acceptance
-confirmation. It is not registered for forward test. Production is unchanged
-and the conditional `goldm_bear` phase remains unstarted.
+## Comparison with 2× : 2.5×
+
+| Window | Setup | Total R | Expectancy | R DD | $100 ending | PF | Cash DD / peak | Minimum balance |
+|---|---|---:|---:|---:|---:|---:|---:|---:|
+| Jan 2025–now | 1.75× : 2.5× | **+121.30R** | **+0.426R** | 9.62R | $1,444.46 | 1.81 | **62.27%** | **$49.20** |
+| Jan 2025–now | 2× : 2.5× | +114.73R | +0.410R | **8.78R** | **$1,522.35** | **1.81** | 73.08% | $35.05 |
+| Nov 2025–15 Feb 2026 | 1.75× : 2.5× | **+33.47R** | **+0.531R** | 8.62R | $486.18 | 1.96 | 83.87% | $18.35 |
+| Nov 2025–15 Feb 2026 | 2× : 2.5× | +32.71R | +0.519R | **6.00R** | **$591.87** | **2.26** | **46.72%** | **$74.80** |
+| Jun 2026–now | 1.75× : 2.5× | **+13.99R** | **+0.777R** | 3.00R | **$197.17** | **1.99** | **20.13%** | **$79.87** |
+| Jun 2026–now | 2× : 2.5× | +10.99R | +0.611R | 3.00R | $183.13 | 1.74 | 23.00% | $77.00 |
+| Full suite | 1.75× : 2.5× | **+180.94R** | **+0.189R** | 29.50R | $2,017.66 | 1.40 | 59.58% | $72.20 |
+| Full suite | 2× : 2.5× | +166.44R | +0.181R | **26.54R** | **$2,151.78** | **1.41** | **58.82%** | **$79.49** |
+
+The 2× stop leads full-suite cash balance, profit factor, and drawdown, and is
+clearly stronger in the November–February window. The 1.75× stop leads
+full-suite total R and expectancy, preserves more capital in the
+January-starting path, and performs better in the June window. The 2× stop also
+creates more first-obstacle-room violations (460 versus 336 in the full suite).
+Neither candidate dominates across all objectives, so both remain separate
+research candidates while 1.5× is dropped from the shortlist.
+
+Neither shortlisted candidate passes the official forward gate. Drawdown
+exceeds 4R in two segmented windows and the full suite, first-obstacle
+violations remain, and almost every target crosses the first obstacle without
+causal acceptance confirmation. No forward task is registered. Production is
+unchanged and the conditional `goldm_bear` phase remains unstarted.
 
 Commission, swap, slippage, and executable bid/ask differences are excluded.
 No order was sent.
