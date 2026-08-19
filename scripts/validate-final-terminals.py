@@ -9,10 +9,12 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from gold_portfolio.config import load_worker_config  # noqa: E402
+from gold_portfolio.cli import _load_local_env  # noqa: E402
 from gold_portfolio.mt5_session import BoundMt5Session  # noqa: E402
 
 
 def main() -> int:
+    _load_local_env()
     parser = argparse.ArgumentParser(description="Read-only validation of final MT5 bindings")
     parser.add_argument(
         "--group",
