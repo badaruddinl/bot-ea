@@ -20,6 +20,12 @@ from .candidate import (
     confluence_v2_config,
     confluence_v3_config,
 )
+from .multitimeframe import (
+    BearMultiTimeframeReplay,
+    BearV4Config,
+    BearV4Outcome,
+    BearV4Report,
+)
 
 __all__ = [
     "BearAction",
@@ -36,4 +42,8 @@ __all__ = [
     "confluence_v1_config",
     "confluence_v2_config",
     "confluence_v3_config",
+    "BearMultiTimeframeReplay",
+    "BearV4Config",
+    "BearV4Outcome",
+    "BearV4Report",
 ]

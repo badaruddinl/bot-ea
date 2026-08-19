@@ -106,16 +106,70 @@ falling H1 SMA20. It does not include the failed repeated-touch gate.
 | Full-suite expectancy | -0.059R | -0.053R | -0.076R | **-0.024R** |
 | Full-suite max DD | 144.13R | 69.75R | 66.73R | **24.44R** |
 
-V3 is the strongest research result, but it remains negative in the full suite
-and the November–February window. Iteration stops here rather than adding
-post-hoc time/score filters targeted to the remaining losing window.
+V3 is the strongest single-entry-timeframe result, but it remains negative in
+the full suite and the November–February window. No post-hoc time/score filter
+is added for that losing window; the next experiment instead changes the
+causal timeframe architecture.
+
+## Multi-timeframe confluence-v4
+
+V4 is a separate state machine added only to `goldm_bear`:
+
+```text
+closed H1 trend → M15 confluence setup → M5 ARMED → M1 retest entry
+```
+
+- Native closed H1 bars require close below a falling SMA20.
+- M15 confluence-v1 produces a WATCH setup; it does not enter.
+- The three closed M5 bars composing the M15 rejection may validate the setup.
+- M15 rejection counts as the first structural touch; M5 must confirm bearish
+  momentum without two-close acceptance above resistance.
+- A strong M5 failed breakout may arm immediately.
+- After ARMED, M1 has 20 closed bars to retest the M15/M5 zone.
+- M1 requires a strong rejection or two ordinary touches, micro-break below the
+  previous low, bearish close location, and RSI/Stochastic turn-down.
+- A strong first M1 continuation may use the already-closed pre-ARM M1 candle
+  as its micro-break reference; ordinary rejection still needs two M1 touches.
+- Entry is a SELL-stop one tick below the broken M1 low, not the later candle
+  close. This preserves causal entry room without moving TP through support.
+- Stop is above M5/resistance structure with spread/ATR buffer.
+- Target remains in front of the M15 support/psychological barrier.
+- TP/SL outcome is tracked on M1; same-bar ambiguity remains conservative.
+
+| Window | M15 setups | H1 rejected | M5 armed | M1 entries | Total R | Expectancy | Max DD |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Jan 2025–now | 257 | 142 | 105 | 72 | +22.09R | +0.307R | 4.72R |
+| Nov 2025–15 Feb 2026 | 59 | 33 | 24 | 16 | +3.21R | +0.201R | 4.72R |
+| Jun 2026–now | 37 | 15 | 20 | 14 | +5.10R | +0.364R | 3.00R |
+| Full suite | 1,027 | 576 | 419 | 303 | **+62.06R** | **+0.205R** | 17.75R |
+
+### 4–19 August SELL evidence
+
+V4 produces three entries, all targets, for `+1.90R` with zero closed-trade
+drawdown. The supplied 18 August setup is reconciled as follows:
+
+- M15 setup: 17:00 server time;
+- H1 bearish context: valid;
+- M5: ARMED at 17:15 after two touches/two rejections;
+- M1 micro-break SELL-stop entry: 4393.39 at 17:18;
+- structural stop: 4399.50;
+- psychological-support target: 4390.50;
+- outcome: TARGET, +0.473R.
+
+V4 is the first bear candidate to finish the evidence window, every segmented
+stress window, and the full suite above zero. It is retained as the best
+research architecture. It is not yet a forward/deployment candidate because
+full-suite drawdown is 17.75R, two segmented windows marginally exceed the 4R
+gate, and executable spread/slippage stress has not been completed.
 
 ## Decision
 
-The existing `goldm_bear` engine and all three confluence candidates fail the
-segmented-window and full-suite promotion test. No hour-of-day, score, or reason
-filter is selected post hoc. The engine remains research-only; no Scheduled
-Task, Telegram sender, order function, or production integration is created.
+The existing `goldm_bear` engine and confluence v1–v3 fail the complete
+segmented-window promotion test. V4 is positive across all tested windows but
+has not passed the drawdown/execution-stress promotion gate. No hour-of-day,
+score, or reason filter is selected post hoc. The engine remains research-only;
+no Scheduled Task, Telegram sender, order function, or production integration
+is created.
 
 The separate REVISED candidate remains frozen at stop multiplier 1.75, target
 multiplier 2.5, fixed lot 0.20, reference balance USD 100,000, and no

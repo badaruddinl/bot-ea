@@ -17,6 +17,27 @@ def load_mt5_m15_bars(
 ) -> list[BearBar]:
     """Read M15 bars from MT5 without placing or modifying any order."""
 
+    return load_mt5_bars(
+        symbol=symbol,
+        timeframe_name="TIMEFRAME_M15",
+        start=start,
+        end=end,
+        server_timezone=server_timezone,
+        mt5_module=mt5_module,
+    )
+
+
+def load_mt5_bars(
+    *,
+    symbol: str,
+    timeframe_name: str,
+    start: datetime,
+    end: datetime,
+    server_timezone: timezone,
+    mt5_module: ModuleType | None = None,
+) -> list[BearBar]:
+    """Read one closed-bar timeframe from MT5 without any trade API."""
+
     if not symbol.strip():
         raise ValueError("symbol is required")
     if start.tzinfo is None or end.tzinfo is None:
@@ -25,6 +46,8 @@ def load_mt5_m15_bars(
         raise ValueError("MT5 range end must be after start")
 
     mt5 = mt5_module or import_module("MetaTrader5")
+    if not hasattr(mt5, timeframe_name):
+        raise ValueError(f"unsupported MT5 timeframe: {timeframe_name}")
     if not mt5.initialize():
         raise RuntimeError(f"MT5 initialize failed: {mt5.last_error()}")
     try:
@@ -35,7 +58,7 @@ def load_mt5_m15_bars(
             raise RuntimeError(f"MT5 symbol info is unavailable for {symbol}: {mt5.last_error()}")
         rates = mt5.copy_rates_range(
             symbol,
-            mt5.TIMEFRAME_M15,
+            getattr(mt5, timeframe_name),
             start.astimezone(timezone.utc),
             end.astimezone(timezone.utc),
         )
@@ -57,7 +80,7 @@ def load_mt5_m15_bars(
             for rate in rates
         ]
         if not bars:
-            raise RuntimeError(f"MT5 returned no M15 bars for {symbol}")
+            raise RuntimeError(f"MT5 returned no {timeframe_name} bars for {symbol}")
         return bars
     finally:
         mt5.shutdown()
