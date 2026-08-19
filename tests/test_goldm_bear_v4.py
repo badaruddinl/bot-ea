@@ -3,7 +3,9 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
 from goldm_bear.engine import BearAction, BearBar, BearDecision
-from goldm_bear.multitimeframe import BearMultiTimeframeReplay
+import pytest
+
+from goldm_bear.multitimeframe import BearMultiTimeframeReplay, BearV4Config
 
 
 TZ = timezone(timedelta(hours=3))
@@ -143,3 +145,8 @@ def test_v4_m1_retest_requires_micro_break() -> None:
     assert plan is not None
     assert plan["entry"] == history[-1].low - 0.01
     assert plan["target"] < plan["entry"] < plan["stop"]
+
+
+def test_v4_fixed_target_r_must_be_positive() -> None:
+    with pytest.raises(ValueError, match="fixed target R"):
+        BearV4Config(fixed_target_r=0.0)

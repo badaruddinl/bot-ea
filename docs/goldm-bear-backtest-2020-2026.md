@@ -162,6 +162,44 @@ research architecture. It is not yet a forward/deployment candidate because
 full-suite drawdown is 17.75R, two segmented windows marginally exceed the 4R
 gate, and executable spread/slippage stress has not been completed.
 
+## V4 normal-stop fixed-R search
+
+Starting balance is USD 100, fixed lot is 0.02, entry and structural stop remain
+unchanged. Exact fixed-R targets were tested separately; the audit counts when
+they extend below the engine's nearest structural/psychological support.
+
+| Target R | Trades | Total R | Expectancy | R DD | Targets beyond support | Ending balance | PF | Cash DD |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 0.35 | 323 | +57.70R | +0.179R | **3.90R** | **4** | $585.18 | **2.49** | **8.19%** |
+| 0.50 | 321 | +55.50R | +0.173R | 6.00R | 19 | $569.67 | 1.83 | 21.74% |
+| 0.70 | 319 | +58.40R | +0.183R | 6.90R | 57 | $598.06 | 1.64 | 29.40% |
+| 1.00 | 316 | +70.00R | +0.222R | 9.00R | 126 | $704.96 | 1.61 | 19.26% |
+| 1.25 | 314 | +68.50R | +0.218R | 8.50R | 171 | $609.09 | 1.42 | 22.90% |
+| 1.50 | 311 | +76.50R | +0.246R | 10.50R | 198 | $614.70 | 1.39 | 24.59% |
+| 2.00 | 309 | +87.00R | +0.282R | 12.00R | 229 | $721.71 | 1.41 | 26.81% |
+| 2.50 | 305 | **+90.50R** | **+0.297R** | 11.00R | 256 | **$722.43** | 1.38 | 28.14% |
+
+RR 2.0–2.5 maximizes historical cash but moves most targets through support,
+contradicting the bear design and exposing the trade to reversal. RR 0.35 is
+the risk/structure candidate.
+
+### Selected normal candidate: 0.35R capped at structural support
+
+The final target is the closer of exact 0.35R and the original structural TP.
+This removes all remaining support crossings.
+
+| Window | Trades | Total R | Expectancy | R DD | Ending balance | PF | Cash DD |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| 4–19 Aug evidence | 3 | +1.05R | +0.350R | 0.00R | $120.28 | — | 0.00% |
+| Jan 2025–now | 75 | +15.41R | +0.206R | 1.30R | $324.91 | 2.69 | 9.04% |
+| Nov 2025–15 Feb 2026 | 17 | +3.25R | +0.191R | 1.00R | $170.00 | 3.61 | 9.97% |
+| Jun 2026–now | 15 | +2.51R | +0.168R | 1.00R | $129.91 | 1.62 | 26.68% |
+| Full suite | 323 | **+57.53R** | **+0.178R** | **3.90R** | **$583.59** | **2.49** | **8.19%** |
+
+Every cash path completes without margin failure or stop-out, and no selected
+target crosses structural support. The candidate remains research-frozen until
+spread/slippage stress and forward validation are complete.
+
 ## Decision
 
 The existing `goldm_bear` engine and confluence v1–v3 fail the complete

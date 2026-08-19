@@ -35,6 +35,12 @@ class BearV4Config:
     minimum_psychological_reward_risk: float = 0.35
     minimum_continuation_reward_risk: float = 0.50
     price_tick: float = 0.01
+    fixed_target_r: float | None = None
+    cap_fixed_target_at_structural_support: bool = False
+
+    def __post_init__(self) -> None:
+        if self.fixed_target_r is not None and self.fixed_target_r <= 0:
+            raise ValueError("fixed target R must be positive")
     spread_floor: float = 0.20
 
 
@@ -48,6 +54,8 @@ class BearV4Outcome:
     entry: float
     stop: float
     target: float
+    structural_target: float
+    target_crosses_structural_support: bool
     outcome_r: float
     planned_reward_risk: float
     mfe_r: float
@@ -73,6 +81,7 @@ class BearV4Report:
     stop_count: int
     ambiguous_count: int
     end_of_test_count: int
+    targets_crossing_structural_support: int
     total_r: float
     expectancy_r: float
     maximum_drawdown_r: float
@@ -184,6 +193,9 @@ class BearMultiTimeframeReplay:
                 item.result == "AMBIGUOUS_SAME_BAR" for item in outcomes
             ),
             end_of_test_count=sum(item.result == "END_OF_TEST" for item in outcomes),
+            targets_crossing_structural_support=sum(
+                item.target_crosses_structural_support for item in outcomes
+            ),
             total_r=sum(item.outcome_r for item in outcomes),
             expectancy_r=(
                 sum(item.outcome_r for item in outcomes) / len(outcomes)
@@ -352,11 +364,22 @@ class BearMultiTimeframeReplay:
                 float(m5_result["recent_high"]),
                 max(item.high for item in candidates[: index + 1]),
             ) + max(self.config.spread_floor * 2.0, atr_m5 * self.config.stop_buffer_atr_m5)
-            target = float(setup.take_profit)
+            structural_target = float(setup.take_profit)
+            fixed_target = (
+                entry - self.config.fixed_target_r * (stop - entry)
+                if self.config.fixed_target_r is not None
+                else structural_target
+            )
+            target = (
+                max(fixed_target, structural_target)
+                if self.config.fixed_target_r is not None
+                and self.config.cap_fixed_target_at_structural_support
+                else fixed_target
+            )
             if not target < entry < stop:
                 return None
             reward_risk = (entry - target) / (stop - entry)
-            required_reward_risk = (
+            required_reward_risk = 0.0 if self.config.fixed_target_r is not None else (
                 self.config.minimum_psychological_reward_risk
                 if "target_capped_at_nearest_psychological_support" in setup.reason
                 else self.config.minimum_continuation_reward_risk
@@ -371,6 +394,7 @@ class BearMultiTimeframeReplay:
                 "entry": entry,
                 "stop": stop,
                 "target": target,
+                "structural_target": structural_target,
                 "m5_touches": int(m5_result["touches"]),
                 "m5_rejections": int(m5_result["rejections"]),
                 "m1_touches": touches,
@@ -387,6 +411,7 @@ class BearMultiTimeframeReplay:
         entry = float(plan["entry"])
         stop = float(plan["stop"])
         target = float(plan["target"])
+        structural_target = float(plan["structural_target"])
         risk = stop - entry
         result = "END_OF_TEST"
         closed_at = to_time
@@ -426,6 +451,8 @@ class BearMultiTimeframeReplay:
             entry=entry,
             stop=stop,
             target=target,
+            structural_target=structural_target,
+            target_crosses_structural_support=target < structural_target,
             outcome_r=outcome_r,
             planned_reward_risk=(entry - target) / risk,
             mfe_r=mfe_r,

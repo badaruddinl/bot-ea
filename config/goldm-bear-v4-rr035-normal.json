@@ -1,0 +1,32 @@
+{
+  "candidate_id": "GOLDM_BEAR_V4_RR035_STRUCTURAL_CAP",
+  "status": "RESEARCH_FROZEN",
+  "side": "SELL",
+  "execution": {
+    "starting_balance_usd": 100.0,
+    "fixed_lot": 0.02,
+    "stop_mode": "V4_STRUCTURAL_NORMAL",
+    "fixed_target_r": 0.35,
+    "cap_target_at_structural_support": true,
+    "compounding": false
+  },
+  "isolation": {
+    "runtime_enabled": false,
+    "telegram_enabled": false,
+    "order_enabled": false,
+    "shared_state_with_revised": false
+  },
+  "evidence": {
+    "full_suite_trades": 323,
+    "full_suite_total_r": 57.528,
+    "full_suite_expectancy_r": 0.178,
+    "full_suite_maximum_drawdown_r": 3.9,
+    "full_suite_targets_crossing_support": 0,
+    "full_suite_ending_balance_usd": 583.59,
+    "full_suite_profit_factor": 2.486,
+    "full_suite_cash_drawdown_percent": 8.19,
+    "august_evidence_trades": 3,
+    "august_evidence_targets": 3,
+    "august_evidence_total_r": 1.05
+  }
+}

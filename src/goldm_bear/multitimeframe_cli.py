@@ -11,7 +11,7 @@ from typing import Sequence
 from .cli import _offset
 from .mt5_cli import _server_timestamp
 from .mt5_source import load_mt5_bars
-from .multitimeframe import BearMultiTimeframeReplay
+from .multitimeframe import BearMultiTimeframeReplay, BearV4Config
 
 
 def _json_default(value: object) -> object:
@@ -29,6 +29,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--to-server-time", required=True)
     parser.add_argument("--server-utc-offset", default="+03:00")
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--fixed-target-r", type=float)
+    parser.add_argument("--cap-target-at-structural-support", action="store_true")
     args = parser.parse_args(argv)
     server_timezone = _offset(args.server_utc_offset)
     start = _server_timestamp(args.from_server_time, server_timezone)
@@ -49,7 +51,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             ("h1", "TIMEFRAME_H1"),
         )
     }
-    report = BearMultiTimeframeReplay().run(
+    report = BearMultiTimeframeReplay(
+        BearV4Config(
+            fixed_target_r=args.fixed_target_r,
+            cap_fixed_target_at_structural_support=args.cap_target_at_structural_support,
+        )
+    ).run(
         m1_bars=data["m1"],
         m5_bars=data["m5"],
         m15_bars=data["m15"],
@@ -61,6 +68,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         **asdict(report),
         "candidate": "confluence-v4",
         "symbol": args.symbol,
+        "fixed_target_r": args.fixed_target_r,
+        "cap_target_at_structural_support": args.cap_target_at_structural_support,
         "history": {
             key: {
                 "bars": len(bars),
@@ -87,6 +96,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "target_count",
                     "stop_count",
                     "ambiguous_count",
+                    "targets_crossing_structural_support",
                     "total_r",
                     "expectancy_r",
                     "maximum_drawdown_r",
