@@ -3,7 +3,8 @@
 `GOLD_GLOBAL_ORCHESTRATOR` is the single Telegram polling owner and Windows
 watchdog for the two final composite workers:
 
-- `goldi`: `GOLD.i#`, Revised BUY + Bear SELL, signal-only.
+- `goldi`: `GOLD.i#`, Revised BUY + Bear SELL, demo execution with adaptive
+  `0.01` below USD 100 and `0.02` from USD 100.
 - `goldm`: `GOLDm#`, Revised BUY + Bear SELL, real execution with the locked
   aggressive balance tiers.
 
@@ -17,6 +18,19 @@ Admin commands:
 - `/goldi_on`, `/goldi_off`
 - `/goldm_on`, `/goldm_off`
 - `/all_on`, `/all_off`
+- `/pending`, `/subscribers`
+- `/approve ID`, `/deny ID`, `/remove ID`
+
+Public users can request GOLD.i notifications with `/start`, inspect access with
+`/subscription`, and unsubscribe with `/stop`. Approved users receive only
+GOLD.i signal/entry/close lifecycle notifications. GOLDm notifications and all
+worker health/control messages are always admin-only; the subscriber registry
+is never consulted by GOLDm.
+
+Every signal, executed entry, and close notification identifies the instrument,
+signal/order/deal/position IDs where applicable, broker-server time, and VM
+local time with its timezone. GOLD.i demo and GOLDm real use separate MT5
+executables and separate account bindings.
 
 Desired ON/OFF state is persisted and restored after a reboot. Every worker
 has a single-instance lock and a health file. The orchestrator reports process

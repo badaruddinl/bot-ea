@@ -12,7 +12,7 @@ import pytest
 from gold_portfolio.config import load_worker_config
 from gold_portfolio.models import SignalPlan
 from gold_portfolio.mt5_session import BoundMt5Session
-from gold_portfolio.worker import CompositePortfolioWorker
+from gold_portfolio.worker import CompositePortfolioWorker, TelegramBroadcast
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -75,12 +75,17 @@ def _bind_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("GOLDM_REAL_MT5_SERVER", "XMGlobal-MT5 14")
 
 
-def test_final_goldi_is_tag_pinned_signal_only(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_final_goldi_is_tag_pinned_demo_execution(monkeypatch: pytest.MonkeyPatch) -> None:
     _bind_env(monkeypatch)
     config = load_worker_config(ROOT / "config/final/goldi/worker.json")
 
-    assert config.execution_mode == "signal_only"
-    assert not config.orders_enabled
+    assert config.demo_execution
+    assert config.orders_enabled
+    assert config.terminal.expected_trade_mode == "demo"
+    assert config.balance_tiers == ((0.0, 0.01), (100.0, 0.02))
+    assert config.maximum_positions == 2
+    assert config.maximum_total_lot == 0.04
+    assert config.telegram.audience == "goldi_approved"
     assert config.revised["source_tag"] == "goldi-profit-v1-research-20260819"
     assert config.bear["source_tag"] == "goldi-profit-v1-research-20260819"
     assert config.terminal.path == "C:/Goldi/terminal64.exe"
@@ -107,6 +112,7 @@ def test_final_goldm_is_composite_real_and_uses_aggressive_tiers(
 
 
 class FakeMt5:
+    ACCOUNT_TRADE_MODE_DEMO = 0
     ACCOUNT_TRADE_MODE_REAL = 2
     TRADE_ACTION_DEAL = 1
     ORDER_TYPE_BUY = 0
@@ -162,7 +168,12 @@ class FakeMt5:
         )
 
     def symbol_info_tick(self, symbol):
-        return SimpleNamespace(ask=4400.2, bid=4399.9)
+        return SimpleNamespace(
+            ask=4400.2,
+            bid=4399.9,
+            time=1787155200,
+            time_msc=1787155200123,
+        )
 
     def positions_get(self, **kwargs):
         return self.open_positions
@@ -177,6 +188,7 @@ class FakeMt5:
             comment="done",
             order=777,
             deal=778,
+            request_id=779,
             price=request["price"],
         )
 
@@ -185,6 +197,34 @@ class FakeMt5:
 
     def last_error(self):
         return (1, "Success")
+
+
+class DemoFakeMt5(FakeMt5):
+    def __init__(self) -> None:
+        super().__init__()
+        self.balance = 1630.77
+
+    def account_info(self):
+        return SimpleNamespace(
+            login=123456,
+            server="XMGlobal-MT5 5",
+            trade_mode=0,
+            trade_allowed=True,
+            trade_expert=True,
+            balance=self.balance,
+            equity=self.balance,
+        )
+
+    def symbol_info(self, symbol):
+        return SimpleNamespace(
+            name="GOLD.i#",
+            volume_min=0.01,
+            volume_max=50.0,
+            volume_step=0.01,
+            trade_contract_size=100.0,
+            digits=2,
+            filling_mode=1,
+        )
 
 
 def test_real_executor_reads_shared_balance_and_sends_one_checked_order(
@@ -214,6 +254,88 @@ def test_real_executor_reads_shared_balance_and_sends_one_checked_order(
     assert module.sent[0]["magic"] == config.magic
     assert module.sent[0]["sl"] == 4390.2
     assert module.sent[0]["tp"] == 4420.2
+    assert result["signal_id"] == "revised:1"
+    assert result["request_id"] == 779
+    assert result["server_time"].endswith("+03:00")
+    assert result["vm_time"]
+
+
+def test_goldi_demo_executor_places_order_at_locked_adaptive_lot(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _bind_env(monkeypatch)
+    config = load_worker_config(ROOT / "config/final/goldi/worker.json")
+    module = DemoFakeMt5()
+    session = BoundMt5Session(config, mt5_module=module)
+    signal = SignalPlan(
+        event_id="goldi-demo:1",
+        component="bear",
+        symbol="GOLD.i#",
+        side="SELL",
+        time=datetime.now(timezone.utc),
+        entry=4400.0,
+        stop=4410.0,
+        target=4380.0,
+        reason="test demo entry",
+    )
+
+    result = session.execute(signal)
+
+    assert result["status"] == "EXECUTED"
+    assert result["volume"] == 0.02
+    assert len(module.sent) == 1
+    assert module.sent[0]["symbol"] == "GOLD.i#"
+    assert module.sent[0]["magic"] == 26081911
+
+
+def test_goldi_subscribers_receive_entries_but_goldm_remains_admin_only(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _bind_env(monkeypatch)
+
+    class CaptureClient:
+        def __init__(self) -> None:
+            self.chat_ids: list[str] = []
+
+        def send_message(self, *, chat_id, text):
+            del text
+            self.chat_ids.append(str(chat_id))
+
+    subscriber_state = tmp_path / "orchestrator-state.json"
+    subscriber_state.write_text(
+        json.dumps({"goldi_subscribers": ["999"]}),
+        encoding="utf-8",
+    )
+    goldi = load_worker_config(ROOT / "config/final/goldi/worker.json")
+    goldi_telegram = replace(
+        goldi.telegram,
+        bot_token="test",
+        chat_ids=("123",),
+        subscriber_state_path=subscriber_state,
+    )
+    goldi_broadcast = TelegramBroadcast(goldi_telegram)
+    goldi_client = CaptureClient()
+    goldi_broadcast.client = goldi_client
+    goldi_broadcast.send("entry", include_subscribers=True)
+    assert goldi_client.chat_ids == ["123", "999"]
+
+    goldi_client.chat_ids.clear()
+    goldi_broadcast.send("health", include_subscribers=False)
+    assert goldi_client.chat_ids == ["123"]
+
+    goldm = load_worker_config(ROOT / "config/final/goldm/worker.json")
+    goldm_telegram = replace(
+        goldm.telegram,
+        bot_token="test",
+        chat_ids=("123",),
+        subscriber_state_path=subscriber_state,
+    )
+    goldm_broadcast = TelegramBroadcast(goldm_telegram)
+    goldm_client = CaptureClient()
+    goldm_broadcast.client = goldm_client
+    goldm_broadcast.send("real entry", include_subscribers=True)
+    assert goldm_client.chat_ids == ["123"]
 
 
 def test_closed_position_result_includes_total_pl_and_balance(
@@ -298,7 +420,8 @@ def test_worker_sends_close_lifecycle_with_rr_duration_and_balance(
         def __init__(self) -> None:
             self.messages = []
 
-        def send(self, text: str) -> None:
+        def send(self, text: str, *, include_subscribers: bool = False) -> None:
+            assert include_subscribers
             self.messages.append(text)
 
     telegram = CaptureTelegram()
@@ -314,6 +437,7 @@ def test_worker_sends_close_lifecycle_with_rr_duration_and_balance(
                 "component": "revised",
                 "side": "BUY",
                 "reason": "range confirmed",
+                "event_id": "revised:test:4400.00",
             },
             "opened_at": opened_at.isoformat(),
             "fill_price": 4400.0,
@@ -333,3 +457,7 @@ def test_worker_sends_close_lifecycle_with_rr_duration_and_balance(
     assert worker.state["open_positions"] == {}
     assert "P/L=+10.00 USD" in telegram.messages[0]
     assert "balance=73.50" in telegram.messages[0]
+    assert "instrument=GOLDm#" in telegram.messages[0]
+    assert "signal_id=revised:test:4400.00" in telegram.messages[0]
+    assert "server_time=" in telegram.messages[0]
+    assert "vm_time=" in telegram.messages[0]

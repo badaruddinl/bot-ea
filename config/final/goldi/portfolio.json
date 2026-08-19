@@ -1,16 +1,26 @@
 {
-  "portfolio_id": "GOLDI_REVISED_BEAR_FINAL",
+  "portfolio_id": "GOLDI_REVISED_BEAR_DEMO",
   "symbol": "GOLD.i#",
-  "execution_mode": "signal_only",
+  "execution_mode": "demo",
   "revised_config": "config/final/goldi/revised.json",
   "bear_config": "config/final/goldi/bear.json",
   "terminal": {
     "path_env": "GOLDI_MT5_TERMINAL_PATH",
     "expected_login_env": "GOLDI_MT5_LOGIN",
     "expected_server_env": "GOLDI_MT5_SERVER",
+    "expected_trade_mode": "demo",
     "require_account_binding": true
   },
+  "sizing": {
+    "balance_tiers": [
+      {"minimum_balance": 0.0, "lot": 0.01},
+      {"minimum_balance": 100.0, "lot": 0.02}
+    ],
+    "downgrade_enabled": true
+  },
   "magic": 26081911,
-  "maximum_positions": 0,
-  "orders_enabled": false
+  "deviation_points": 30,
+  "maximum_positions": 2,
+  "maximum_total_lot": 0.04,
+  "orders_enabled": true
 }

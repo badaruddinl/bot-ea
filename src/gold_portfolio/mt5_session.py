@@ -70,10 +70,19 @@ class BoundMt5Session:
                 raise RuntimeError(
                     f"MT5 server mismatch: expected {binding.expected_server}, got {account.server}"
                 )
-        if self.config.real_execution:
-            expected_mode = getattr(self.mt5, "ACCOUNT_TRADE_MODE_REAL", 2)
-            if binding.expected_trade_mode == "real" and int(account.trade_mode) != expected_mode:
-                raise RuntimeError("GOLDm real worker refuses a non-real account")
+        if self.config.order_execution:
+            expected_modes = {
+                "demo": int(getattr(self.mt5, "ACCOUNT_TRADE_MODE_DEMO", 0)),
+                "real": int(getattr(self.mt5, "ACCOUNT_TRADE_MODE_REAL", 2)),
+            }
+            if binding.expected_trade_mode not in expected_modes:
+                raise RuntimeError("executable worker requires explicit demo/real trade mode")
+            expected_mode = expected_modes[binding.expected_trade_mode]
+            if int(account.trade_mode) != expected_mode:
+                raise RuntimeError(
+                    f"{self.config.group} worker refuses account trade mode "
+                    f"{account.trade_mode}; expected {binding.expected_trade_mode}"
+                )
             if not bool(getattr(account, "trade_allowed", False)):
                 raise RuntimeError("account trading is disabled")
             if not bool(getattr(account, "trade_expert", False)):
@@ -204,7 +213,7 @@ class BoundMt5Session:
         }
 
     def execute(self, signal: SignalPlan) -> dict[str, Any]:
-        if not self.config.real_execution:
+        if not self.config.order_execution:
             return {"status": "SIGNAL_ONLY"}
         self.validate_binding()
         existing = self.managed_positions()
@@ -220,6 +229,12 @@ class BoundMt5Session:
         info = self.mt5.symbol_info(self.config.symbol)
         if tick is None or info is None:
             raise RuntimeError("MT5 tick/symbol info unavailable")
+        server_time = self._tick_server_time(tick)
+        execution_context = {
+            "signal_id": signal.event_id,
+            "server_time": server_time.isoformat() if server_time else None,
+            "vm_time": datetime.now().astimezone().isoformat(),
+        }
         buy = signal.side == "BUY"
         price = float(tick.ask if buy else tick.bid)
         stop_distance = abs(signal.entry - signal.stop)
@@ -246,6 +261,7 @@ class BoundMt5Session:
             raise RuntimeError(f"order_check returned None: {self.mt5.last_error()}")
         if int(check.retcode) != 0:
             return {
+                **execution_context,
                 "status": "REJECTED_CHECK",
                 "retcode": int(check.retcode),
                 "comment": str(check.comment),
@@ -261,17 +277,28 @@ class BoundMt5Session:
             int(getattr(self.mt5, "TRADE_RETCODE_DONE_PARTIAL", 10010)),
         }
         return {
+            **execution_context,
             "status": "EXECUTED" if int(result.retcode) in accepted_codes else "REJECTED_SEND",
             "retcode": int(result.retcode),
             "comment": str(result.comment),
             "order": int(result.order),
             "deal": int(result.deal),
+            "request_id": int(getattr(result, "request_id", 0) or 0),
             "price": float(result.price),
             "volume": lot,
             "sl": stop,
             "tp": target,
             "balance": float(self.account_info().balance),
         }
+
+    def _tick_server_time(self, tick) -> datetime | None:
+        time_msc = int(getattr(tick, "time_msc", 0) or 0)
+        if time_msc > 0:
+            return datetime.fromtimestamp(time_msc / 1000.0, tz=self.server_timezone)
+        timestamp = int(getattr(tick, "time", 0) or 0)
+        if timestamp > 0:
+            return datetime.fromtimestamp(timestamp, tz=self.server_timezone)
+        return None
 
     def _filling_type(self, info) -> int:
         filling = int(getattr(info, "filling_mode", 0))

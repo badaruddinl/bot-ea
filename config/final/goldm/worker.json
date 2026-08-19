@@ -9,6 +9,7 @@
     "bot_token_env": "TELEGRAM_BOT_TOKEN",
     "chat_ids_env": "TELEGRAM_ADMIN_CHAT_IDS",
     "fallback_chat_id_env": "TELEGRAM_CHAT_ID",
+    "audience": "admin_only",
     "send_health": true
   }
 }

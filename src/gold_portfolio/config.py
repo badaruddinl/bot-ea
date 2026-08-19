@@ -44,6 +44,8 @@ class TelegramConfig:
     bot_token: str
     chat_ids: tuple[str, ...]
     send_health: bool
+    audience: str
+    subscriber_state_path: Path | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,6 +72,14 @@ class PortfolioWorkerConfig:
     @property
     def real_execution(self) -> bool:
         return self.execution_mode == "real" and self.orders_enabled
+
+    @property
+    def demo_execution(self) -> bool:
+        return self.execution_mode == "demo" and self.orders_enabled
+
+    @property
+    def order_execution(self) -> bool:
+        return self.execution_mode in {"demo", "real"} and self.orders_enabled
 
 
 def load_worker_config(path: str | Path) -> PortfolioWorkerConfig:
@@ -121,16 +131,30 @@ def load_worker_config(path: str | Path) -> PortfolioWorkerConfig:
         )
     )
     mode = str(portfolio.get("execution_mode") or "signal_only").lower()
-    if mode not in {"signal_only", "real"}:
+    if mode not in {"signal_only", "demo", "real"}:
         raise ValueError(f"unsupported execution mode: {mode}")
-    if mode == "real" and (not terminal_path or not login or not server):
-        raise ValueError("real execution requires terminal path, login, and server binding")
+    if mode in {"demo", "real"} and (not terminal_path or not login or not server):
+        raise ValueError(
+            f"{mode} execution requires terminal path, login, and server binding"
+        )
     if bool(terminal_values.get("require_account_binding", False)) and (
         not terminal_path or not login or not server
     ):
         raise ValueError("required terminal binding is incomplete")
-    if mode == "real" and (not tiers or tiers[0][0] != 0.0):
-        raise ValueError("real execution requires balance tiers beginning at zero")
+    if mode in {"demo", "real"} and (not tiers or tiers[0][0] != 0.0):
+        raise ValueError(
+            f"{mode} execution requires balance tiers beginning at zero"
+        )
+    audience = str(telegram_values.get("audience") or "admin_only").strip().lower()
+    if audience not in {"admin_only", "goldi_approved"}:
+        raise ValueError(f"unsupported Telegram audience: {audience}")
+    subscriber_state_path = None
+    if telegram_values.get("subscriber_state_path"):
+        subscriber_state_path = _repo_path(
+            str(telegram_values["subscriber_state_path"])
+        )
+    if audience == "goldi_approved" and subscriber_state_path is None:
+        raise ValueError("goldi_approved audience requires subscriber_state_path")
     return PortfolioWorkerConfig(
         group=str(worker["group"]),
         portfolio_id=str(portfolio["portfolio_id"]),
@@ -159,5 +183,7 @@ def load_worker_config(path: str | Path) -> PortfolioWorkerConfig:
             bot_token=token,
             chat_ids=chat_ids,
             send_health=bool(telegram_values.get("send_health", True)),
+            audience=audience,
+            subscriber_state_path=subscriber_state_path,
         ),
     )

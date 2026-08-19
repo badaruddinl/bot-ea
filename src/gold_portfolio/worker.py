@@ -39,6 +39,7 @@ def _json(path: str | Path) -> dict[str, Any]:
 
 class TelegramBroadcast:
     def __init__(self, config) -> None:
+        self.config = config
         self.chat_ids = config.chat_ids
         self.client = (
             TelegramBotClient(bot_token=config.bot_token)
@@ -50,11 +51,31 @@ class TelegramBroadcast:
     def configured(self) -> bool:
         return self.client is not None
 
-    def send(self, text: str) -> None:
+    def send(self, text: str, *, include_subscribers: bool = False) -> None:
         if self.client is None:
             return
-        for chat_id in self.chat_ids:
+        recipients = set(self.chat_ids)
+        if include_subscribers and self.config.audience == "goldi_approved":
+            recipients.update(self._approved_goldi_subscribers())
+        for chat_id in sorted(recipients):
             self.client.send_message(chat_id=chat_id, text=text)
+
+    def _approved_goldi_subscribers(self) -> set[str]:
+        path = self.config.subscriber_state_path
+        if path is None:
+            return set()
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return set()
+        values = payload.get("goldi_subscribers") if isinstance(payload, dict) else []
+        return {
+            str(int(item))
+            for item in (values or [])
+            if str(item).isascii()
+            and str(item).isdecimal()
+            and int(str(item)) > 0
+        }
 
 
 class CompositePortfolioWorker:
@@ -122,7 +143,10 @@ class CompositePortfolioWorker:
             if self._seen(signal.event_id):
                 continue
             self._remember(signal.event_id)
-            self.telegram.send(self._format_signal(signal))
+            self.telegram.send(
+                self._format_signal(signal),
+                include_subscribers=True,
+            )
             execution = self.session.execute(signal)
             event = {
                 "time": datetime.now(tz=self.session.server_timezone).isoformat(),
@@ -135,7 +159,10 @@ class CompositePortfolioWorker:
             if execution.get("status") == "EXECUTED":
                 self._track_open_position(signal, execution)
             if execution.get("status") not in {"SIGNAL_ONLY"}:
-                self.telegram.send(self._format_execution(signal, execution))
+                self.telegram.send(
+                    self._format_execution(signal, execution),
+                    include_subscribers=True,
+                )
         self.state["last_m1"] = latest_m1.isoformat()
         self._save_state()
         return {
@@ -287,21 +314,31 @@ class CompositePortfolioWorker:
 
     def _format_signal(self, signal: SignalPlan) -> str:
         account = self.session.account_info()
+        vm_time = datetime.now().astimezone()
         return (
             f"{self.config.portfolio_id} SIGNAL\n"
-            f"engine={signal.component} side={signal.side} symbol={signal.symbol}\n"
+            f"instrument={signal.symbol} engine={signal.component} side={signal.side}\n"
+            f"signal_id={signal.event_id} account_id={account.login}\n"
             f"entry={signal.entry:.2f} sl={signal.stop:.2f} tp={signal.target:.2f}\n"
             f"balance={float(account.balance):.2f} equity={float(account.equity):.2f}\n"
-            f"time={signal.time.isoformat()}\nreason={signal.reason}"
+            f"server_time={signal.time.astimezone(self.session.server_timezone).isoformat()}\n"
+            f"vm_time={vm_time.isoformat()} vm_timezone={vm_time.tzname()}\n"
+            f"reason={signal.reason}"
         )
 
     def _format_execution(self, signal: SignalPlan, execution: dict[str, Any]) -> str:
+        account = self.session.account_info()
         return (
-            f"{self.config.portfolio_id} ORDER {execution.get('status')}\n"
-            f"engine={signal.component} side={signal.side} symbol={signal.symbol}\n"
+            f"{self.config.portfolio_id} ENTRY {execution.get('status')}\n"
+            f"instrument={signal.symbol} engine={signal.component} side={signal.side}\n"
+            f"signal_id={signal.event_id} account_id={account.login}\n"
+            f"order_id={execution.get('order', '-')} deal_id={execution.get('deal', '-')} "
+            f"request_id={execution.get('request_id', '-')}\n"
             f"volume={execution.get('volume', '-')} price={execution.get('price', '-')}\n"
             f"sl={execution.get('sl', '-')} tp={execution.get('tp', '-')}\n"
             f"balance={execution.get('balance', '-')}\n"
+            f"server_time={execution.get('server_time') or '-'}\n"
+            f"vm_time={execution.get('vm_time') or '-'}\n"
             f"retcode={execution.get('retcode', '-')} {execution.get('comment', execution.get('reason', ''))}"
         )
 
@@ -314,9 +351,15 @@ class CompositePortfolioWorker:
         if ticket <= 0:
             return
         positions = dict(self.state.get("open_positions") or {})
+        opened_at = execution.get("server_time") or datetime.now(
+            tz=self.session.server_timezone
+        ).isoformat()
         positions[str(ticket)] = {
             "signal": asdict(signal),
-            "opened_at": datetime.now(tz=self.session.server_timezone).isoformat(),
+            "opened_at": opened_at,
+            "order_id": ticket,
+            "deal_id": int(execution.get("deal") or 0),
+            "request_id": int(execution.get("request_id") or 0),
             "fill_price": float(execution.get("price") or signal.entry),
             "volume": float(execution.get("volume") or 0.0),
             "sl": float(execution.get("sl") or signal.stop),
@@ -354,6 +397,7 @@ class CompositePortfolioWorker:
                 "component": signal.get("component"),
                 "side": signal.get("side"),
                 "reason": signal.get("reason"),
+                "event_id": signal.get("event_id"),
                 "opened_at": opened_at,
                 "duration_seconds": duration_seconds,
                 "planned_rr": planned_rr,
@@ -363,7 +407,10 @@ class CompositePortfolioWorker:
                 "tp": tp,
                 "volume": volume,
             }
-            self.telegram.send(self._format_close(close_event))
+            self.telegram.send(
+                self._format_close(close_event),
+                include_subscribers=True,
+            )
             self._audit(
                 {
                     "time": close_time.isoformat(),
@@ -380,15 +427,22 @@ class CompositePortfolioWorker:
         duration = int(event["duration_seconds"])
         hours, remainder = divmod(duration, 3600)
         minutes, seconds = divmod(remainder, 60)
+        account = self.session.account_info()
+        vm_time = datetime.now().astimezone()
         return (
             f"{self.config.portfolio_id} CLOSED\n"
-            f"engine={event.get('component')} side={event.get('side')} symbol={self.config.symbol}\n"
+            f"instrument={self.config.symbol} engine={event.get('component')} "
+            f"side={event.get('side')}\n"
+            f"signal_id={event.get('event_id', '-')} account_id={account.login} "
+            f"position_id={event.get('position_ticket', '-')}\n"
             f"entry={event['entry_price']:.2f} close={event['close_price']:.2f} "
             f"volume={event['volume']:.2f}\n"
             f"P/L={event['profit_loss']:+.2f} USD realized_R={event['realized_r']:+.2f} "
             f"planned_RR={event['planned_rr']:.2f}\n"
             f"duration={hours:02d}:{minutes:02d}:{seconds:02d} "
             f"balance={event['balance']:.2f} equity={event['equity']:.2f}\n"
+            f"server_time={event['close_time'].isoformat()}\n"
+            f"vm_time={vm_time.isoformat()} vm_timezone={vm_time.tzname()}\n"
             f"decision={event.get('reason', '-') }"
         )
 

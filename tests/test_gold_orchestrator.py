@@ -116,7 +116,7 @@ class GlobalOrchestratorTests(unittest.TestCase):
     def test_non_admin_cannot_start_real_worker(self) -> None:
         self.runtime.handle_command(actor_id="999", text="/goldm_on")
         self.assertNotIn("goldm", self.runtime._children)
-        self.assertIn("khusus admin", self.telegram.sent[-1][1])
+        self.assertIn("/start", self.telegram.sent[-1][1])
 
     def test_polling_advances_offset_and_dispatches(self) -> None:
         self.telegram.updates = [
@@ -200,8 +200,29 @@ class GlobalOrchestratorTests(unittest.TestCase):
         self.assertEqual(chat_ids, {"123"})
         self.assertIn("goldi_on", names)
         self.assertIn("goldm_on", names)
-        self.assertNotIn("pending", names)
+        self.assertIn("pending", names)
         self.assertNotIn("control", names)
+
+        public_commands, public_chat_ids = self.telegram.command_menus[0]
+        self.assertEqual(public_chat_ids, set())
+        self.assertEqual(
+            {item["command"] for item in public_commands},
+            {"start", "subscription", "stop"},
+        )
+
+    def test_approval_is_goldi_subscription_only(self) -> None:
+        self.runtime.handle_command(actor_id="999", text="/start")
+        self.assertIn("999", self.runtime._state["goldi_pending"])
+        self.assertNotIn("goldm", self.runtime._children)
+        self.runtime.handle_command(actor_id="123", text="/approve 999")
+        self.assertEqual(self.runtime._state["goldi_subscribers"], ["999"])
+        self.assertNotIn("999", self.runtime._state["goldi_pending"])
+        self.assertIn(("999", "Akses notifikasi entry GOLD.i telah disetujui."), self.telegram.sent)
+
+    def test_subscriber_cannot_control_goldm(self) -> None:
+        self.runtime._state["goldi_subscribers"] = ["999"]
+        self.runtime.handle_command(actor_id="999", text="/goldm_on")
+        self.assertNotIn("goldm", self.runtime._children)
 
 
 if __name__ == "__main__":

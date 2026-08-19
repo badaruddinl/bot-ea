@@ -15,7 +15,15 @@ from goldm_signal.notify.telegram import TelegramBotClient
 from .config import OrchestratorConfig, ROOT, WorkerSpec
 
 
+PUBLIC_GOLDI_COMMANDS: tuple[dict[str, str], ...] = (
+    {"command": "start", "description": "Minta akses notifikasi GOLD.i"},
+    {"command": "subscription", "description": "Cek status akses GOLD.i"},
+    {"command": "stop", "description": "Berhenti menerima GOLD.i"},
+)
+
+
 ORCHESTRATOR_BOT_COMMANDS: tuple[dict[str, str], ...] = (
+    *PUBLIC_GOLDI_COMMANDS,
     {"command": "status", "description": "Status kedua worker GOLD"},
     {"command": "workers", "description": "Detail proses dan heartbeat"},
     {"command": "heartbeat", "description": "Kirim status sekarang"},
@@ -25,6 +33,11 @@ ORCHESTRATOR_BOT_COMMANDS: tuple[dict[str, str], ...] = (
     {"command": "goldm_off", "description": "Matikan trading real GOLDm"},
     {"command": "all_on", "description": "Hidupkan kedua worker"},
     {"command": "all_off", "description": "Matikan kedua worker"},
+    {"command": "pending", "description": "Permintaan akses GOLD.i"},
+    {"command": "subscribers", "description": "Subscriber GOLD.i aktif"},
+    {"command": "approve", "description": "Approve ID untuk GOLD.i"},
+    {"command": "deny", "description": "Tolak permintaan GOLD.i"},
+    {"command": "remove", "description": "Hapus subscriber GOLD.i"},
     {"command": "help", "description": "Daftar perintah orchestrator"},
 )
 
@@ -84,8 +97,13 @@ class GlobalOrchestrator:
 
     def publish_command_menu(self) -> None:
         self.telegram.replace_commands(
+            commands=PUBLIC_GOLDI_COMMANDS,
+            chat_ids=set(),
+        )
+        self.telegram.replace_commands(
             commands=ORCHESTRATOR_BOT_COMMANDS,
             chat_ids=set(self.config.admin_chat_ids),
+            include_default=False,
         )
         self._audit(
             "TELEGRAM_COMMAND_MENU_UPDATED",
@@ -116,11 +134,12 @@ class GlobalOrchestrator:
         return handled
 
     def handle_command(self, *, actor_id: str, text: str) -> None:
+        command_parts = text.split()
+        command = command_parts[0].split("@", 1)[0].lower()
+        arguments = command_parts[1:]
         if actor_id not in set(self.config.admin_chat_ids):
-            self.telegram.send_message(chat_id=actor_id, text="Perintah khusus admin.")
-            self._audit("UNAUTHORIZED_COMMAND", {"actor_id": actor_id})
+            self._handle_public_command(actor_id=actor_id, command=command)
             return
-        command = text.split()[0].split("@", 1)[0].lower()
         if command in {"/start", "/help"}:
             response = self.help_text()
         elif command in {"/status", "/workers", "/heartbeat"}:
@@ -138,9 +157,113 @@ class GlobalOrchestrator:
         elif command == "/all_off":
             responses = [self.set_desired(name, False) for name in ("goldi", "goldm")]
             response = "\n".join(responses)
+        elif command == "/pending":
+            response = self.pending_text()
+        elif command == "/subscribers":
+            response = self.subscribers_text()
+        elif command in {"/approve", "/deny", "/remove"}:
+            if not arguments:
+                response = f"Gunakan {command} <chat_id>."
+            else:
+                response = self._admin_subscription_action(
+                    command=command,
+                    target_id=arguments[0],
+                )
         else:
             response = "Perintah tidak dikenal. Gunakan /help."
         self.telegram.send_message(chat_id=actor_id, text=response)
+
+    def _handle_public_command(self, *, actor_id: str, command: str) -> None:
+        if command == "/start":
+            subscribers = set(self._state.get("goldi_subscribers") or [])
+            if actor_id in subscribers:
+                response = "Akses notifikasi GOLD.i sudah aktif."
+            else:
+                pending = dict(self._state.get("goldi_pending") or {})
+                pending[actor_id] = {
+                    "requested_at": datetime.now(timezone.utc).isoformat(),
+                }
+                self._state["goldi_pending"] = pending
+                self._save_state()
+                response = "Permintaan akses GOLD.i dikirim ke admin."
+                self._send_all(
+                    "GOLD.i SUBSCRIPTION REQUEST\n"
+                    f"chat_id={actor_id}\n"
+                    f"approve: /approve {actor_id}\n"
+                    f"deny: /deny {actor_id}"
+                )
+                self._audit("GOLDI_SUBSCRIPTION_REQUESTED", {"chat_id": actor_id})
+        elif command == "/subscription":
+            subscribers = set(self._state.get("goldi_subscribers") or [])
+            pending = dict(self._state.get("goldi_pending") or {})
+            if actor_id in subscribers:
+                response = "Status GOLD.i: APPROVED."
+            elif actor_id in pending:
+                response = "Status GOLD.i: PENDING."
+            else:
+                response = "Status GOLD.i: belum terdaftar. Gunakan /start."
+        elif command == "/stop":
+            subscribers = set(self._state.get("goldi_subscribers") or [])
+            subscribers.discard(actor_id)
+            pending = dict(self._state.get("goldi_pending") or {})
+            pending.pop(actor_id, None)
+            self._state["goldi_subscribers"] = sorted(subscribers, key=int)
+            self._state["goldi_pending"] = pending
+            self._save_state()
+            response = "Notifikasi GOLD.i dihentikan."
+            self._audit("GOLDI_SUBSCRIPTION_STOPPED", {"chat_id": actor_id})
+        else:
+            response = "Perintah publik: /start, /subscription, /stop."
+            self._audit("UNAUTHORIZED_COMMAND", {"actor_id": actor_id})
+        self.telegram.send_message(chat_id=actor_id, text=response)
+
+    def _admin_subscription_action(self, *, command: str, target_id: str) -> str:
+        if not target_id.isascii() or not target_id.isdecimal() or int(target_id) <= 0:
+            return "chat_id harus berupa angka positif."
+        target_id = str(int(target_id))
+        pending = dict(self._state.get("goldi_pending") or {})
+        subscribers = set(self._state.get("goldi_subscribers") or [])
+        if command == "/approve":
+            pending.pop(target_id, None)
+            subscribers.add(target_id)
+            result = f"GOLD.i subscriber APPROVED: {target_id}"
+            target_message = "Akses notifikasi entry GOLD.i telah disetujui."
+            event = "GOLDI_SUBSCRIPTION_APPROVED"
+        elif command == "/deny":
+            pending.pop(target_id, None)
+            subscribers.discard(target_id)
+            result = f"Permintaan GOLD.i ditolak: {target_id}"
+            target_message = "Permintaan akses notifikasi GOLD.i ditolak."
+            event = "GOLDI_SUBSCRIPTION_DENIED"
+        else:
+            pending.pop(target_id, None)
+            subscribers.discard(target_id)
+            result = f"GOLD.i subscriber dihapus: {target_id}"
+            target_message = "Akses notifikasi GOLD.i dihentikan oleh admin."
+            event = "GOLDI_SUBSCRIPTION_REMOVED"
+        self._state["goldi_pending"] = pending
+        self._state["goldi_subscribers"] = sorted(subscribers, key=int)
+        self._save_state()
+        self.telegram.send_message(chat_id=target_id, text=target_message)
+        self._audit(event, {"chat_id": target_id})
+        return result
+
+    def pending_text(self) -> str:
+        pending = dict(self._state.get("goldi_pending") or {})
+        if not pending:
+            return "Tidak ada permintaan GOLD.i pending."
+        return "GOLD.i PENDING\n" + "\n".join(
+            f"{chat_id} requested_at={values.get('requested_at', '-')}"
+            for chat_id, values in sorted(pending.items(), key=lambda item: int(item[0]))
+        )
+
+    def subscribers_text(self) -> str:
+        subscribers = list(self._state.get("goldi_subscribers") or [])
+        if not subscribers:
+            return "Belum ada subscriber GOLD.i."
+        return "GOLD.i SUBSCRIBERS\n" + "\n".join(
+            sorted((str(item) for item in subscribers), key=int)
+        )
 
     def set_desired(self, name: str, enabled: bool) -> str:
         self._require_worker(name)
@@ -277,6 +400,8 @@ class GlobalOrchestrator:
             "/goldi_on /goldi_off - sinyal GOLD.i\n"
             "/goldm_on /goldm_off - trading GOLDm real\n"
             "/all_on /all_off - kedua worker\n"
+            "/pending /subscribers - audience GOLD.i\n"
+            "/approve ID /deny ID /remove ID - kelola GOLD.i\n"
             "/heartbeat - status segera"
         )
 
@@ -295,9 +420,13 @@ class GlobalOrchestrator:
         if self.config.state_path.exists():
             payload = json.loads(self.config.state_path.read_text(encoding="utf-8"))
             if isinstance(payload, dict):
+                payload.setdefault("goldi_pending", {})
+                payload.setdefault("goldi_subscribers", [])
                 return payload
         return {
             "telegram_offset": 0,
+            "goldi_pending": {},
+            "goldi_subscribers": [],
             "desired": {
                 name: spec.enabled_on_first_boot
                 for name, spec in self.config.workers.items()

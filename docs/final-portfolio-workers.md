@@ -7,11 +7,12 @@ the existing `goldm_revised` BUY component and `goldm_bear` SELL component as a
 single unit with shared state and, where applicable, shared balance sizing.
 
 ```text
-GOLD.i worker (signal_only)       GOLDm worker (real)
+GOLD.i worker (demo execution)    GOLDm worker (real)
 ├─ Revised BUY                    ├─ Revised BUY
 ├─ Bear SELL                      ├─ Bear SELL
-├─ Telegram sender only           ├─ shared Aggressive sizing
-└─ no order API                   ├─ MT5 order_check/order_send
+├─ adaptive 0.01/0.02 sizing      ├─ shared Aggressive sizing
+├─ approved GOLD.i audience       ├─ admin-only Telegram
+└─ checked demo orders            ├─ MT5 order_check/order_send
                                   └─ Telegram lifecycle sender
 ```
 
@@ -29,9 +30,10 @@ one-way senders and the existing production poller remains the only poller.
 
 ## Signal and order lifecycle
 
-No promotion, approval, or fallback validation is performed. Engine
-`ENTRY_READY` is immediately formatted and sent. GOLD.i stops there. GOLDm
-selects one lot from the shared realized balance tiers, performs MT5
+No promotion or fallback validation is performed. Engine `ENTRY_READY` is
+immediately formatted and sent. GOLD.i validates its demo account and sends a
+checked demo order. GOLDm selects one lot from the shared realized balance
+tiers, performs MT5
 `order_check`, revalidates account identity as the final read, and calls
 `order_send`.
 
@@ -57,9 +59,9 @@ GOLDM_REAL_MT5_LOGIN=391425346
 GOLDM_REAL_MT5_SERVER=XMGlobal-MT5 14
 ```
 
-Both terminals must be open. The GOLDm terminal must have Algo Trading enabled;
-the real worker refuses to start otherwise. GOLD.i is signal-only but still
-requires exact path/login/server binding so it cannot read the GOLDm terminal.
+Both terminals must be open with Algo Trading enabled. GOLDm refuses a non-real
+account, while GOLD.i refuses a non-demo account. Both require exact
+path/login/server binding so neither can read or trade the other terminal.
 
 ## Launch
 
