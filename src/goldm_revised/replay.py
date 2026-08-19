@@ -27,6 +27,9 @@ class ReplayPosition:
     obstacle_kind: str | None = None
     confirmation_mode: str | None = None
     retest_count: int = 0
+    market_regime: dict[str, object] | None = None
+    supply_zone: dict[str, object] | None = None
+    demand_zone: dict[str, object] | None = None
     mfe: float = 0.0
     mae: float = 0.0
 
@@ -50,6 +53,9 @@ class ReplayOutcome:
     obstacle_kind: str | None = None
     confirmation_mode: str | None = None
     retest_count: int = 0
+    market_regime: dict[str, object] | None = None
+    supply_zone: dict[str, object] | None = None
+    demand_zone: dict[str, object] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -278,6 +284,7 @@ class RevisedReplay:
                 consumed_triggers.add(key)
                 detector.consume(side, setup.trigger_time)
                 signal_decisions.append(decision)
+                decision_risk = decision.evidence.get("risk", {})
                 if decision.first_obstacle_r < self.engine.config.first_obstacle_reject_r:
                     violation_count += 1
                 active[side] = ReplayPosition(
@@ -295,6 +302,21 @@ class RevisedReplay:
                         decision.mode.value if decision.mode is not None else None
                     ),
                     retest_count=decision.retest_count,
+                    market_regime=(
+                        decision_risk.get("market_regime")
+                        if isinstance(decision_risk, dict)
+                        else None
+                    ),
+                    supply_zone=(
+                        decision_risk.get("nearest_supply_zone")
+                        if isinstance(decision_risk, dict)
+                        else None
+                    ),
+                    demand_zone=(
+                        decision_risk.get("nearest_demand_zone")
+                        if isinstance(decision_risk, dict)
+                        else None
+                    ),
                 )
 
         if m1_bars:
@@ -324,6 +346,9 @@ class RevisedReplay:
                         obstacle_kind=position.obstacle_kind,
                         confirmation_mode=position.confirmation_mode,
                         retest_count=position.retest_count,
+                        market_regime=position.market_regime,
+                        supply_zone=position.supply_zone,
+                        demand_zone=position.demand_zone,
                     )
                 )
             active.clear()
@@ -418,6 +443,9 @@ class RevisedReplay:
                     obstacle_kind=position.obstacle_kind,
                     confirmation_mode=position.confirmation_mode,
                     retest_count=position.retest_count,
+                    market_regime=position.market_regime,
+                    supply_zone=position.supply_zone,
+                    demand_zone=position.demand_zone,
                 )
             )
             active.pop(side, None)

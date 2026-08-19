@@ -278,6 +278,7 @@ class RevisedEngine:
             snapshot,
             entry,
         )
+        risk_stats["market_regime"] = self._market_regime_stats(snapshot)
         risk = abs(entry - stop)
         fibonacci = self._fibonacci_stats(snapshot, side, atr_m1)
         hard_invalidation = self._hard_invalidation(snapshot, side, atr_m1)
@@ -586,6 +587,43 @@ class RevisedEngine:
         if not candidates:
             return None
         return min(candidates, key=lambda item: float(item["distance"]))
+
+    def _market_regime_stats(
+        self,
+        snapshot: RevisedSnapshot,
+    ) -> dict[str, object]:
+        m5 = snapshot.m5_bars
+        h1 = snapshot.h1_bars
+        atr_window = self.config.atr_period + 1
+        recent_m5_atr = _atr(m5[-atr_window:], self.config.atr_period)
+        prior_m5 = m5[-atr_window * 2 : -atr_window]
+        prior_m5_atr = _atr(prior_m5, self.config.atr_period)
+        h1_atr = _atr(h1, self.config.atr_period)
+        trend_bars = h1[-24:]
+        if len(trend_bars) >= 2:
+            trend_move = trend_bars[-1].close - trend_bars[0].close
+            travelled = sum(
+                abs(current.close - previous.close)
+                for previous, current in zip(trend_bars, trend_bars[1:])
+            )
+            h1_trend_atr = trend_move / h1_atr if h1_atr > 0 else 0.0
+            h1_efficiency = abs(trend_move) / travelled if travelled > 0 else 0.0
+        else:
+            h1_trend_atr = 0.0
+            h1_efficiency = 0.0
+        sma_bars = h1[-20:]
+        h1_sma = fmean(bar.close for bar in sma_bars) if sma_bars else 0.0
+        current_price = snapshot.m1_bars[-1].close
+        return {
+            "m5_atr": recent_m5_atr,
+            "m5_atr_expansion": (
+                recent_m5_atr / prior_m5_atr if prior_m5_atr > 0 else 1.0
+            ),
+            "h1_atr": h1_atr,
+            "h1_trend_atr": h1_trend_atr,
+            "h1_efficiency": h1_efficiency,
+            "above_h1_sma20": current_price >= h1_sma if h1_sma > 0 else False,
+        }
 
     def _confirmed_zones(
         self,
