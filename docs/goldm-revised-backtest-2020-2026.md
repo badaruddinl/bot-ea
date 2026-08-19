@@ -28,17 +28,17 @@ The earlier bars provide causal warmup. The evaluated range remains
 
 ## Overall result
 
-- signals/resolved: 8,273 / 8,273;
-- BUY: 8,273;
+- signals/resolved: 1,434 / 1,434;
+- BUY: 1,434;
 - SELL: 0;
-- core BUY: 6,792;
-- SCALPER: 1,481;
-- targets: 3,446;
-- stops: 4,356;
-- ambiguous same-bar outcomes: 471;
-- total: `-203.439882R`;
-- expectancy: `-0.024591R` per entry;
-- maximum drawdown: `405.646836R`;
+- core BUY: 1,384;
+- SCALPER: 50;
+- targets: 546;
+- stops: 873;
+- ambiguous same-bar outcomes: 15;
+- total: `+176.443406R`;
+- expectancy: `+0.123043R` per entry;
+- maximum drawdown: `59.478842R`;
 - fallback promotions: 0;
 - duplicate-trigger promotions: 0.
 
@@ -46,20 +46,30 @@ The earlier bars provide causal warmup. The evaluated range remains
 
 | Year | Signals | TP | SL | Ambiguous | Total R | Expectancy R | Max DD R |
 |---:|---:|---:|---:|---:|---:|---:|---:|
-| 2020 | 1,232 | 513 | 650 | 69 | -50.540465 | -0.041023 | 84.470931 |
-| 2021 | 1,242 | 541 | 635 | 66 | -69.176331 | -0.055698 | 75.284305 |
-| 2022 | 1,275 | 521 | 671 | 83 | -151.706178 | -0.118985 | 163.380017 |
-| 2023 | 1,204 | 515 | 606 | 83 | -82.152426 | -0.068233 | 98.720234 |
-| 2024 | 1,317 | 556 | 689 | 72 | +8.685818 | +0.006595 | 34.246997 |
-| 2025 | 1,347 | 543 | 739 | 65 | +106.489047 | +0.079056 | 42.800398 |
-| 2026 | 656 | 257 | 366 | 33 | +34.960652 | +0.053294 | 35.633423 |
+| 2020 | 234 | 100 | 132 | 2 | +56.93 | +0.24 | 17.13 |
+| 2021 | 178 | 76 | 100 | 2 | +36.33 | +0.20 | 14.55 |
+| 2022 | 164 | 52 | 111 | 1 | -6.74 | -0.04 | 33.34 |
+| 2023 | 192 | 64 | 127 | 1 | -7.08 | -0.04 | 31.36 |
+| 2024 | 254 | 88 | 164 | 2 | +5.90 | +0.02 | 37.74 |
+| 2025 | 325 | 124 | 195 | 6 | +59.61 | +0.18 | 24.23 |
+| 2026 | 87 | 42 | 44 | 1 | +31.49 | +0.36 | 6.84 |
 
-## Room breakdown
+## Profile breakdown
 
-| Room | Signals | TP | SL | Ambiguous | Total R | Expectancy R |
-|---|---:|---:|---:|---:|---:|---:|
-| `<1R` | 1,421 | 1,078 | 332 | 11 | -29.529416 | -0.020781 |
-| `>=1R` | 6,852 | 2,368 | 4,024 | 460 | -173.910466 | -0.025381 |
+| Profile | Signals | TP | SL | Total R | Expectancy R |
+|---|---:|---:|---:|---:|---:|
+| CORE | 1,384 | 509 | 860 | +174.54 | +0.13 |
+| SCALPER | 50 | 37 | 13 | +1.90 | +0.04 |
+
+## Regime annotation
+
+| Regime | Signals | Total R | Expectancy R | Max DD R |
+|---|---:|---:|---:|---:|
+| COVID emergency, 30 Jan 2020–5 May 2023 | 621 | +80.10 | +0.13 | 33.34 |
+| Post-COVID, 6 May 2023–31 Jan 2026 | 741 | +52.91 | +0.07 | 59.48 |
+| Pre-war escalation, 1–27 Feb 2026 | 11 | +8.31 | +0.76 | 1.00 |
+| Active-war validation window, 28 Feb–1 Jul 2026 | 23 | +15.50 | +0.67 | 3.00 |
+| Post-1 July validation window | 16 | +13.23 | +0.83 | 1.00 |
 
 ## Five-evidence reconciliation
 
@@ -73,15 +83,31 @@ The earlier bars provide causal warmup. The evaluated range remains
 
 ## Verdict
 
-FAIL, but materially better than 0.5.0. Signals fall from 24,991 to 8,273,
-total loss improves from `-1052.35R` to `-203.44R`, and drawdown falls from
-`1238.82R` to `405.65R`. Results remain negative in 2020–2023, while
-2024–2026 are positive.
+PASS as a research candidate, not as shadow deployment approval. Signals fall
+from 24,991 to 1,434, total improves from `-1052.35R` to `+176.44R`, and
+drawdown falls from `1238.82R` to `59.48R`. Years 2022 and 2023 remain mildly
+negative, so forward deployment is still not automatic.
 
-Neither simply removing SCALPER nor applying a post-generation BUY filter is
-supported by this evidence: both the `<1R` and `>=1R` groups remain negative.
-The improvement comes from changing how BUY setups are formed around nearest
-resistance, psychology, and supply/demand context.
+The improvement does not come from `buy_only=true` or a post-generation side
+filter. REVISED forms BUY hypotheses only, while bearish setups act as
+negative evidence that invalidates BUY. Entry formation requires either no
+active supply or a causally observable H1-supply breakout regime: above H1
+SMA20, positive-but-moderate H1 trend (`0–2 ATR`), and H1 efficiency below
+`0.20`.
+
+## External regime validation
+
+- WHO dates the COVID-19 PHEIC from 30 January 2020, characterized the outbreak
+  as a pandemic on 11 March 2020, and ended the PHEIC on 5 May 2023:
+  https://www.who.int/europe/emergencies/situations/covid-19
+- U.S. CENTCOM states that Operation Epic Fury commenced on 28 February 2026,
+  so 1–27 February is treated as pre-war escalation rather than active war:
+  https://media.defense.gov/2026/Mar/29/2003904283/-1/-1/1/OPERATION-EPIC-FURY-FACT-SHEET-THE-FIRST-29-DAYS.PDF
+- The 2026 Economics Letters event study reports weak gold safe-haven behavior
+  and higher volatility around the Iran escalation:
+  https://doi.org/10.1016/j.econlet.2026.113010
+
+These dates annotate evaluation only. They are not hardcoded entry filters.
 
 Shadow/forward deployment remains disabled. The next revision must be trained
 only on pre-2025 data and validated out-of-sample on 2025–2026; parameters
