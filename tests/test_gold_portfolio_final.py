@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
+from hashlib import sha256
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -14,6 +16,51 @@ from gold_portfolio.worker import CompositePortfolioWorker
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_pinned_hash_accepts_crlf_only_as_transport_normalization(
+    tmp_path: Path,
+) -> None:
+    canonical = b'{\n  "locked": true\n}\n'
+    pinned = tmp_path / "pinned.json"
+    pinned.write_bytes(canonical.replace(b"\n", b"\r\n"))
+    revised = tmp_path / "revised.json"
+    bear = tmp_path / "bear.json"
+    revised.write_text("{}", encoding="utf-8")
+    bear.write_text("{}", encoding="utf-8")
+    portfolio = tmp_path / "portfolio.json"
+    portfolio.write_text(
+        json.dumps(
+            {
+                "portfolio_id": "TEST",
+                "symbol": "TEST",
+                "execution_mode": "signal_only",
+                "revised_config": str(revised),
+                "bear_config": str(bear),
+                "terminal": {"require_account_binding": False},
+                "orders_enabled": False,
+            }
+        ),
+        encoding="utf-8",
+    )
+    worker = tmp_path / "worker.json"
+    worker.write_text(
+        json.dumps(
+            {
+                "group": "test",
+                "portfolio_config": str(portfolio),
+                "state_path": str(tmp_path / "state.json"),
+                "audit_path": str(tmp_path / "audit.jsonl"),
+                "pinned_files": {str(pinned): sha256(canonical).hexdigest()},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert load_worker_config(worker).portfolio_id == "TEST"
+    pinned.write_text('{"locked": false}\n', encoding="utf-8")
+    with pytest.raises(ValueError, match="pinned config hash mismatch"):
+        load_worker_config(worker)
 
 
 def _bind_env(monkeypatch: pytest.MonkeyPatch) -> None:

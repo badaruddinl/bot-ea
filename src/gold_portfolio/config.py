@@ -77,11 +77,15 @@ def load_worker_config(path: str | Path) -> PortfolioWorkerConfig:
     worker = _read_json(worker_path)
     for pinned_path, expected_hash in dict(worker.get("pinned_files") or {}).items():
         resolved = _repo_path(str(pinned_path))
-        actual_hash = sha256(resolved.read_bytes()).hexdigest()
-        if actual_hash != str(expected_hash).lower():
+        content = resolved.read_bytes()
+        actual_hash = sha256(content).hexdigest()
+        canonical_hash = sha256(content.replace(b"\r\n", b"\n")).hexdigest()
+        expected = str(expected_hash).lower()
+        if expected not in {actual_hash, canonical_hash}:
             raise ValueError(
                 f"pinned config hash mismatch: {pinned_path} "
-                f"expected={expected_hash} actual={actual_hash}"
+                f"expected={expected_hash} actual={actual_hash} "
+                f"canonical={canonical_hash}"
             )
     portfolio = _read_json(_repo_path(str(worker["portfolio_config"])))
     revised = _read_json(_repo_path(str(portfolio["revised_config"])))
