@@ -228,6 +228,10 @@ class RevisedEngine:
 
     def __init__(self, config: RevisedEngineConfig | None = None) -> None:
         self.config = config or RevisedEngineConfig()
+        self._zone_cache: dict[
+            tuple[bool, int, datetime, datetime, float],
+            tuple[dict[str, object], ...],
+        ] = {}
 
     def terminal_decision(
         self,
@@ -593,6 +597,16 @@ class RevisedEngine:
         confirmation = self.config.supply_confirmation_bars
         if len(bars) <= confirmation or atr <= 0:
             return []
+        cache_key = (
+            supply,
+            len(bars),
+            bars[0].time,
+            bars[-1].time,
+            round(atr, 8),
+        )
+        cached = self._zone_cache.get(cache_key)
+        if cached is not None:
+            return list(cached)
         zones: list[dict[str, object]] = []
         tolerance = self.config.spread_floor
         for index in range(len(bars) - confirmation):
@@ -664,6 +678,9 @@ class RevisedEngine:
                         "displacement_atr": displacement / atr,
                     }
                 )
+        if len(self._zone_cache) >= 64:
+            self._zone_cache.pop(next(iter(self._zone_cache)))
+        self._zone_cache[cache_key] = tuple(zones)
         return zones
 
     def _zone_accepted(
