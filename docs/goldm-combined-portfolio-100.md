@@ -41,3 +41,22 @@ balance must not override this start-date failure.
 
 The script is research-only. It sends no orders and does not change either
 engine or production.
+
+## USD 100,000 balance with fixed 0.20 lot on both sides
+
+The same one-balance/shared-margin simulation was rerun with USD 100,000 and
+fixed 0.20 lot for both BUY and SELL.
+
+| Window | Closed | Ending balance | Net / return | Max concurrent | Max margin | Minimum floating equity | Floating DD | Result |
+|---|---:|---:|---:|---:|---:|---:|---:|---|
+| 4–19 Aug | 14 / 14 | $101,612.09 | +$1,612.09 / 1.612% | 1 | $88.43 | $99,876.55 | 0.585% | completed |
+| Jan 2025–now | 359 / 359 | $117,037.92 | +$17,037.92 / 17.038% | 2 | $192.27 | $99,459.85 | 4.026% | completed |
+| Nov–Feb | 80 / 80 | $105,158.01 | +$5,158.01 / 5.158% | 1 | $107.71 | $99,332.43 | 2.058% | completed |
+| Jun–now | 33 / 33 | $102,552.35 | +$2,552.35 / 2.552% | 2 | $160.10 | $98,963.49 | 1.716% | completed |
+| Full suite | 1,268 / 1,268 | **$125,408.85** | **+$25,408.85 / 25.409%** | 2 | $192.27 | $99,744.50 | **3.759%** | completed |
+
+This capitalization/lot pair completes the evidence window, all three partial
+windows, and the full suite without shared stop-out or insufficient margin. It
+uses fixed lots and is not compounding. Costs and executable spread remain
+excluded, so it is historical research evidence rather than deployment
+authorization.
