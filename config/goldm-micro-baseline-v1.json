@@ -1,0 +1,41 @@
+{
+  "profile_id": "GOLDm_MICRO_BASELINE_V1",
+  "status": "CONSERVATIVE_FALLBACK_FULL_OBSERVED_PASS_ALL_STARTS",
+  "source_gold_i_milestone": {
+    "commit": "cd609e0",
+    "tag": "goldi-profit-v1-research-20260819"
+  },
+  "instrument": {
+    "symbol": "GOLDm#",
+    "contract_size_oz": 1.0,
+    "volume_min": 0.1,
+    "volume_step": 0.01,
+    "volume_max": 100.0,
+    "price_tick": 0.01,
+    "spread_floor_usd": 0.24,
+    "leverage": 1000,
+    "verified_server": "XMGlobal-MT5 14",
+    "verified_utc_date": "2026-08-19"
+  },
+  "sizing": {
+    "low_lot": 0.1,
+    "high_lot": 0.2,
+    "partial_lot": 0.1,
+    "step_up_balance_usd": 100.0,
+    "downgrade_below_threshold": true
+  },
+  "management": {
+    "buy_policy": "FULL_TP2",
+    "sell_policy": "FULL_TP2",
+    "partial_enabled": false,
+    "uses_break_even": false
+  },
+  "research": {
+    "native_goldm_history": true,
+    "signal_only": true,
+    "runtime_enabled": false,
+    "orders_enabled": false,
+    "commission_swap_slippage_included": false,
+    "stress_status": "FULL_OBSERVED_PASS_ALL_STARTS; FULL_EXTREME_INSUFFICIENT_MARGIN_ALL_STARTS"
+  }
+}

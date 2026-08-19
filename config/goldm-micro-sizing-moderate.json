@@ -1,0 +1,13 @@
+{
+  "profile_id": "GOLDm_SIZING_MODERATE",
+  "status": "REJECTED_FOR_START_10_RESEARCH_ONLY",
+  "symbol": "GOLDm#",
+  "contract_size_oz": 1.0,
+  "balance_tiers": [
+    {"minimum_balance": 0.0, "lot": 0.5},
+    {"minimum_balance": 100.0, "lot": 1.0}
+  ],
+  "downgrade_enabled": true,
+  "management": "FULL_TP2",
+  "rejection_reason": "USD 10 stops out in Jan, Nov-Feb, and June start windows."
+}

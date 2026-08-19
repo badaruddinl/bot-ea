@@ -1,0 +1,10 @@
+{
+  "component": "revised",
+  "instrument": "GOLD.i#",
+  "source_tag": "goldi-profit-v1-research-20260819",
+  "engine_config_path": "config/goldm-revised-shadow.json",
+  "candidate_config_path": "config/goldm-revised-candidate-1p75x-2p5x.json",
+  "side": "BUY",
+  "stop_multiplier": 1.75,
+  "target_multiplier": 2.5
+}

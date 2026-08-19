@@ -1,0 +1,20 @@
+{
+  "group": "goldi",
+  "portfolio_config": "config/final/goldi/portfolio.json",
+  "poll_seconds": 15,
+  "server_utc_offset_minutes": 180,
+  "state_path": "runtime_data/final/goldi/state.json",
+  "audit_path": "runtime_data/final/goldi/audit.jsonl",
+  "pinned_files": {
+    "config/goldm-revised-shadow.json": "4d1ecffa39c04d7ecfc2c0324f2588a3a9fcf1106f1654e0f403c24877dbd20f",
+    "config/goldm-revised-candidate-1p75x-2p5x.json": "a6f6659745de53ec9f0c55cedd6d588187c9241a76235cc02fa100d344fc2d09",
+    "config/goldm-bear-confluence-v4.json": "387abf1c60a0a9c550e10ee4b07c5d132a1b53e5009a5427af9b0e7dada73b75",
+    "config/goldm-revised-partial-keep-stop-profit-v1.json": "fce3ea70437a3778de0624d4eee13a45d65a9402d09ccfe1447033c193950349"
+  },
+  "telegram": {
+    "bot_token_env": "TELEGRAM_BOT_TOKEN",
+    "chat_ids_env": "TELEGRAM_ADMIN_CHAT_IDS",
+    "fallback_chat_id_env": "TELEGRAM_CHAT_ID",
+    "send_health": true
+  }
+}

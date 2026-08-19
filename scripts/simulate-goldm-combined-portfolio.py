@@ -5,6 +5,7 @@ import json
 import sys
 from collections import defaultdict
 from datetime import datetime, timedelta
+from math import isclose
 from pathlib import Path
 
 
@@ -27,8 +28,30 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--adaptive-lot-balance", type=float)
     parser.add_argument("--adaptive-low-lot", type=float, default=0.01)
     parser.add_argument("--adaptive-high-lot", type=float, default=0.02)
+    parser.add_argument("--round-trip-spread-usd", type=float, default=0.0)
+    parser.add_argument("--slippage-per-side-usd", type=float, default=0.0)
+    parser.add_argument("--commission-per-lot-side-usd", type=float, default=0.0)
+    parser.add_argument(
+        "--adaptive-lot-tier",
+        action="append",
+        type=_lot_tier,
+        default=[],
+        metavar="BALANCE:LOT",
+    )
     parser.add_argument("--output", type=Path, required=True)
     return parser.parse_args()
+
+
+def _lot_tier(value: str) -> tuple[float, float]:
+    try:
+        balance_text, lot_text = value.split(":", 1)
+        balance = float(balance_text)
+        lot = float(lot_text)
+    except (TypeError, ValueError) as exc:
+        raise argparse.ArgumentTypeError("lot tier must be BALANCE:LOT") from exc
+    if balance < 0.0 or lot <= 0.0:
+        raise argparse.ArgumentTypeError("lot tier balance/lot is invalid")
+    return balance, lot
 
 
 def _position(
@@ -42,6 +65,9 @@ def _position(
     outcome_r: float | None = None,
     closed_at: datetime | None = None,
     result: str | None = None,
+    round_trip_spread_usd: float = 0.0,
+    slippage_per_side_usd: float = 0.0,
+    commission_per_lot_side_usd: float = 0.0,
 ):
     entry = float(outcome["entry"])
     stop = float(outcome["stop"])
@@ -55,10 +81,19 @@ def _position(
         else entry - resolved_outcome_r * risk
     )
     order_type = mt5.ORDER_TYPE_BUY if side == "BUY" else mt5.ORDER_TYPE_SELL
-    profit = mt5.order_calc_profit(order_type, info.name, lot, entry, exit_price)
+    gross_profit = mt5.order_calc_profit(order_type, info.name, lot, entry, exit_price)
     margin = mt5.order_calc_margin(order_type, info.name, lot, entry)
-    if profit is None or margin is None:
+    if gross_profit is None or margin is None:
         raise RuntimeError(f"MT5 portfolio calculation failed: {mt5.last_error()}")
+    exposure_ounces = float(getattr(info, "trade_contract_size", 1.0)) * lot
+    entry_cost = (
+        (round_trip_spread_usd + slippage_per_side_usd) * exposure_ounces
+        + commission_per_lot_side_usd * lot
+    )
+    exit_cost = (
+        slippage_per_side_usd * exposure_ounces
+        + commission_per_lot_side_usd * lot
+    )
     return {
         "id": f"{side}:{outcome['opened_at']}:{entry}:{leg}",
         "strategy": "GOLDM_REVISED" if side == "BUY" else "GOLDM_BEAR_V4",
@@ -68,7 +103,11 @@ def _position(
         "closed_at": closed_at or datetime.fromisoformat(outcome["closed_at"]),
         "entry": entry,
         "exit_price": exit_price,
-        "profit": float(profit),
+        "gross_profit": float(gross_profit),
+        "entry_cost": entry_cost,
+        "exit_cost": exit_cost,
+        "close_profit": float(gross_profit) - exit_cost,
+        "profit": float(gross_profit) - entry_cost - exit_cost,
         "margin": float(margin),
         "result": result or outcome["result"],
         "outcome_r": resolved_outcome_r,
@@ -76,21 +115,43 @@ def _position(
     }
 
 
-def _positions(mt5, info, outcome, *, side: str, lot: float):
+def _positions(
+    mt5,
+    info,
+    outcome,
+    *,
+    side: str,
+    lot: float,
+    round_trip_spread_usd: float = 0.0,
+    slippage_per_side_usd: float = 0.0,
+    commission_per_lot_side_usd: float = 0.0,
+):
     """Expand a dual-TP outcome into margin-accurate executable legs."""
 
     tp1_fraction = float(outcome.get("tp1_fraction", 0.0))
     runner_fraction = float(outcome.get("runner_fraction", 1.0))
     is_split = 0.0 < tp1_fraction < 1.0 and 0.0 < runner_fraction < 1.0
     if not is_split:
-        return [_position(mt5, info, outcome, side=side, lot=lot)]
+        return [
+            _position(
+                mt5,
+                info,
+                outcome,
+                side=side,
+                lot=lot,
+                round_trip_spread_usd=round_trip_spread_usd,
+                slippage_per_side_usd=slippage_per_side_usd,
+                commission_per_lot_side_usd=commission_per_lot_side_usd,
+            )
+        ]
 
     volume_step = float(getattr(info, "volume_step", 0.01) or 0.01)
+    volume_min = float(getattr(info, "volume_min", volume_step) or volume_step)
     raw_tp1_lot = lot * tp1_fraction
     raw_runner_lot = lot * runner_fraction
     executable_split = bool(
-        raw_tp1_lot + 1e-12 >= volume_step
-        and raw_runner_lot + 1e-12 >= volume_step
+        raw_tp1_lot + 1e-12 >= volume_min
+        and raw_runner_lot + 1e-12 >= volume_min
         and abs(round(raw_tp1_lot / volume_step) * volume_step - raw_tp1_lot)
         < 1e-9
         and abs(round(raw_runner_lot / volume_step) * volume_step - raw_runner_lot)
@@ -112,6 +173,9 @@ def _positions(mt5, info, outcome, *, side: str, lot: float):
                 lot=lot,
                 leg="PARTIAL_FALLBACK_FULL_RUNNER",
                 outcome_r=full_outcome_r,
+                round_trip_spread_usd=round_trip_spread_usd,
+                slippage_per_side_usd=slippage_per_side_usd,
+                commission_per_lot_side_usd=commission_per_lot_side_usd,
             )
         ]
 
@@ -129,6 +193,9 @@ def _positions(mt5, info, outcome, *, side: str, lot: float):
                 lot=tp1_lot,
                 leg="TP1_UNFILLED",
                 outcome_r=shared_outcome_r,
+                round_trip_spread_usd=round_trip_spread_usd,
+                slippage_per_side_usd=slippage_per_side_usd,
+                commission_per_lot_side_usd=commission_per_lot_side_usd,
             ),
             _position(
                 mt5,
@@ -138,6 +205,9 @@ def _positions(mt5, info, outcome, *, side: str, lot: float):
                 lot=runner_lot,
                 leg="RUNNER",
                 outcome_r=shared_outcome_r,
+                round_trip_spread_usd=round_trip_spread_usd,
+                slippage_per_side_usd=slippage_per_side_usd,
+                commission_per_lot_side_usd=commission_per_lot_side_usd,
             ),
         ]
 
@@ -160,6 +230,9 @@ def _positions(mt5, info, outcome, *, side: str, lot: float):
             outcome_r=tp1_r,
             closed_at=datetime.fromisoformat(tp1_taken_at),
             result="TP1_PARTIAL",
+            round_trip_spread_usd=round_trip_spread_usd,
+            slippage_per_side_usd=slippage_per_side_usd,
+            commission_per_lot_side_usd=commission_per_lot_side_usd,
         ),
         _position(
             mt5,
@@ -169,6 +242,9 @@ def _positions(mt5, info, outcome, *, side: str, lot: float):
             lot=runner_lot,
             leg="RUNNER",
             outcome_r=runner_outcome_r,
+            round_trip_spread_usd=round_trip_spread_usd,
+            slippage_per_side_usd=slippage_per_side_usd,
+            commission_per_lot_side_usd=commission_per_lot_side_usd,
         ),
     ]
 
@@ -189,7 +265,15 @@ def _select_trade_lot(
     low_lot: float,
     high_lot: float,
     static_lot: float,
+    lot_tiers: tuple[tuple[float, float], ...] = (),
 ) -> float:
+    if lot_tiers:
+        selected = lot_tiers[0][1]
+        for tier_balance, tier_lot in lot_tiers:
+            if balance + 1e-12 < tier_balance:
+                break
+            selected = tier_lot
+        return selected
     if threshold is None:
         return static_lot
     return high_lot if balance >= threshold else low_lot
@@ -209,11 +293,26 @@ def main() -> int:
     )
     if end <= start:
         raise ValueError("to-time must be after from-time")
+    costs = (
+        args.round_trip_spread_usd,
+        args.slippage_per_side_usd,
+        args.commission_per_lot_side_usd,
+    )
+    if any(value < 0.0 for value in costs):
+        raise ValueError("execution stress costs cannot be negative")
     if args.adaptive_lot_balance is not None:
         if args.adaptive_lot_balance <= 0.0:
             raise ValueError("adaptive lot balance must be positive")
         if not 0.0 < args.adaptive_low_lot <= args.adaptive_high_lot:
             raise ValueError("adaptive lot sizes are invalid")
+    lot_tiers = tuple(sorted(args.adaptive_lot_tier))
+    if lot_tiers and args.adaptive_lot_balance is not None:
+        raise ValueError("use adaptive lot tiers or one balance threshold, not both")
+    if lot_tiers:
+        if lot_tiers[0][0] != 0.0:
+            raise ValueError("adaptive lot tiers must define a zero-balance fallback")
+        if len({balance for balance, _ in lot_tiers}) != len(lot_tiers):
+            raise ValueError("adaptive lot tier balances must be unique")
     buy_outcomes = [
         outcome
         for outcome in buy_report["outcomes"]
@@ -240,6 +339,12 @@ def main() -> int:
         ):
             variant_lots = (
                 {
+                    f"TIER_{index}": lot
+                    for index, (_, lot) in enumerate(lot_tiers)
+                }
+                if lot_tiers
+                else
+                {
                     "LOW": args.adaptive_low_lot,
                     "HIGH": args.adaptive_high_lot,
                 }
@@ -254,6 +359,9 @@ def main() -> int:
                         outcome,
                         side=side,
                         lot=lot,
+                        round_trip_spread_usd=args.round_trip_spread_usd,
+                        slippage_per_side_usd=args.slippage_per_side_usd,
+                        commission_per_lot_side_usd=args.commission_per_lot_side_usd,
                     )
                     for name, lot in variant_lots.items()
                 }
@@ -263,6 +371,7 @@ def main() -> int:
                         "opened_at": datetime.fromisoformat(outcome["opened_at"]),
                         "static_lot": static_lot,
                         "variants": variants,
+                        "variant_lots": variant_lots,
                     }
                 )
         contract_size = float(info.trade_contract_size)
@@ -311,10 +420,13 @@ def main() -> int:
     ledger = []
     realized_buy_net = 0.0
     realized_sell_net = 0.0
+    total_entry_cost = 0.0
+    total_exit_cost = 0.0
     low_lot_trades = 0
     high_lot_trades = 0
     static_lot_trades = 0
     first_high_lot_time = None
+    lot_trade_counts: dict[str, int] = defaultdict(int)
 
     def close_positions(timestamp):
         nonlocal balance, peak_balance, minimum_balance, maximum_realized_drawdown
@@ -322,11 +434,11 @@ def main() -> int:
         for position in closes.get(timestamp, []):
             if position["id"] not in active:
                 continue
-            balance += position["profit"]
+            balance += position["close_profit"]
             if position["side"] == "BUY":
-                realized_buy_net += position["profit"]
+                realized_buy_net += position["close_profit"]
             else:
-                realized_sell_net += position["profit"]
+                realized_sell_net += position["close_profit"]
             peak_balance = max(peak_balance, balance)
             minimum_balance = min(minimum_balance, balance)
             maximum_realized_drawdown = max(
@@ -340,7 +452,8 @@ def main() -> int:
                     "event": "CLOSE",
                     "strategy": position["strategy"],
                     "side": position["side"],
-                    "profit": position["profit"],
+                    "profit": position["close_profit"],
+                    "exit_cost": position["exit_cost"],
                     "balance": balance,
                     "result": position["result"],
                     "leg": position["leg"],
@@ -349,6 +462,9 @@ def main() -> int:
 
     def open_positions(timestamp):
         nonlocal maximum_concurrent, maximum_margin, failure
+        nonlocal balance, peak_balance, minimum_balance, maximum_realized_drawdown
+        nonlocal realized_buy_net, realized_sell_net
+        nonlocal total_entry_cost, total_exit_cost
         nonlocal low_lot_trades, high_lot_trades, static_lot_trades
         nonlocal first_high_lot_time
         candidates = []
@@ -360,8 +476,15 @@ def main() -> int:
                 args.adaptive_low_lot,
                 args.adaptive_high_lot,
                 group["static_lot"],
+                lot_tiers,
             )
-            if args.adaptive_lot_balance is None:
+            if lot_tiers:
+                variant_name = next(
+                    name
+                    for name, candidate_lot in group["variant_lots"].items()
+                    if isclose(candidate_lot, lot, abs_tol=1e-12)
+                )
+            elif args.adaptive_lot_balance is None:
                 variant_name = "STATIC"
             elif lot == args.adaptive_high_lot:
                 variant_name = "HIGH"
@@ -370,10 +493,11 @@ def main() -> int:
             positions = group["variants"][variant_name]
             candidates.extend(positions)
             selected_groups.append((variant_name, lot, positions))
+        entry_cost = sum(position["entry_cost"] for position in candidates)
         projected_margin = sum(item["margin"] for item in active.values()) + sum(
             position["margin"] for position in candidates
         )
-        if projected_margin > balance:
+        if projected_margin > balance - entry_cost:
             failure = {
                 "reason": "INSUFFICIENT_SHARED_MARGIN_AT_ENTRY",
                 "time": timestamp.isoformat(),
@@ -381,10 +505,33 @@ def main() -> int:
                 "required_margin": projected_margin,
             }
             return
+        balance -= entry_cost
+        total_entry_cost += entry_cost
+        total_exit_cost += sum(position["exit_cost"] for position in candidates)
+        for position in candidates:
+            if position["side"] == "BUY":
+                realized_buy_net -= position["entry_cost"]
+            else:
+                realized_sell_net -= position["entry_cost"]
+        minimum_balance = min(minimum_balance, balance)
+        maximum_realized_drawdown = max(
+            maximum_realized_drawdown,
+            peak_balance - balance,
+        )
         for variant_name, lot, positions in selected_groups:
-            if variant_name == "LOW":
+            lot_trade_counts[f"{lot:.8f}".rstrip("0").rstrip(".")] += 1
+            dynamic_lots = (
+                tuple(lot for _, lot in lot_tiers)
+                if lot_tiers
+                else (args.adaptive_low_lot, args.adaptive_high_lot)
+            )
+            if variant_name == "LOW" or (
+                lot_tiers and isclose(lot, min(dynamic_lots), abs_tol=1e-12)
+            ):
                 low_lot_trades += 1
-            elif variant_name == "HIGH":
+            elif variant_name == "HIGH" or (
+                lot_tiers and isclose(lot, max(dynamic_lots), abs_tol=1e-12)
+            ):
                 high_lot_trades += 1
                 if first_high_lot_time is None:
                     first_high_lot_time = timestamp
@@ -410,6 +557,7 @@ def main() -> int:
                     "lot": position["lot"],
                     "leg": position["leg"],
                     "balance": balance,
+                    "entry_cost": position["entry_cost"],
                 }
             )
 
@@ -510,6 +658,8 @@ def main() -> int:
         "adaptive_lot_balance": args.adaptive_lot_balance,
         "adaptive_low_lot": args.adaptive_low_lot,
         "adaptive_high_lot": args.adaptive_high_lot,
+        "adaptive_lot_tiers": [list(item) for item in lot_tiers],
+        "lot_trade_counts": dict(lot_trade_counts),
         "low_lot_trades": low_lot_trades,
         "high_lot_trades": high_lot_trades,
         "static_lot_trades": static_lot_trades,
@@ -531,7 +681,14 @@ def main() -> int:
             else 0.0
         ),
         "failure": failure,
-        "commission_swap_slippage_included": False,
+        "commission_swap_slippage_included": any(value > 0.0 for value in costs),
+        "round_trip_spread_usd": args.round_trip_spread_usd,
+        "slippage_per_side_usd": args.slippage_per_side_usd,
+        "commission_per_lot_side_usd": args.commission_per_lot_side_usd,
+        "total_entry_cost": total_entry_cost,
+        "total_exit_cost": total_exit_cost,
+        "total_execution_cost": total_entry_cost + total_exit_cost,
+        "swap_modeled": False,
         "ledger": ledger,
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)

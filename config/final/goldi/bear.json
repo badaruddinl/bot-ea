@@ -1,0 +1,11 @@
+{
+  "component": "bear",
+  "instrument": "GOLD.i#",
+  "source_tag": "goldi-profit-v1-research-20260819",
+  "candidate_config_path": "config/goldm-bear-confluence-v4.json",
+  "side": "SELL",
+  "fixed_target_r": 2.0,
+  "stop_multiplier": 1.0,
+  "target_multiplier": 1.0,
+  "lookback_days": 30
+}

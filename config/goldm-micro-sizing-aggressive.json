@@ -1,0 +1,16 @@
+{
+  "profile_id": "GOLDm_SIZING_AGGRESSIVE",
+  "status": "PRIMARY_RESEARCH_FULL_OBSERVED_PASS_MINIMUM_START_50",
+  "symbol": "GOLDm#",
+  "contract_size_oz": 1.0,
+  "balance_tiers": [
+    {"minimum_balance": 0.0, "lot": 0.1},
+    {"minimum_balance": 10.0, "lot": 0.2},
+    {"minimum_balance": 30.0, "lot": 0.5},
+    {"minimum_balance": 50.0, "lot": 1.0},
+    {"minimum_balance": 100.0, "lot": 2.0}
+  ],
+  "downgrade_enabled": true,
+  "management": "FULL_TP2",
+  "risk_note": "Selected as primary with accepted risk. Full observed-cost suite passes from USD 100/50 and stops out from USD 30/10; no severe-cost full-suite start completes."
+}

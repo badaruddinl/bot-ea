@@ -1,0 +1,29 @@
+{
+  "component": "bear",
+  "instrument": "GOLDm#",
+  "candidate": "GOLDM_BEAR_CONFLUENCE_V4",
+  "side": "SELL",
+  "fixed_target_r": 2.0,
+  "stop_multiplier": 1.0,
+  "target_multiplier": 1.0,
+  "lookback_days": 30,
+  "config": {
+    "h1_sma_period": 20,
+    "m5_watch_bars": 12,
+    "m5_touch_separation_bars": 2,
+    "m5_retreat_atr": 0.25,
+    "m5_min_touches": 1,
+    "m5_min_rejections": 1,
+    "m5_acceptance_closes": 2,
+    "m1_entry_bars": 20,
+    "m1_min_touches": 2,
+    "m1_body_fraction": 0.35,
+    "m1_close_location": 0.35,
+    "stop_buffer_atr_m5": 0.10,
+    "minimum_reward_risk": 0.70,
+    "minimum_psychological_reward_risk": 0.35,
+    "minimum_continuation_reward_risk": 0.50,
+    "price_tick": 0.01,
+    "spread_floor": 0.24
+  }
+}

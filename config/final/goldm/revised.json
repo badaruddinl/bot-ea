@@ -1,0 +1,8 @@
+{
+  "component": "revised",
+  "instrument": "GOLDm#",
+  "engine_config_path": "config/goldm-micro-replay.json",
+  "side": "BUY",
+  "stop_multiplier": 1.75,
+  "target_multiplier": 2.5
+}

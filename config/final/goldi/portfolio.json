@@ -1,0 +1,16 @@
+{
+  "portfolio_id": "GOLDI_REVISED_BEAR_FINAL",
+  "symbol": "GOLD.i#",
+  "execution_mode": "signal_only",
+  "revised_config": "config/final/goldi/revised.json",
+  "bear_config": "config/final/goldi/bear.json",
+  "terminal": {
+    "path_env": "GOLDI_MT5_TERMINAL_PATH",
+    "expected_login_env": "GOLDI_MT5_LOGIN",
+    "expected_server_env": "GOLDI_MT5_SERVER",
+    "require_account_binding": true
+  },
+  "magic": 26081911,
+  "maximum_positions": 0,
+  "orders_enabled": false
+}

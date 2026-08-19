@@ -1,0 +1,35 @@
+{
+  "selection_id": "GOLDm_PRIMARY_SELECTION_V1",
+  "status": "PRIMARY_RESEARCH_FULL_SUITE_STRESS_RESTRICTED",
+  "symbol": "GOLDm#",
+  "strategy": {
+    "buy_management": "FULL_TP2",
+    "sell_management": "FULL_TP2",
+    "uses_break_even": false,
+    "partial_enabled": false
+  },
+  "primary_sizing_profile": "config/goldm-micro-sizing-aggressive.json",
+  "secondary_sizing_profile": "config/goldm-micro-sizing-hybrid.json",
+  "conservative_fallback_profile": "config/goldm-micro-baseline-v1.json",
+  "accepted_stress_limits": {
+    "observed_passed": "16/16",
+    "severe_passed": "15/16",
+    "extreme_passed": "11/16",
+    "known_severe_failure": "Jan start USD 10",
+    "known_extreme_failures": "All Jan starts and Nov start USD 10",
+    "full_observed_eligibility": "Aggressive passes only for initial balance USD 50 or greater",
+    "full_observed_failures": "Initial USD 30 and USD 10 stop out",
+    "full_severe_result": "No initial balance completes the full suite"
+  },
+  "initial_balance_routing_recommendation": {
+    "minimum_50": "Aggressive primary",
+    "minimum_30": "Hybrid secondary",
+    "below_30": "Micro-safe conservative fallback"
+  },
+  "runtime_enabled": false,
+  "orders_enabled": false,
+  "full_suite_required": false,
+  "full_suite_completed": true,
+  "deployment_gate_passed": false,
+  "selected_at": "2026-08-19"
+}

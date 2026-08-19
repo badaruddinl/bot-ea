@@ -1,0 +1,56 @@
+{
+  "profile_id": "GOLDm_MICRO_PROFIT_V1",
+  "status": "REJECTED_CROSS_WINDOW_SHADOW_ONLY",
+  "source_gold_i_milestone": {
+    "commit": "cd609e0",
+    "tag": "goldi-profit-v1-research-20260819"
+  },
+  "instrument": {
+    "symbol": "GOLDm#",
+    "contract_size_oz": 1.0,
+    "volume_min": 0.1,
+    "volume_step": 0.01,
+    "volume_step_status": "VERIFIED_MT5_XMGLOBAL_14_2026_08_19",
+    "volume_max": 100.0,
+    "price_tick": 0.01,
+    "spread_floor_usd": 0.24,
+    "leverage": 1000
+  },
+  "sizing": {
+    "low_lot": 0.1,
+    "high_lot": 0.2,
+    "partial_lot": 0.1,
+    "step_up_balance_usd": 100.0,
+    "downgrade_below_threshold": true,
+    "low_exposure_oz": 0.1,
+    "high_exposure_oz": 0.2,
+    "exposure_relative_to_gold_i_test": 0.1
+  },
+  "engine": {
+    "confirmation_mode": "RANGE",
+    "tp1_r_min_inclusive": 0.75,
+    "tp1_r_max_exclusive": 1.0,
+    "tp2_to_tp1_min_ratio": 2.0,
+    "entry_stop_to_m5_atr_max_exclusive": 0.75,
+    "runner_stop_action": "KEEP_ORIGINAL_STRUCTURAL_STOP",
+    "uses_break_even": false,
+    "sell_policy": "FULL_TP2_UNCHANGED"
+  },
+  "equivalent_gold_i_exposure": {
+    "gold_i_low_lot_0_01_maps_to_goldm_lot": 1.0,
+    "gold_i_high_lot_0_02_maps_to_goldm_lot": 2.0,
+    "gold_i_partial_lot_0_01_maps_to_goldm_lot": 1.0,
+    "default_micro_profile_is_exposure_equivalent": false
+  },
+  "research": {
+    "signal_only": true,
+    "runtime_enabled": false,
+    "orders_enabled": false,
+    "requires_native_goldm_history": true,
+    "symbol_contract_verified": true,
+    "verified_account_server": "XMGlobal-MT5 14",
+    "primary_enabled": false,
+    "rejection_reason": "Improves recent reversal sample but loses November and is not consistently superior across native partial windows.",
+    "commission_swap_slippage_included": false
+  }
+}
