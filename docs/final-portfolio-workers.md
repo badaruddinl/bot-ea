@@ -42,12 +42,15 @@ and sends: component decision/reason, entry/close, SL/TP, volume, total P/L
 including swap/commission/fee, planned R:R, realized R, duration, and current
 balance/equity. State and deduplication are persisted separately per group.
 
-Before entry, each worker persists an admin-only WATCH lifecycle. Revised
-reports M5 trigger and M1 range/momentum evidence. Bear reports its M15 setup,
-H1 context, M5 arm/retest, and M1 confirmation stage. Identical evidence is
-suppressed for five minutes, changes are immediate, and WATCH never executes an
-order. Instrument, watch ID, broker-server time, and VM-local time are included
-for debugging.
+Before entry, each worker persists a compact internal WATCH snapshot. Revised
+tracks M5 trigger and M1 range/momentum evidence. Bear tracks its M15 setup, H1
+context, M5 arm/retest, and M1 confirmation stage. WATCH never sends Telegram
+and never executes an order. Telegram gets only one final entry/order result and
+the close result in a human-readable format. Instrument, signal/order/position
+IDs, broker-server time, and VM-local time remain included for debugging.
+
+The state file overwrites WATCH data instead of growing. JSONL audit files
+rotate at 5 MiB and retain three backups.
 
 ## Required environment
 

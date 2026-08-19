@@ -26,6 +26,8 @@ from .mt5_session import BoundMt5Session
 
 
 ROOT = Path(__file__).resolve().parents[2]
+AUDIT_MAX_BYTES = 5 * 1024 * 1024
+AUDIT_BACKUPS = 3
 
 
 def _json(path: str | Path) -> dict[str, Any]:
@@ -157,10 +159,6 @@ class CompositePortfolioWorker:
             if self._seen(signal.event_id):
                 continue
             self._remember(signal.event_id)
-            self.telegram.send(
-                self._format_signal(signal),
-                include_subscribers=True,
-            )
             execution = self.session.execute(signal)
             event = {
                 "time": datetime.now(tz=self.session.server_timezone).isoformat(),
@@ -172,11 +170,12 @@ class CompositePortfolioWorker:
             events.append(event)
             if execution.get("status") == "EXECUTED":
                 self._track_open_position(signal, execution)
-            if execution.get("status") not in {"SIGNAL_ONLY"}:
-                self.telegram.send(
-                    self._format_execution(signal, execution),
-                    include_subscribers=True,
-                )
+            notification = (
+                self._format_signal(signal)
+                if execution.get("status") == "SIGNAL_ONLY"
+                else self._format_execution(signal, execution)
+            )
+            self.telegram.send(notification, include_subscribers=True)
         self.state["last_m1"] = latest_m1.isoformat()
         self._save_state()
         return {
@@ -592,121 +591,76 @@ class CompositePortfolioWorker:
     def _process_watch(self, watch: WatchEvent) -> dict[str, Any] | None:
         active = dict(self.state.get("active_watches") or {})
         key = f"{watch.component}:{watch.side}"
-        existing = dict(active.get(key) or {})
-        if watch.state == "ENTRY_READY":
-            if existing.get("watch_id") == watch.watch_id:
-                active.pop(key, None)
-                self.state["active_watches"] = active
-            return None
-        if watch.state in {"CANCELLED", "EXPIRED"}:
-            if existing.get("watch_id") != watch.watch_id:
-                return None
-            message_type = watch.state
-            self.telegram.send(self._format_watch(watch, message_type))
-            event = {
-                "time": watch.time.isoformat(),
-                "group": self.config.group,
-                "watch_event": message_type,
-                "watch": asdict(watch),
-            }
-            self._audit(event)
+        if watch.state in {"ENTRY_READY", "CANCELLED", "EXPIRED"}:
             active.pop(key, None)
             self.state["active_watches"] = active
-            return event
-        signature = json.dumps(
-            {
-                "stage": watch.stage,
-                "reason": watch.reason,
-                "level": watch.level,
-                "invalidation": watch.invalidation,
-                "entry": watch.entry,
-                "stop": watch.stop,
-                "target": watch.target,
-                "mode": watch.mode,
-                "touch_count": watch.touch_count,
-                "rejection_count": watch.rejection_count,
-                "evidence": watch.evidence,
-            },
-            sort_keys=True,
-            default=str,
-        )
-        started = existing.get("watch_id") != watch.watch_id
-        message_type = "WATCH_STARTED" if started else "WATCH_UPDATE"
-        if not started and existing.get("signature") == signature:
-            raw_last = str(existing.get("last_notified_at") or "")
-            try:
-                last_notified = datetime.fromisoformat(raw_last)
-                elapsed = (watch.time - last_notified).total_seconds()
-            except ValueError:
-                elapsed = 300.0
-            if elapsed < 300.0:
-                return None
-        self.telegram.send(self._format_watch(watch, message_type))
-        event = {
-            "time": watch.time.isoformat(),
-            "group": self.config.group,
-            "watch_event": message_type,
-            "watch": asdict(watch),
-        }
-        self._audit(event)
+            return None
         active[key] = {
             "watch_id": watch.watch_id,
             "stage": watch.stage,
-            "signature": signature,
-            "last_notified_at": watch.time.isoformat(),
+            "reason": watch.reason,
+            "server_time": watch.time.isoformat(),
+            "level": watch.level,
+            "invalidation": watch.invalidation,
+            "mode": watch.mode,
+            "touches": watch.touch_count,
+            "rejections": watch.rejection_count,
         }
         self.state["active_watches"] = active
-        return event
-
-    def _format_watch(self, watch: WatchEvent, message_type: str) -> str:
-        account = self.session.account_info()
-        vm_time = datetime.now().astimezone()
-        evidence = json.dumps(watch.evidence or {}, sort_keys=True, default=str)
-        return (
-            f"{self.config.portfolio_id} {message_type}\n"
-            f"instrument={watch.symbol} engine={watch.component} side={watch.side}\n"
-            f"watch_id={watch.watch_id} account_id={account.login}\n"
-            f"stage={watch.stage} mode={watch.mode or '-'} state={watch.state}\n"
-            f"level={watch.level if watch.level is not None else '-'} "
-            f"invalidation={watch.invalidation if watch.invalidation is not None else '-'}\n"
-            f"entry={watch.entry if watch.entry is not None else '-'} "
-            f"sl={watch.stop if watch.stop is not None else '-'} "
-            f"tp={watch.target if watch.target is not None else '-'}\n"
-            f"touches={watch.touch_count} rejections={watch.rejection_count}\n"
-            f"server_time={watch.time.astimezone(self.session.server_timezone).isoformat()}\n"
-            f"vm_time={vm_time.isoformat()} vm_timezone={vm_time.tzname()}\n"
-            f"reason={watch.reason}\n"
-            f"evidence={evidence}"
-        )
+        return None
 
     def _format_signal(self, signal: SignalPlan) -> str:
         account = self.session.account_info()
         vm_time = datetime.now().astimezone()
         return (
-            f"{self.config.portfolio_id} SIGNAL\n"
-            f"instrument={signal.symbol} engine={signal.component} side={signal.side}\n"
-            f"signal_id={signal.event_id} account_id={account.login}\n"
-            f"entry={signal.entry:.2f} sl={signal.stop:.2f} tp={signal.target:.2f}\n"
-            f"balance={float(account.balance):.2f} equity={float(account.equity):.2f}\n"
-            f"server_time={signal.time.astimezone(self.session.server_timezone).isoformat()}\n"
-            f"vm_time={vm_time.isoformat()} vm_timezone={vm_time.tzname()}\n"
-            f"reason={signal.reason}"
+            f"🟡 ENTRY SIAP — {signal.symbol} {signal.side}\n"
+            f"Engine: {signal.component.title()}\n"
+            f"Akun: {account.login} ({self.config.execution_mode.upper()})\n\n"
+            f"Rencana transaksi\n"
+            f"• Entry: {signal.entry:.2f}\n"
+            f"• Stop Loss: {signal.stop:.2f}\n"
+            f"• Take Profit: {signal.target:.2f}\n\n"
+            f"Identitas\n"
+            f"• ID sinyal: {signal.event_id}\n"
+            f"• Instrumen: {signal.symbol}\n\n"
+            f"Waktu\n"
+            f"• Server broker: {self._human_time(signal.time)}\n"
+            f"• VM: {self._human_time(vm_time)}\n\n"
+            f"Alasan: {self._human_reason(signal.reason)}\n"
+            f"Kode: {signal.reason}"
         )
 
     def _format_execution(self, signal: SignalPlan, execution: dict[str, Any]) -> str:
         account = self.session.account_info()
+        status = str(execution.get("status") or "UNKNOWN")
+        if status == "EXECUTED":
+            heading = f"✅ ENTRY DIBUKA — {self.config.execution_mode.upper()}"
+        elif status == "BLOCKED":
+            heading = "⛔ ENTRY DIBLOKIR"
+        else:
+            heading = "❌ ENTRY DITOLAK"
         return (
-            f"{self.config.portfolio_id} ENTRY {execution.get('status')}\n"
-            f"instrument={signal.symbol} engine={signal.component} side={signal.side}\n"
-            f"signal_id={signal.event_id} account_id={account.login}\n"
-            f"order_id={execution.get('order', '-')} deal_id={execution.get('deal', '-')} "
-            f"request_id={execution.get('request_id', '-')}\n"
-            f"volume={execution.get('volume', '-')} price={execution.get('price', '-')}\n"
-            f"sl={execution.get('sl', '-')} tp={execution.get('tp', '-')}\n"
-            f"balance={execution.get('balance', '-')}\n"
-            f"server_time={execution.get('server_time') or '-'}\n"
-            f"vm_time={execution.get('vm_time') or '-'}\n"
-            f"retcode={execution.get('retcode', '-')} {execution.get('comment', execution.get('reason', ''))}"
+            f"{heading}\n"
+            f"{signal.symbol} • {signal.side} • {signal.component.title()}\n"
+            f"Akun: {account.login}\n\n"
+            f"Eksekusi\n"
+            f"• Volume: {execution.get('volume', '-')} lot\n"
+            f"• Harga: {execution.get('price', '-')}\n"
+            f"• Stop Loss: {execution.get('sl', '-')}\n"
+            f"• Take Profit: {execution.get('tp', '-')}\n"
+            f"• Saldo setelah entry: {execution.get('balance', '-')} USD\n\n"
+            f"Identitas\n"
+            f"• ID sinyal: {signal.event_id}\n"
+            f"• ID order: {execution.get('order', '-')}\n"
+            f"• ID deal: {execution.get('deal', '-')}\n"
+            f"• ID request: {execution.get('request_id', '-')}\n"
+            f"• Instrumen: {signal.symbol}\n\n"
+            f"Waktu\n"
+            f"• Server broker: {self._human_time(execution.get('server_time'))}\n"
+            f"• VM: {self._human_time(execution.get('vm_time'))}\n\n"
+            f"Keputusan: {self._human_reason(signal.reason)}\n"
+            f"Status broker: {status} • retcode {execution.get('retcode', '-')}\n"
+            f"Catatan: {execution.get('comment', execution.get('reason', '-'))}"
         )
 
     def _track_open_position(
@@ -796,21 +750,76 @@ class CompositePortfolioWorker:
         minutes, seconds = divmod(remainder, 60)
         account = self.session.account_info()
         vm_time = datetime.now().astimezone()
+        profit_loss = float(event["profit_loss"])
+        result_label = "PROFIT" if profit_loss >= 0 else "LOSS"
+        icon = "✅" if profit_loss >= 0 else "🔻"
         return (
-            f"{self.config.portfolio_id} CLOSED\n"
-            f"instrument={self.config.symbol} engine={event.get('component')} "
-            f"side={event.get('side')}\n"
-            f"signal_id={event.get('event_id', '-')} account_id={account.login} "
-            f"position_id={event.get('position_ticket', '-')}\n"
-            f"entry={event['entry_price']:.2f} close={event['close_price']:.2f} "
-            f"volume={event['volume']:.2f}\n"
-            f"P/L={event['profit_loss']:+.2f} USD realized_R={event['realized_r']:+.2f} "
-            f"planned_RR={event['planned_rr']:.2f}\n"
-            f"duration={hours:02d}:{minutes:02d}:{seconds:02d} "
-            f"balance={event['balance']:.2f} equity={event['equity']:.2f}\n"
-            f"server_time={event['close_time'].isoformat()}\n"
-            f"vm_time={vm_time.isoformat()} vm_timezone={vm_time.tzname()}\n"
-            f"decision={event.get('reason', '-') }"
+            f"{icon} POSISI DITUTUP — {result_label}\n"
+            f"{self.config.symbol} • {event.get('side')} • "
+            f"{str(event.get('component') or '-').title()}\n"
+            f"Akun: {account.login} ({self.config.execution_mode.upper()})\n\n"
+            f"Hasil transaksi\n"
+            f"• Entry: {event['entry_price']:.2f}\n"
+            f"• Close: {event['close_price']:.2f}\n"
+            f"• Volume: {event['volume']:.2f} lot\n"
+            f"• P/L: {profit_loss:+.2f} USD\n"
+            f"• Realized R: {event['realized_r']:+.2f}R\n"
+            f"• R:R rencana: {event['planned_rr']:.2f}\n"
+            f"• Durasi: {hours:02d}:{minutes:02d}:{seconds:02d}\n"
+            f"• Saldo: {event['balance']:.2f} USD\n"
+            f"• Equity: {event['equity']:.2f} USD\n\n"
+            f"Identitas\n"
+            f"• ID sinyal: {event.get('event_id', '-')}\n"
+            f"• ID posisi: {event.get('position_ticket', '-')}\n"
+            f"• Instrumen: {self.config.symbol}\n\n"
+            f"Waktu\n"
+            f"• Server broker: {self._human_time(event['close_time'])}\n"
+            f"• VM: {self._human_time(vm_time)}\n\n"
+            f"Keputusan awal: {self._human_reason(str(event.get('reason') or '-'))}"
+        )
+
+    @staticmethod
+    def _human_reason(reason: str) -> str:
+        return reason.replace("_", " ").strip().capitalize()
+
+    @staticmethod
+    def _human_time(value: object) -> str:
+        if value in {None, "", "-"}:
+            return "-"
+        if isinstance(value, datetime):
+            parsed = value
+        else:
+            try:
+                parsed = datetime.fromisoformat(str(value))
+            except ValueError:
+                return str(value)
+        months = (
+            "Jan",
+            "Feb",
+            "Mar",
+            "Apr",
+            "Mei",
+            "Jun",
+            "Jul",
+            "Agu",
+            "Sep",
+            "Okt",
+            "Nov",
+            "Des",
+        )
+        offset = parsed.utcoffset()
+        if offset is None:
+            zone = str(parsed.tzname() or "tanpa timezone")
+        else:
+            total_minutes = int(offset.total_seconds() // 60)
+            sign = "+" if total_minutes >= 0 else "-"
+            absolute = abs(total_minutes)
+            zone = f"GMT{sign}{absolute // 60}"
+            if absolute % 60:
+                zone += f":{absolute % 60:02d}"
+        return (
+            f"{parsed.day:02d} {months[parsed.month - 1]} {parsed.year} "
+            f"{parsed:%H:%M:%S} {zone}"
         )
 
     def _load_state(self) -> dict[str, Any]:
@@ -838,8 +847,25 @@ class CompositePortfolioWorker:
 
     def _audit(self, payload: dict[str, Any]) -> None:
         self.config.audit_path.parent.mkdir(parents=True, exist_ok=True)
+        self._rotate_audit()
         with self.config.audit_path.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(payload, sort_keys=True, default=str) + "\n")
+
+    def _rotate_audit(self) -> None:
+        path = self.config.audit_path
+        try:
+            if path.stat().st_size < AUDIT_MAX_BYTES:
+                return
+        except FileNotFoundError:
+            return
+        oldest = Path(f"{path}.{AUDIT_BACKUPS}")
+        if oldest.exists():
+            oldest.unlink()
+        for index in range(AUDIT_BACKUPS - 1, 0, -1):
+            source = Path(f"{path}.{index}")
+            if source.exists():
+                os.replace(source, Path(f"{path}.{index + 1}"))
+        os.replace(path, Path(f"{path}.1"))
 
     def _write_health(self, status: str, detail: str) -> None:
         self.health_path.parent.mkdir(parents=True, exist_ok=True)

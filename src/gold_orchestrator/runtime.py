@@ -40,6 +40,8 @@ ORCHESTRATOR_BOT_COMMANDS: tuple[dict[str, str], ...] = (
     {"command": "remove", "description": "Hapus subscriber GOLD.i"},
     {"command": "help", "description": "Daftar perintah orchestrator"},
 )
+AUDIT_MAX_BYTES = 5 * 1024 * 1024
+AUDIT_BACKUPS = 3
 
 
 class GlobalOrchestrator:
@@ -444,6 +446,7 @@ class GlobalOrchestrator:
 
     def _audit(self, event: str, fields: dict[str, Any]) -> None:
         self.config.audit_path.parent.mkdir(parents=True, exist_ok=True)
+        self._rotate_audit()
         payload = {
             "time": datetime.now(timezone.utc).isoformat(),
             "event": event,
@@ -451,6 +454,22 @@ class GlobalOrchestrator:
         }
         with self.config.audit_path.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(payload, sort_keys=True, default=str) + "\n")
+
+    def _rotate_audit(self) -> None:
+        path = self.config.audit_path
+        try:
+            if path.stat().st_size < AUDIT_MAX_BYTES:
+                return
+        except FileNotFoundError:
+            return
+        oldest = Path(f"{path}.{AUDIT_BACKUPS}")
+        if oldest.exists():
+            oldest.unlink()
+        for index in range(AUDIT_BACKUPS - 1, 0, -1):
+            source = Path(f"{path}.{index}")
+            if source.exists():
+                os.replace(source, Path(f"{path}.{index + 1}"))
+        os.replace(path, Path(f"{path}.1"))
 
     def _send_all(self, text: str) -> None:
         for chat_id in self.config.admin_chat_ids:

@@ -32,12 +32,15 @@ signal/order/deal/position IDs where applicable, broker-server time, and VM
 local time with its timezone. GOLD.i demo and GOLDm real use separate MT5
 executables and separate account bindings.
 
-Both composite workers also expose an admin-only preparation lifecycle:
-`WATCH_STARTED`, evidence-changing or five-minute `WATCH_UPDATE`, then
-`CANCELLED`/`EXPIRED` or the existing `ENTRY_READY` signal and order. WATCH
-uses only closed causal bars and can never call the order API. Approved GOLD.i
-subscribers do not receive WATCH diagnostics; they receive only final
-signal/entry/close messages.
+Both composite workers maintain their preparation/WATCH lifecycle internally
+from closed causal bars. WATCH never calls the order API and is not sent to
+Telegram. Telegram receives one human-readable final entry/order result and the
+later close result only. Approved GOLD.i subscribers receive those final GOLD.i
+messages; GOLDm remains admin-only.
+
+Runtime WATCH state is overwritten in the bounded state JSON rather than
+appended. Worker and orchestrator JSONL audits rotate at 5 MiB with three
+backups, limiting each audit family to approximately 20 MiB.
 
 Desired ON/OFF state is persisted and restored after a reboot. Every worker
 has a single-instance lock and a health file. The orchestrator reports process

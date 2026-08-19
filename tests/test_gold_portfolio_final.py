@@ -338,7 +338,7 @@ def test_goldi_subscribers_receive_entries_but_goldm_remains_admin_only(
     assert goldm_client.chat_ids == ["123"]
 
 
-def test_watch_is_admin_only_deduplicated_and_never_sends_order(
+def test_watch_is_internal_bounded_and_never_notifies_or_sends_order(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -379,19 +379,15 @@ def test_watch_is_admin_only_deduplicated_and_never_sends_order(
         rejection_count=1,
     )
 
-    assert worker._process_watch(started) is not None
-    assert len(telegram.messages) == 1
-    assert telegram.messages[0][1] is False
-    assert "WATCH_STARTED" in telegram.messages[0][0]
-    assert "instrument=GOLDm#" in telegram.messages[0][0]
-    assert "watch_id=bear:SELL:" in telegram.messages[0][0]
-    assert "server_time=" in telegram.messages[0][0]
-    assert "vm_time=" in telegram.messages[0][0]
+    assert worker._process_watch(started) is None
+    assert telegram.messages == []
+    assert worker.state["active_watches"]["bear:SELL"]["watch_id"] == started.watch_id
+    assert not config.audit_path.exists()
     assert module.sent == []
 
     unchanged = replace(started, time=server_time + timedelta(minutes=1))
     assert worker._process_watch(unchanged) is None
-    assert len(telegram.messages) == 1
+    assert telegram.messages == []
 
     changed = replace(
         unchanged,
@@ -399,8 +395,9 @@ def test_watch_is_admin_only_deduplicated_and_never_sends_order(
         rejection_count=2,
         reason="M5_SECOND_REJECTION_CONFIRMED",
     )
-    assert worker._process_watch(changed) is not None
-    assert "WATCH_UPDATE" in telegram.messages[-1][0]
+    assert worker._process_watch(changed) is None
+    assert telegram.messages == []
+    assert worker.state["active_watches"]["bear:SELL"]["touches"] == 2
 
     worker._save_state()
     restarted = CompositePortfolioWorker(config, mt5_module=module, telegram=telegram)
@@ -412,9 +409,10 @@ def test_watch_is_admin_only_deduplicated_and_never_sends_order(
         state="CANCELLED",
         reason="M5_ACCEPTANCE",
     )
-    assert restarted._process_watch(cancelled) is not None
-    assert "CANCELLED" in telegram.messages[-1][0]
+    assert restarted._process_watch(cancelled) is None
+    assert telegram.messages == []
     assert restarted.state["active_watches"] == {}
+    assert not config.audit_path.exists()
     assert module.sent == []
 
 
@@ -492,6 +490,110 @@ def test_bear_watch_reports_m5_preparation_without_entry(
     assert watch.reason == "M5_RETEST_CONFIRMATION_PENDING"
     assert watch.touch_count == 1
     assert watch.rejection_count == 1
+
+
+def test_final_entry_sends_one_human_readable_message(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _bind_env(monkeypatch)
+    config = load_worker_config(ROOT / "config/final/goldm/worker.json")
+    config = replace(
+        config,
+        state_path=tmp_path / "state.json",
+        audit_path=tmp_path / "audit.jsonl",
+    )
+    module = FakeMt5()
+
+    class CaptureTelegram:
+        def __init__(self) -> None:
+            self.messages: list[str] = []
+
+        def send(self, text: str, *, include_subscribers: bool = False) -> None:
+            assert include_subscribers
+            self.messages.append(text)
+
+    telegram = CaptureTelegram()
+    worker = CompositePortfolioWorker(config, mt5_module=module, telegram=telegram)
+    signal_time = datetime(2026, 8, 20, 2, 30, tzinfo=timezone(timedelta(hours=3)))
+    signal = SignalPlan(
+        event_id="revised:BUY:ready-1",
+        component="revised",
+        symbol="GOLDm#",
+        side="BUY",
+        time=signal_time,
+        entry=4520.0,
+        stop=4510.0,
+        target=4540.0,
+        reason="M1_RANGE_CONFIRMED",
+    )
+    monkeypatch.setattr(worker.session, "connect", lambda: None)
+    monkeypatch.setattr(worker, "_deliver_closed_positions", lambda: [])
+    monkeypatch.setattr(
+        worker,
+        "_revised_snapshot",
+        lambda: SimpleNamespace(m1_bars=(SimpleNamespace(time=signal_time),)),
+    )
+    monkeypatch.setattr(worker, "_evaluate_revised", lambda _latest: (signal, None))
+    monkeypatch.setattr(worker, "_evaluate_bear", lambda _latest: (None, None))
+    monkeypatch.setattr(
+        worker.session,
+        "execute",
+        lambda _signal: {
+            "status": "EXECUTED",
+            "order": 1001,
+            "deal": 1002,
+            "request_id": 1003,
+            "volume": 0.1,
+            "price": 4520.2,
+            "sl": 4510.2,
+            "tp": 4540.2,
+            "balance": 1.15,
+            "server_time": signal_time.isoformat(),
+            "vm_time": "2026-08-20T06:30:01+07:00",
+            "retcode": 10009,
+            "comment": "Request executed",
+        },
+    )
+
+    result = worker.run_once()
+
+    assert len(result["events"]) == 1
+    assert len(telegram.messages) == 1
+    message = telegram.messages[0]
+    assert "✅ ENTRY DIBUKA — REAL" in message
+    assert "GOLDm# • BUY • Revised" in message
+    assert "ID order: 1001" in message
+    assert "Server broker: 20 Agu 2026 02:30:00 GMT+3" in message
+    assert "VM: 20 Agu 2026 06:30:01 GMT+7" in message
+    assert "evidence=" not in message
+
+
+def test_worker_audit_rotation_is_storage_bounded(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _bind_env(monkeypatch)
+    config = load_worker_config(ROOT / "config/final/goldm/worker.json")
+    config = replace(
+        config,
+        state_path=tmp_path / "state.json",
+        audit_path=tmp_path / "audit.jsonl",
+    )
+    worker = CompositePortfolioWorker(config, mt5_module=FakeMt5())
+    monkeypatch.setattr("gold_portfolio.worker.AUDIT_MAX_BYTES", 120)
+    monkeypatch.setattr("gold_portfolio.worker.AUDIT_BACKUPS", 2)
+
+    for index in range(12):
+        worker._audit({"event": index, "payload": "x" * 80})
+
+    files = sorted(tmp_path.glob("audit.jsonl*"))
+    assert [item.name for item in files] == [
+        "audit.jsonl",
+        "audit.jsonl.1",
+        "audit.jsonl.2",
+    ]
+    assert sum(item.stat().st_size for item in files) < 1_000
 
 
 def test_closed_position_result_includes_total_pl_and_balance(
@@ -611,9 +713,9 @@ def test_worker_sends_close_lifecycle_with_rr_duration_and_balance(
     assert closed[0]["realized_r"] == 1.0
     assert closed[0]["duration_seconds"] == 60
     assert worker.state["open_positions"] == {}
-    assert "P/L=+10.00 USD" in telegram.messages[0]
-    assert "balance=73.50" in telegram.messages[0]
-    assert "instrument=GOLDm#" in telegram.messages[0]
-    assert "signal_id=revised:test:4400.00" in telegram.messages[0]
-    assert "server_time=" in telegram.messages[0]
-    assert "vm_time=" in telegram.messages[0]
+    assert "P/L: +10.00 USD" in telegram.messages[0]
+    assert "Saldo: 73.50 USD" in telegram.messages[0]
+    assert "GOLDm#" in telegram.messages[0]
+    assert "ID sinyal: revised:test:4400.00" in telegram.messages[0]
+    assert "Server broker:" in telegram.messages[0]
+    assert "VM:" in telegram.messages[0]
