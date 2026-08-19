@@ -9,7 +9,7 @@ from typing import Sequence
 
 
 STRATEGY_ID = "GOLDM_REVISED"
-STRATEGY_VERSION = "0.5.0"
+STRATEGY_VERSION = "0.6.0"
 
 
 class RevisedSide(str, Enum):
@@ -117,6 +117,9 @@ class RevisedEngineConfig:
     adaptive_stop_min_risk_atr: float = 0.35
     strong_m1_body_ratio: float = 0.55
     strong_m1_close_location: float = 0.75
+    supply_displacement_atr: float = 0.80
+    supply_confirmation_bars: int = 3
+    zone_acceptance_closes: int = 2
     watch_max_m1_bars: int = 60
     fibonacci_lookback_m5: int = 12
     fibonacci_retest_separation_bars: int = 2
@@ -173,6 +176,12 @@ class RevisedEngineConfig:
             raise ValueError("strong M1 body ratio is invalid")
         if not 0 < self.strong_m1_close_location <= 1:
             raise ValueError("strong M1 close location is invalid")
+        if self.supply_displacement_atr <= 0:
+            raise ValueError("supply displacement must be positive")
+        if self.supply_confirmation_bars < 2:
+            raise ValueError("supply confirmation window is too short")
+        if self.zone_acceptance_closes < 2:
+            raise ValueError("zone acceptance closes must be at least two")
         if self.watch_max_m1_bars < self.range_max_bars:
             raise ValueError("watch window must cover the range window")
         if self.fibonacci_lookback_m5 < 3 or self.fibonacci_retest_separation_bars < 1:
@@ -256,6 +265,15 @@ class RevisedEngine:
             return self._decision(snapshot, RevisedState.WAIT, RevisedAction.OBSERVE, "ATR_UNAVAILABLE")
 
         stop, risk_stats = self._entry_stop(snapshot, entry, atr_m1, atr_m5)
+        risk_stats = dict(risk_stats)
+        risk_stats["nearest_supply_zone"] = self._nearest_supply_zone(
+            snapshot,
+            entry,
+        )
+        risk_stats["nearest_demand_zone"] = self._nearest_demand_zone(
+            snapshot,
+            entry,
+        )
         risk = abs(entry - stop)
         fibonacci = self._fibonacci_stats(snapshot, side, atr_m1)
         hard_invalidation = self._hard_invalidation(snapshot, side, atr_m1)
@@ -282,6 +300,11 @@ class RevisedEngine:
             and snapshot.m5_votes >= self.config.minimum_m5_votes
         )
         strong_pattern = snapshot.m5_pattern in self.config.strong_m5_patterns
+        supply_context = risk_stats.get("nearest_supply_zone") or {}
+        inside_h1_supply = bool(
+            isinstance(supply_context, dict)
+            and supply_context.get("kind") == "H1_SUPPLY_INSIDE"
+        )
         strong_first_ok = bool(
             obstacle_r is not None
             and obstacle_r >= self.config.first_obstacle_strict_r
@@ -298,6 +321,7 @@ class RevisedEngine:
             and strong_m1_latched
             and int(fibonacci.get("retests", 0)) >= 1
             and bool(m1.get("directional"))
+            and not inside_h1_supply
             and not bool(range_stats.get("acceptance"))
         )
         strict_ok = (
@@ -315,6 +339,7 @@ class RevisedEngine:
             and self.config.scalper_min_obstacle_r <= obstacle_r < self.config.first_obstacle_reject_r
             and obstacle_kind is not None
             and not obstacle_kind.startswith("PSYCH_")
+            and not inside_h1_supply
             and strong_pattern
             and int(m1.get("votes", 0)) == 3
             and bool(m1.get("micro_break"))
@@ -485,6 +510,174 @@ class RevisedEngine:
             fibonacci=fibonacci,
         )
 
+    def _nearest_supply_zone(
+        self,
+        snapshot: RevisedSnapshot,
+        entry: float,
+        *,
+        blocking_only: bool = False,
+    ) -> dict[str, object] | None:
+        candidates: list[dict[str, object]] = []
+        for bars, timeframe in (
+            (snapshot.m5_bars, "M5"),
+            (snapshot.h1_bars, "H1"),
+        ):
+            atr = _atr(bars, self.config.atr_period)
+            for zone in self._confirmed_zones(bars, atr, supply=True):
+                proximal = float(zone["proximal"])
+                distal = float(zone["distal"])
+                if entry > distal:
+                    continue
+                inside = proximal <= entry <= distal
+                if blocking_only and inside and timeframe == "H1":
+                    continue
+                candidates.append(
+                    {
+                        **zone,
+                        "timeframe": timeframe,
+                        "kind": (
+                            f"{timeframe}_SUPPLY_INSIDE"
+                            if inside
+                            else f"{timeframe}_SUPPLY_PROXIMAL"
+                        ),
+                        "obstacle": entry if inside else proximal,
+                    }
+                )
+        if not candidates:
+            return None
+        return min(
+            candidates,
+            key=lambda item: abs(float(item["obstacle"]) - entry),
+        )
+
+    def _nearest_demand_zone(
+        self,
+        snapshot: RevisedSnapshot,
+        entry: float,
+    ) -> dict[str, object] | None:
+        candidates: list[dict[str, object]] = []
+        for bars, timeframe in (
+            (snapshot.m5_bars, "M5"),
+            (snapshot.h1_bars, "H1"),
+        ):
+            atr = _atr(bars, self.config.atr_period)
+            for zone in self._confirmed_zones(bars, atr, supply=False):
+                proximal = float(zone["proximal"])
+                distal = float(zone["distal"])
+                if entry < distal:
+                    continue
+                inside = distal <= entry <= proximal
+                candidates.append(
+                    {
+                        **zone,
+                        "timeframe": timeframe,
+                        "kind": (
+                            f"{timeframe}_DEMAND_INSIDE"
+                            if inside
+                            else f"{timeframe}_DEMAND_PROXIMAL"
+                        ),
+                        "distance": 0.0 if inside else entry - proximal,
+                    }
+                )
+        if not candidates:
+            return None
+        return min(candidates, key=lambda item: float(item["distance"]))
+
+    def _confirmed_zones(
+        self,
+        bars: Sequence[RevisedBar],
+        atr: float,
+        *,
+        supply: bool,
+    ) -> list[dict[str, object]]:
+        confirmation = self.config.supply_confirmation_bars
+        if len(bars) <= confirmation or atr <= 0:
+            return []
+        zones: list[dict[str, object]] = []
+        tolerance = self.config.spread_floor
+        for index in range(len(bars) - confirmation):
+            origin = bars[index]
+            if origin.range <= 0:
+                continue
+            previous = bars[max(0, index - 2) : index]
+            confirming = bars[index + 1 : index + confirmation + 1]
+            body_ratio = origin.body / origin.range
+            if supply:
+                base_ok = origin.close >= origin.open or body_ratio <= 0.55
+                swing_origin = not previous or all(
+                    origin.high >= bar.high for bar in previous
+                )
+                displacement = origin.high - min(bar.low for bar in confirming)
+                structure_broken = min(bar.close for bar in confirming) < origin.low
+                directional_count = sum(
+                    bar.close < bar.open for bar in confirming
+                )
+                proximal = min(origin.open, origin.close)
+                distal = origin.high
+                later = bars[index + confirmation + 1 :]
+                accepted = self._zone_accepted(
+                    later,
+                    lambda bar: bar.close > distal + tolerance,
+                ) or any(
+                    bar.range > 0
+                    and bar.close > distal + tolerance
+                    and bar.body / bar.range >= 0.55
+                    and (bar.close - bar.low) / bar.range >= 0.75
+                    for bar in later
+                )
+            else:
+                base_ok = origin.close <= origin.open or body_ratio <= 0.55
+                swing_origin = not previous or all(
+                    origin.low <= bar.low for bar in previous
+                )
+                displacement = max(bar.high for bar in confirming) - origin.low
+                structure_broken = max(bar.close for bar in confirming) > origin.high
+                directional_count = sum(
+                    bar.close > bar.open for bar in confirming
+                )
+                proximal = max(origin.open, origin.close)
+                distal = origin.low
+                later = bars[index + confirmation + 1 :]
+                accepted = self._zone_accepted(
+                    later,
+                    lambda bar: bar.close < distal - tolerance,
+                ) or any(
+                    bar.range > 0
+                    and bar.close < distal - tolerance
+                    and bar.body / bar.range >= 0.55
+                    and (bar.high - bar.close) / bar.range >= 0.75
+                    for bar in later
+                )
+            if (
+                base_ok
+                and swing_origin
+                and structure_broken
+                and directional_count >= 2
+                and displacement >= atr * self.config.supply_displacement_atr
+                and not accepted
+            ):
+                zones.append(
+                    {
+                        "proximal": proximal,
+                        "distal": distal,
+                        "origin_time": origin.time,
+                        "displacement_atr": displacement / atr,
+                    }
+                )
+        return zones
+
+    def _zone_accepted(
+        self,
+        bars: Sequence[RevisedBar],
+        predicate,
+    ) -> bool:
+        consecutive = 0
+        for bar in bars:
+            consecutive = consecutive + 1 if predicate(bar) else 0
+            if consecutive >= self.config.zone_acceptance_closes:
+                return True
+        return False
+
     def _first_obstacle(
         self,
         snapshot: RevisedSnapshot,
@@ -493,6 +686,16 @@ class RevisedEngine:
     ) -> tuple[float | None, str | None]:
         candidates: list[tuple[float, str]] = []
         side = snapshot.side
+        if side is RevisedSide.BUY:
+            supply = self._nearest_supply_zone(
+                snapshot,
+                entry,
+                blocking_only=True,
+            )
+            if supply is not None:
+                candidates.append(
+                    (float(supply["obstacle"]), str(supply["kind"]))
+                )
         for step in self.config.psychological_steps:
             if side is RevisedSide.BUY:
                 price = ceil((entry + 1e-12) / step) * step
@@ -546,7 +749,17 @@ class RevisedEngine:
                 candidates.append((price, "M1_SWING_CLUSTER"))
         if not candidates:
             return None, None
-        selected = min(candidates, key=lambda item: abs(item[0] - entry)) if side is RevisedSide.BUY else max(candidates, key=lambda item: item[0])
+        selected = (
+            min(
+                candidates,
+                key=lambda item: (
+                    abs(item[0] - entry),
+                    0 if "SUPPLY" in item[1] else 1,
+                ),
+            )
+            if side is RevisedSide.BUY
+            else max(candidates, key=lambda item: item[0])
+        )
         return selected
 
     def _range_stats(self, snapshot: RevisedSnapshot, side: RevisedSide, atr: float) -> dict[str, object]:

@@ -4,6 +4,7 @@ import inspect
 import json
 import tempfile
 import unittest
+from dataclasses import replace
 from unittest.mock import patch
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -45,9 +46,9 @@ def test_broker_wall_clock_epoch_is_not_offset_twice() -> None:
 def test_august_five_evidence_contract_and_matching() -> None:
     expectations = august_five(TZ)
     assert [(item.evidence_id, item.expected_side.value, item.expected_profile) for item in expectations] == [
-        ("E1", "SELL", "CORE"),
+        ("E1", "BUY", "NO_BUY"),
         ("E2", "BUY", "CORE"),
-        ("E3", "SELL", "CORE"),
+        ("E3", "BUY", "NO_BUY"),
         ("E4", "BUY", "SCALPER"),
         ("E5", "BUY", "CORE"),
     ]
@@ -80,6 +81,20 @@ def test_august_five_evidence_contract_and_matching() -> None:
 
     assert result[0]["status"] == "PASS"
     assert result[0]["matched"] is True
+
+    negative = expectations[0]
+    suppressed = replace(
+        inspection,
+        requested_time=negative.requested_time,
+        setup_trigger_time=negative.requested_time,
+        decision_time=negative.requested_time + timedelta(minutes=3),
+        state=RevisedState.WATCH,
+        entry_profile="CORE",
+    )
+    negative_result = validate_evidence((negative,), (suppressed,), ())
+
+    assert negative_result[0]["status"] == "PASS"
+    assert negative_result[0]["matched"] is True
 
 
 def test_five_evidence_summary_reports_all_signals(capsys) -> None:
@@ -194,7 +209,7 @@ class GoldMRevisedEngineTests(unittest.TestCase):
         self.assertNotIn("goldm_signal", source)
         self.assertNotIn("goldm_bear", source)
         self.assertEqual(module.STRATEGY_ID, "GOLDM_REVISED")
-        self.assertEqual(module.STRATEGY_VERSION, "0.5.0")
+        self.assertEqual(module.STRATEGY_VERSION, "0.6.0")
 
     def test_buy_range_requires_repeated_rejections_and_enters(self) -> None:
         decision = RevisedEngine().evaluate(snapshot())
@@ -348,6 +363,76 @@ class GoldMRevisedEngineTests(unittest.TestCase):
 
         self.assertEqual(obstacle, 4400.0)
         self.assertEqual(kind, "PSYCH_10")
+
+    def test_nearest_supply_proximal_precedes_swing_high_and_psychology(self) -> None:
+        m5 = tuple(
+            [
+                bar(index, 4394.0, 4395.0, 4393.0, 4394.2, minutes=5)
+                for index in range(12)
+            ]
+            + [
+                bar(12, 4398.5, 4402.0, 4398.0, 4401.0, minutes=5),
+                bar(13, 4400.8, 4401.2, 4395.0, 4396.0, minutes=5),
+                bar(14, 4396.0, 4396.5, 4392.0, 4393.0, minutes=5),
+                bar(15, 4393.0, 4394.0, 4391.5, 4392.0, minutes=5),
+            ]
+        )
+        value = snapshot(m5=m5)
+
+        obstacle, kind = RevisedEngine()._first_obstacle(
+            value,
+            entry=4395.0,
+            atr_m1=1.0,
+        )
+
+        self.assertEqual(obstacle, 4398.5)
+        self.assertEqual(kind, "M5_SUPPLY_PROXIMAL")
+
+    def test_entry_inside_active_supply_has_zero_room(self) -> None:
+        m5 = tuple(
+            [
+                bar(index, 4394.0, 4395.0, 4393.0, 4394.2, minutes=5)
+                for index in range(12)
+            ]
+            + [
+                bar(12, 4398.5, 4402.0, 4398.0, 4401.0, minutes=5),
+                bar(13, 4400.8, 4401.2, 4395.0, 4396.0, minutes=5),
+                bar(14, 4396.0, 4396.5, 4392.0, 4393.0, minutes=5),
+                bar(15, 4393.0, 4394.0, 4391.5, 4392.0, minutes=5),
+            ]
+        )
+
+        obstacle, kind = RevisedEngine()._first_obstacle(
+            snapshot(m5=m5),
+            entry=4399.0,
+            atr_m1=1.0,
+        )
+
+        self.assertEqual(obstacle, 4399.0)
+        self.assertEqual(kind, "M5_SUPPLY_INSIDE")
+
+    def test_nearest_demand_zone_is_recorded_as_buy_context(self) -> None:
+        m5 = tuple(
+            [
+                bar(index, 4402.0, 4403.0, 4401.0, 4401.8, minutes=5)
+                for index in range(12)
+            ]
+            + [
+                bar(12, 4398.0, 4398.5, 4395.0, 4396.0, minutes=5),
+                bar(13, 4396.2, 4401.0, 4396.0, 4400.5, minutes=5),
+                bar(14, 4400.5, 4404.0, 4400.0, 4403.5, minutes=5),
+                bar(15, 4403.5, 4405.0, 4402.5, 4404.5, minutes=5),
+            ]
+        )
+
+        demand = RevisedEngine()._nearest_demand_zone(
+            snapshot(m5=m5),
+            entry=4402.0,
+        )
+
+        self.assertIsNotNone(demand)
+        self.assertEqual(demand["timeframe"], "M5")
+        self.assertLess(float(demand["distal"]), 4402.0)
 
     def test_momentum_can_bypass_range_when_room_is_large(self) -> None:
         m5 = tuple(

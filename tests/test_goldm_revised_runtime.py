@@ -14,7 +14,7 @@ class GoldMRevisedRuntimeTests(unittest.TestCase):
             (ROOT / "config" / "goldm-revised-shadow.json").read_text(encoding="utf-8")
         )
         self.assertEqual(config["strategy_id"], "GOLDM_REVISED")
-        self.assertEqual(config["strategy_version"], "0.5.0")
+        self.assertEqual(config["strategy_version"], "0.6.0")
         self.assertIn("goldm_revised_shadow", config["storage"]["db_path"])
         self.assertEqual(config["mt5"]["symbol"], "GOLD.i#")
         self.assertEqual(config["mt5"]["server_utc_offset_minutes"], 180)
@@ -28,6 +28,17 @@ class GoldMRevisedRuntimeTests(unittest.TestCase):
         self.assertNotIn("goldm_bear", sources)
         for forbidden in ("order_send", "order_check", "positions_get", "orders_get", "getUpdates"):
             self.assertNotIn(forbidden, sources)
+
+    def test_revised_generator_is_buy_only_not_a_post_filter(self) -> None:
+        runtime = (ROOT / "src" / "goldm_revised" / "runtime.py").read_text(
+            encoding="utf-8"
+        )
+        replay = (ROOT / "src" / "goldm_revised" / "replay.py").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("for side in (RevisedSide.BUY,):", runtime)
+        self.assertIn("for side in (RevisedSide.BUY,):", replay)
 
     def test_production_ea_source_is_still_exact_baseline(self) -> None:
         source = (ROOT / "mt5" / "Experts" / "bot-ea" / "GoldMSniperParity.mq5").read_text(

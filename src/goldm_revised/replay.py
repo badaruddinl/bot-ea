@@ -65,6 +65,10 @@ class ReplayInspection:
     m1_votes: int
     exhausted: bool
     risk_source: str | None
+    supply_origin_time: datetime | None = None
+    supply_proximal: float | None = None
+    supply_distal: float | None = None
+    supply_timeframe: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -162,7 +166,7 @@ class RevisedReplay:
             d1_history = tuple(d1_window)
             if len(m1_history) < self.engine.config.atr_period + 1 or len(m5_history) < self.engine.config.atr_period + 1:
                 continue
-            for side in (RevisedSide.BUY, RevisedSide.SELL):
+            for side in (RevisedSide.BUY,):
                 setup = detector.update(m5_history, current_m1_time=current.time, side=side)
                 if setup is None:
                     continue
@@ -189,6 +193,11 @@ class RevisedReplay:
                         minutes=inspect_tolerance_minutes
                     ):
                         risk_evidence = decision.evidence.get("risk", {})
+                        supply_evidence = (
+                            risk_evidence.get("nearest_supply_zone", {})
+                            if isinstance(risk_evidence, dict)
+                            else {}
+                        ) or {}
                         inspections.append(
                             ReplayInspection(
                                 requested_time=requested_time,
@@ -215,6 +224,29 @@ class RevisedReplay:
                                     str(risk_evidence.get("source"))
                                     if isinstance(risk_evidence, dict)
                                     and risk_evidence.get("source") is not None
+                                    else None
+                                ),
+                                supply_origin_time=(
+                                    supply_evidence.get("origin_time")
+                                    if isinstance(supply_evidence, dict)
+                                    else None
+                                ),
+                                supply_proximal=(
+                                    float(supply_evidence["proximal"])
+                                    if isinstance(supply_evidence, dict)
+                                    and supply_evidence.get("proximal") is not None
+                                    else None
+                                ),
+                                supply_distal=(
+                                    float(supply_evidence["distal"])
+                                    if isinstance(supply_evidence, dict)
+                                    and supply_evidence.get("distal") is not None
+                                    else None
+                                ),
+                                supply_timeframe=(
+                                    str(supply_evidence["timeframe"])
+                                    if isinstance(supply_evidence, dict)
+                                    and supply_evidence.get("timeframe") is not None
                                     else None
                                 ),
                             )

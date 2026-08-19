@@ -15,6 +15,8 @@ class EvidenceExpectation:
     expected_side: RevisedSide
     expected_profile: str
     note: str
+    should_enter: bool = True
+    optional_entry: bool = False
 
 
 def august_five(server_timezone: timezone) -> tuple[EvidenceExpectation, ...]:
@@ -22,11 +24,41 @@ def august_five(server_timezone: timezone) -> tuple[EvidenceExpectation, ...]:
         return datetime.fromisoformat(value).replace(tzinfo=server_timezone)
 
     return (
-        EvidenceExpectation("E1", at("2026-08-17T18:00"), RevisedSide.SELL, "CORE", "reversal SELL"),
+        EvidenceExpectation(
+            "E1",
+            at("2026-08-17T18:00"),
+            RevisedSide.BUY,
+            "NO_BUY",
+            "production BUY must stop at nearest resistance/supply",
+            False,
+        ),
         EvidenceExpectation("E2", at("2026-08-18T02:15"), RevisedSide.BUY, "CORE", "valid momentum BUY"),
-        EvidenceExpectation("E3", at("2026-08-18T03:15"), RevisedSide.SELL, "CORE", "exhaustion reversal SELL"),
-        EvidenceExpectation("E4", at("2026-08-18T09:15"), RevisedSide.BUY, "SCALPER", "valid SCALPER BUY"),
-        EvidenceExpectation("E5", at("2026-08-18T12:45"), RevisedSide.BUY, "CORE", "valid BUY with buffered TP"),
+        EvidenceExpectation(
+            "E3",
+            at("2026-08-18T03:15"),
+            RevisedSide.BUY,
+            "NO_BUY",
+            "exhausted BUY must not promote inside supply",
+            False,
+        ),
+        EvidenceExpectation(
+            "E4",
+            at("2026-08-18T09:15"),
+            RevisedSide.BUY,
+            "SCALPER",
+            "SCALPER only when its complete gate is genuinely valid",
+            True,
+            True,
+        ),
+        EvidenceExpectation(
+            "E5",
+            at("2026-08-18T12:45"),
+            RevisedSide.BUY,
+            "CORE",
+            "optional BUY; no confirmation is preferable to unsafe room",
+            True,
+            True,
+        ),
     )
 
 
@@ -46,8 +78,8 @@ def validate_evidence(
             candidates,
             key=lambda item: (
                 item.side is expected.expected_side,
-                item.entry_profile == expected.expected_profile,
                 item.state is RevisedState.ENTRY_READY,
+                item.entry_profile == expected.expected_profile,
                 item.m1_votes,
                 item.retest_count,
                 -abs((item.setup_trigger_time - expected.requested_time).total_seconds()),
@@ -55,16 +87,37 @@ def validate_evidence(
             reverse=True,
         )
         best = ranked[0] if ranked else None
-        matched = bool(
+        same_side_seen = any(
+            item.side is expected.expected_side for item in candidates
+        )
+        matching_entries = [
+            item
+            for item in candidates
+            if item.side is expected.expected_side
+            and item.state is RevisedState.ENTRY_READY
+        ]
+        correctly_profiled_entry = bool(
             best is not None
             and best.side is expected.expected_side
             and best.entry_profile == expected.expected_profile
             and best.state is RevisedState.ENTRY_READY
         )
-        same_side_seen = any(
-            item.side is expected.expected_side for item in candidates
+        matched = bool(
+            same_side_seen
+            and not matching_entries
+            if not expected.should_enter
+            else same_side_seen
+            and (not matching_entries or correctly_profiled_entry)
+            if expected.optional_entry
+            else correctly_profiled_entry
         )
-        status = "PASS" if matched else "NEAR" if same_side_seen else "FAIL"
+        status = (
+            "PASS"
+            if matched
+            else "FAIL"
+            if matching_entries or not same_side_seen
+            else "NEAR"
+        )
         outcome = None
         if best is not None:
             outcome = next(
@@ -83,6 +136,8 @@ def validate_evidence(
                 "expected_side": expected.expected_side,
                 "expected_profile": expected.expected_profile,
                 "note": expected.note,
+                "should_enter": expected.should_enter,
+                "optional_entry": expected.optional_entry,
                 "status": status,
                 "matched": matched,
                 "observed": asdict(best) if best is not None else None,

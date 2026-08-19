@@ -58,7 +58,10 @@ class RevisedShadowRuntime:
             return {"new_bar": False, "latest_m1": latest_m1, "closed": closed}
         self._last_m1_time = latest_m1
         decisions = []
-        for side in (RevisedSide.BUY, RevisedSide.SELL):
+        # GOLDM_REVISED 0.6 generates BUY hypotheses only. Bearish M5 setups
+        # are still classified inside the detector so they can invalidate a
+        # stale BUY, but they are negative evidence rather than SELL output.
+        for side in (RevisedSide.BUY,):
             setup = self.detector.update(
                 latest.m5_bars,
                 current_m1_time=latest_m1,
