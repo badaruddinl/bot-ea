@@ -31,6 +31,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--fixed-target-r", type=float)
     parser.add_argument("--cap-target-at-structural-support", action="store_true")
+    parser.add_argument("--stop-multiplier", type=float, default=1.0)
+    parser.add_argument("--target-multiplier", type=float, default=1.0)
     args = parser.parse_args(argv)
     server_timezone = _offset(args.server_utc_offset)
     start = _server_timestamp(args.from_server_time, server_timezone)
@@ -55,6 +57,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         BearV4Config(
             fixed_target_r=args.fixed_target_r,
             cap_fixed_target_at_structural_support=args.cap_target_at_structural_support,
+            stop_multiplier=args.stop_multiplier,
+            target_multiplier=args.target_multiplier,
         )
     ).run(
         m1_bars=data["m1"],
@@ -70,6 +74,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         "symbol": args.symbol,
         "fixed_target_r": args.fixed_target_r,
         "cap_target_at_structural_support": args.cap_target_at_structural_support,
+        "stop_multiplier": args.stop_multiplier,
+        "target_multiplier": args.target_multiplier,
         "history": {
             key: {
                 "bars": len(bars),

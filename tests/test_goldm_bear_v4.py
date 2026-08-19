@@ -150,3 +150,8 @@ def test_v4_m1_retest_requires_micro_break() -> None:
 def test_v4_fixed_target_r_must_be_positive() -> None:
     with pytest.raises(ValueError, match="fixed target R"):
         BearV4Config(fixed_target_r=0.0)
+
+
+def test_v4_execution_multipliers_must_be_positive() -> None:
+    with pytest.raises(ValueError, match="multipliers"):
+        BearV4Config(stop_multiplier=0.0)

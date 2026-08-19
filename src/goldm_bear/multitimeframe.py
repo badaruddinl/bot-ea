@@ -37,10 +37,14 @@ class BearV4Config:
     price_tick: float = 0.01
     fixed_target_r: float | None = None
     cap_fixed_target_at_structural_support: bool = False
+    stop_multiplier: float = 1.0
+    target_multiplier: float = 1.0
 
     def __post_init__(self) -> None:
         if self.fixed_target_r is not None and self.fixed_target_r <= 0:
             raise ValueError("fixed target R must be positive")
+        if self.stop_multiplier <= 0 or self.target_multiplier <= 0:
+            raise ValueError("stop and target multipliers must be positive")
     spread_floor: float = 0.20
 
 
@@ -53,6 +57,7 @@ class BearV4Outcome:
     result: str
     entry: float
     stop: float
+    structural_stop: float
     target: float
     structural_target: float
     target_crosses_structural_support: bool
@@ -359,16 +364,20 @@ class BearMultiTimeframeReplay:
             if not (micro_break and oscillator_turn and (strong or ordinary)):
                 continue
             entry = previous.low - self.config.price_tick
-            stop = max(
+            structural_stop = max(
                 resistance,
                 float(m5_result["recent_high"]),
                 max(item.high for item in candidates[: index + 1]),
             ) + max(self.config.spread_floor * 2.0, atr_m5 * self.config.stop_buffer_atr_m5)
             structural_target = float(setup.take_profit)
+            stop = entry + (structural_stop - entry) * self.config.stop_multiplier
+            multiplied_structural_target = entry - (
+                entry - structural_target
+            ) * self.config.target_multiplier
             fixed_target = (
                 entry - self.config.fixed_target_r * (stop - entry)
                 if self.config.fixed_target_r is not None
-                else structural_target
+                else multiplied_structural_target
             )
             target = (
                 max(fixed_target, structural_target)
@@ -395,6 +404,7 @@ class BearMultiTimeframeReplay:
                 "stop": stop,
                 "target": target,
                 "structural_target": structural_target,
+                "structural_stop": structural_stop,
                 "m5_touches": int(m5_result["touches"]),
                 "m5_rejections": int(m5_result["rejections"]),
                 "m1_touches": touches,
@@ -410,6 +420,7 @@ class BearMultiTimeframeReplay:
     ) -> BearV4Outcome:
         entry = float(plan["entry"])
         stop = float(plan["stop"])
+        structural_stop = float(plan["structural_stop"])
         target = float(plan["target"])
         structural_target = float(plan["structural_target"])
         risk = stop - entry
@@ -450,6 +461,7 @@ class BearMultiTimeframeReplay:
             result=result,
             entry=entry,
             stop=stop,
+            structural_stop=structural_stop,
             target=target,
             structural_target=structural_target,
             target_crosses_structural_support=target < structural_target,
