@@ -22,6 +22,11 @@ class ReplayPosition:
     stop: float
     target: float
     first_obstacle_r: float
+    entry_profile: str = "CORE"
+    m5_pattern: str = ""
+    obstacle_kind: str | None = None
+    confirmation_mode: str | None = None
+    retest_count: int = 0
     mfe: float = 0.0
     mae: float = 0.0
 
@@ -40,6 +45,11 @@ class ReplayOutcome:
     first_obstacle_r: float
     mfe: float
     mae: float
+    entry_profile: str = "CORE"
+    m5_pattern: str = ""
+    obstacle_kind: str | None = None
+    confirmation_mode: str | None = None
+    retest_count: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -278,6 +288,13 @@ class RevisedReplay:
                     stop=decision.stop,
                     target=decision.target,
                     first_obstacle_r=decision.first_obstacle_r,
+                    entry_profile=decision.entry_profile,
+                    m5_pattern=snapshot.m5_pattern,
+                    obstacle_kind=decision.first_obstacle_kind,
+                    confirmation_mode=(
+                        decision.mode.value if decision.mode is not None else None
+                    ),
+                    retest_count=decision.retest_count,
                 )
 
         if m1_bars:
@@ -302,6 +319,11 @@ class RevisedReplay:
                         first_obstacle_r=position.first_obstacle_r,
                         mfe=position.mfe,
                         mae=position.mae,
+                        entry_profile=position.entry_profile,
+                        m5_pattern=position.m5_pattern,
+                        obstacle_kind=position.obstacle_kind,
+                        confirmation_mode=position.confirmation_mode,
+                        retest_count=position.retest_count,
                     )
                 )
             active.clear()
@@ -391,6 +413,11 @@ class RevisedReplay:
                     first_obstacle_r=position.first_obstacle_r,
                     mfe=position.mfe,
                     mae=position.mae,
+                    entry_profile=position.entry_profile,
+                    m5_pattern=position.m5_pattern,
+                    obstacle_kind=position.obstacle_kind,
+                    confirmation_mode=position.confirmation_mode,
+                    retest_count=position.retest_count,
                 )
             )
             active.pop(side, None)

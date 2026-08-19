@@ -1,10 +1,10 @@
-# GOLDM_REVISED 0.5.0 — full 2020–2026 broker backtest
+# GOLDM_REVISED 0.6.0 — full 2020–2026 broker backtest
 
 ## Scope and provenance
 
 - Symbol: broker `GOLD.i#`
 - Requested server-time range: 2020-01-01 through 2026-08-18
-- Engine: stable `GOLDM_REVISED` 0.5.0
+- Engine: evidence-tweaked `GOLDM_REVISED` 0.6.0 BUY generator
 - Data source: local MT5 connected read-only to `XMGlobal-MT5 5`
 - No order API, worker, Telegram polling, or production-terminal restart
 
@@ -28,17 +28,17 @@ The earlier bars provide causal warmup. The evaluated range remains
 
 ## Overall result
 
-- signals/resolved: 24,991 / 24,991;
-- BUY: 14,022;
-- SELL: 10,969;
-- core BUY: 10,429;
-- SCALPER: 3,593;
-- targets: 10,165;
-- stops: 13,487;
-- ambiguous same-bar outcomes: 1,339;
-- total: `-1052.350100R`;
-- expectancy: `-0.042109R` per entry;
-- maximum drawdown: `1238.818043R`;
+- signals/resolved: 8,273 / 8,273;
+- BUY: 8,273;
+- SELL: 0;
+- core BUY: 6,792;
+- SCALPER: 1,481;
+- targets: 3,446;
+- stops: 4,356;
+- ambiguous same-bar outcomes: 471;
+- total: `-203.439882R`;
+- expectancy: `-0.024591R` per entry;
+- maximum drawdown: `405.646836R`;
 - fallback promotions: 0;
 - duplicate-trigger promotions: 0.
 
@@ -46,27 +46,42 @@ The earlier bars provide causal warmup. The evaluated range remains
 
 | Year | Signals | TP | SL | Ambiguous | Total R | Expectancy R | Max DD R |
 |---:|---:|---:|---:|---:|---:|---:|---:|
-| 2020 | 3,669 | 1,476 | 1,964 | 229 | -255.372963 | -0.069603 | 281.941083 |
-| 2021 | 3,741 | 1,537 | 1,967 | 237 | -276.493183 | -0.073909 | 282.610175 |
-| 2022 | 3,818 | 1,597 | 2,011 | 210 | -251.350508 | -0.065833 | 267.828521 |
-| 2023 | 3,782 | 1,593 | 1,938 | 251 | -145.160274 | -0.038382 | 169.528487 |
-| 2024 | 3,936 | 1,587 | 2,178 | 171 | -231.472429 | -0.058809 | 245.527877 |
-| 2025 | 3,947 | 1,559 | 2,248 | 140 | +78.149611 | +0.019800 | 60.892829 |
-| 2026 | 2,098 | 816 | 1,181 | 101 | +29.349647 | +0.013989 | 67.468355 |
+| 2020 | 1,232 | 513 | 650 | 69 | -50.540465 | -0.041023 | 84.470931 |
+| 2021 | 1,242 | 541 | 635 | 66 | -69.176331 | -0.055698 | 75.284305 |
+| 2022 | 1,275 | 521 | 671 | 83 | -151.706178 | -0.118985 | 163.380017 |
+| 2023 | 1,204 | 515 | 606 | 83 | -82.152426 | -0.068233 | 98.720234 |
+| 2024 | 1,317 | 556 | 689 | 72 | +8.685818 | +0.006595 | 34.246997 |
+| 2025 | 1,347 | 543 | 739 | 65 | +106.489047 | +0.079056 | 42.800398 |
+| 2026 | 656 | 257 | 366 | 33 | +34.960652 | +0.053294 | 35.633423 |
 
-## Side breakdown
+## Room breakdown
 
-| Side | Signals | TP | SL | Ambiguous | Total R | Expectancy R |
+| Room | Signals | TP | SL | Ambiguous | Total R | Expectancy R |
 |---|---:|---:|---:|---:|---:|---:|
-| BUY | 14,022 | 6,340 | 7,016 | 666 | -353.232009 | -0.025191 |
-| SELL | 10,969 | 3,825 | 6,471 | 673 | -699.118091 | -0.063736 |
+| `<1R` | 1,421 | 1,078 | 332 | 11 | -29.529416 | -0.020781 |
+| `>=1R` | 6,852 | 2,368 | 4,024 | 460 | -173.910466 | -0.025381 |
+
+## Five-evidence reconciliation
+
+- E1: no confirmation; BUY remains WATCH inside H1 supply.
+- E2: BUY CORE confirmed against the nearest M5 supply boundary; target reached
+  for about `+1.67R`.
+- E3: no confirmation; BUY remains WATCH inside H1 supply.
+- E4: the complete SCALPER gate is not met, so no tag or confirmation is
+  forced.
+- E5: BUY remains WATCH inside active M5 supply; no unsafe confirmation.
 
 ## Verdict
 
-FAIL. The five-evidence improvements do not generalize across the broker's
-full M1 archive. Results are negative in every year from 2020 through 2024;
-2025 and 2026 are only mildly positive. SELL is materially worse than BUY, but
-BUY is also negative over the complete period.
+FAIL, but materially better than 0.5.0. Signals fall from 24,991 to 8,273,
+total loss improves from `-1052.35R` to `-203.44R`, and drawdown falls from
+`1238.82R` to `405.65R`. Results remain negative in 2020–2023, while
+2024–2026 are positive.
+
+Neither simply removing SCALPER nor applying a post-generation BUY filter is
+supported by this evidence: both the `<1R` and `>=1R` groups remain negative.
+The improvement comes from changing how BUY setups are formed around nearest
+resistance, psychology, and supply/demand context.
 
 Shadow/forward deployment remains disabled. The next revision must be trained
 only on pre-2025 data and validated out-of-sample on 2025–2026; parameters
