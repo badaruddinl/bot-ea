@@ -18,6 +18,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--report", type=Path, required=True)
     parser.add_argument("--stop-multiplier", type=float, default=2.0)
+    parser.add_argument("--target-multiplier", type=float, default=1.0)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--symbol", default="GOLD.i#")
     return parser.parse_args()
@@ -27,6 +28,8 @@ def main() -> int:
     args = parse_args()
     if args.stop_multiplier <= 1.0:
         raise ValueError("wide-stop multiplier must exceed one")
+    if args.target_multiplier <= 0:
+        raise ValueError("target multiplier must be positive")
     report = json.loads(args.report.read_text(encoding="utf-8"))
     start = datetime.fromisoformat(report["from_time"])
     end = datetime.fromisoformat(report["to_time"])
@@ -60,7 +63,8 @@ def main() -> int:
         original_risk = abs(entry - float(original["stop"]))
         widened_risk = original_risk * args.stop_multiplier
         stop = entry - widened_risk
-        target = float(original["target"])
+        original_target = float(original["target"])
+        target = entry + (original_target - entry) * args.target_multiplier
         start_index = bisect.bisect_left(bar_times, opened_at)
         result = "END_OF_TEST"
         closed_at = end
@@ -100,6 +104,7 @@ def main() -> int:
                 "mfe": mfe,
                 "mae": mae,
                 "execution_stop_multiplier": args.stop_multiplier,
+                "execution_target_multiplier": args.target_multiplier,
             }
         )
         replayed.append(item)
@@ -121,6 +126,7 @@ def main() -> int:
             else 0.0
         ),
         "execution_stop_multiplier": args.stop_multiplier,
+        "execution_target_multiplier": args.target_multiplier,
         "skipped_overlapping_signals": skipped_overlap,
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
@@ -140,6 +146,7 @@ def main() -> int:
                     "total_r",
                     "expectancy_r",
                     "execution_stop_multiplier",
+                    "execution_target_multiplier",
                     "skipped_overlapping_signals",
                 )
             },
