@@ -1,0 +1,33 @@
+{
+  "candidate_id": "GOLDM_REVISED_STOP1P75_TARGET2P5_FIXED020",
+  "strategy_id": "GOLDM_REVISED",
+  "strategy_version": "0.6.0",
+  "status": "RESEARCH_FROZEN",
+  "execution": {
+    "side": "BUY",
+    "stop_multiplier": 1.75,
+    "target_multiplier": 2.5,
+    "fixed_lot": 0.2,
+    "reference_starting_balance_usd": 100000.0,
+    "compounding": false,
+    "require_obstacle_safe": false
+  },
+  "isolation": {
+    "production_replacement": false,
+    "runtime_enabled": false,
+    "telegram_enabled": false,
+    "shared_state_with_goldm_bear": false
+  },
+  "evidence": {
+    "full_suite_from": "2020-01-01T00:00:00+03:00",
+    "full_suite_to": "2026-08-19T10:45:00+03:00",
+    "executed_trades": 959,
+    "total_r": 180.93751253902442,
+    "expectancy_r": 0.18867311005112036,
+    "maximum_drawdown_r": 29.501939527625765,
+    "ending_balance_usd": 119191.8,
+    "net_profit_usd": 19191.8,
+    "cash_profit_factor": 1.403,
+    "cash_maximum_drawdown_percent": 2.196
+  }
+}

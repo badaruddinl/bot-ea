@@ -19,7 +19,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--report", type=Path, required=True)
     parser.add_argument("--stop-multiplier", type=float, default=2.0)
     parser.add_argument("--target-multiplier", type=float, default=1.0)
-    parser.add_argument("--require-obstacle-safe", action="store_true")
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--symbol", default="GOLD.i#")
     return parser.parse_args()
@@ -55,7 +54,6 @@ def main() -> int:
     replayed: list[dict[str, object]] = []
     skipped_overlap = 0
     skipped_invalid_target = 0
-    skipped_obstacle_gate = 0
     unavailable_until = start
     for original in sorted(report["outcomes"], key=lambda item: item["opened_at"]):
         opened_at = datetime.fromisoformat(original["opened_at"])
@@ -75,13 +73,6 @@ def main() -> int:
         execution_first_obstacle_r = (
             float(original["first_obstacle_r"]) / args.stop_multiplier
         )
-        if args.require_obstacle_safe and (
-            execution_target_r < 1.0
-            or execution_first_obstacle_r < 1.0
-            or execution_target_r > execution_first_obstacle_r
-        ):
-            skipped_obstacle_gate += 1
-            continue
         start_index = bisect.bisect_left(bar_times, opened_at)
         result = "END_OF_TEST"
         closed_at = end
@@ -158,8 +149,6 @@ def main() -> int:
         "execution_target_multiplier": args.target_multiplier,
         "skipped_overlapping_signals": skipped_overlap,
         "skipped_invalid_targets": skipped_invalid_target,
-        "skipped_obstacle_gate": skipped_obstacle_gate,
-        "require_obstacle_safe": args.require_obstacle_safe,
         "execution_first_obstacle_violations": sum(
             float(item["execution_first_obstacle_r"]) < 1.0 for item in replayed
         ),
@@ -193,8 +182,6 @@ def main() -> int:
                     "execution_target_multiplier",
                     "skipped_overlapping_signals",
                     "skipped_invalid_targets",
-                    "skipped_obstacle_gate",
-                    "require_obstacle_safe",
                     "execution_first_obstacle_violations",
                     "targets_beyond_first_obstacle",
                     "targets_below_one_r",
