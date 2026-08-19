@@ -62,6 +62,7 @@ class BearEngineConfig:
     level_lookback: int = 24
     swing_span: int = 2
     minimum_regime_drop_atr: float = 1.25
+    maximum_regime_drop_atr: float | None = None
     maximum_slope_atr_per_bar: float = 0.025
     resistance_tolerance_atr: float = 0.28
     maximum_breakout_overshoot_atr: float = 0.85
@@ -117,6 +118,11 @@ class BearEngineConfig:
         )
         if any(value <= 0 for value in positive_fields):
             raise ValueError("distance and ratio settings must be positive")
+        if (
+            self.maximum_regime_drop_atr is not None
+            and self.maximum_regime_drop_atr <= self.minimum_regime_drop_atr
+        ):
+            raise ValueError("maximum regime drop must exceed the minimum")
         if not self.psychological_steps or any(step <= 0 for step in self.psychological_steps):
             raise ValueError("psychological steps must be positive")
         if not 0 <= self.session_open_minute < self.session_close_minute < 24 * 60:
@@ -143,6 +149,9 @@ class BearDecision:
     take_profit_2: float | None = None
     reward_risk: float | None = None
     regime_slope_atr: float | None = None
+    regime_drop_atr: float | None = None
+    chase_distance_atr: float | None = None
+    resistance_kind: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -210,6 +219,16 @@ class BearEngine:
             return self._wait(
                 latest,
                 "bear_regime_not_confirmed",
+                atr=atr,
+                regime_slope_atr=slope,
+            )
+        if (
+            self.config.maximum_regime_drop_atr is not None
+            and regime_drop > self.config.maximum_regime_drop_atr
+        ):
+            return self._wait(
+                latest,
+                "bear_move_overextended",
                 atr=atr,
                 regime_slope_atr=slope,
             )
@@ -401,13 +420,16 @@ class BearEngine:
             ),
             reward_risk=reward_risk,
             regime_slope_atr=slope,
+            regime_drop_atr=regime_drop,
+            chase_distance_atr=chase_distance / atr,
+            resistance_kind=resistance.kind,
         )
 
     def scan(self, bars: Sequence[BearBar]) -> list[BearDecision]:
         decisions: list[BearDecision] = []
         last_signal_index = -self.config.signal_cooldown_bars
         for end in range(self.minimum_bars, len(bars) + 1):
-            decision = self.evaluate(bars[:end])
+            decision = self.evaluate(bars[end - self.minimum_bars : end])
             signal_index = end - 1
             if (
                 decision.action is BearAction.SELL

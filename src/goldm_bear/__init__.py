@@ -14,6 +14,7 @@ from .engine import (
     BearExitDecision,
     ShortPosition,
 )
+from .replay import BearReplay, BearReplayOutcome, BearReplayReport
 
 __all__ = [
     "BearAction",
@@ -24,4 +25,7 @@ __all__ = [
     "BearExitAction",
     "BearExitDecision",
     "ShortPosition",
+    "BearReplay",
+    "BearReplayOutcome",
+    "BearReplayReport",
 ]
