@@ -10,7 +10,7 @@ from types import SimpleNamespace
 import pytest
 
 from gold_portfolio.config import load_worker_config
-from gold_portfolio.models import SignalPlan
+from gold_portfolio.models import SignalPlan, WatchEvent
 from gold_portfolio.mt5_session import BoundMt5Session
 from gold_portfolio.worker import CompositePortfolioWorker, TelegramBroadcast
 
@@ -336,6 +336,162 @@ def test_goldi_subscribers_receive_entries_but_goldm_remains_admin_only(
     goldm_broadcast.client = goldm_client
     goldm_broadcast.send("real entry", include_subscribers=True)
     assert goldm_client.chat_ids == ["123"]
+
+
+def test_watch_is_admin_only_deduplicated_and_never_sends_order(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _bind_env(monkeypatch)
+    config = load_worker_config(ROOT / "config/final/goldm/worker.json")
+    config = replace(
+        config,
+        execution_mode="signal_only",
+        orders_enabled=False,
+        state_path=tmp_path / "state.json",
+        audit_path=tmp_path / "audit.jsonl",
+    )
+    module = FakeMt5()
+
+    class CaptureTelegram:
+        def __init__(self) -> None:
+            self.messages: list[tuple[str, bool]] = []
+
+        def send(self, text: str, *, include_subscribers: bool = False) -> None:
+            self.messages.append((text, include_subscribers))
+
+    telegram = CaptureTelegram()
+    worker = CompositePortfolioWorker(config, mt5_module=module, telegram=telegram)
+    server_time = datetime(2026, 8, 20, 10, 0, tzinfo=timezone(timedelta(hours=3)))
+    started = WatchEvent(
+        watch_id="bear:SELL:2026-08-20T09:45:00+03:00",
+        component="bear",
+        symbol="GOLDm#",
+        side="SELL",
+        state="WATCH",
+        stage="M5_VALIDATION",
+        time=server_time,
+        trigger_time=server_time - timedelta(minutes=15),
+        reason="M5_RETEST_CONFIRMATION_PENDING",
+        level=4500.0,
+        invalidation=4510.0,
+        touch_count=1,
+        rejection_count=1,
+    )
+
+    assert worker._process_watch(started) is not None
+    assert len(telegram.messages) == 1
+    assert telegram.messages[0][1] is False
+    assert "WATCH_STARTED" in telegram.messages[0][0]
+    assert "instrument=GOLDm#" in telegram.messages[0][0]
+    assert "watch_id=bear:SELL:" in telegram.messages[0][0]
+    assert "server_time=" in telegram.messages[0][0]
+    assert "vm_time=" in telegram.messages[0][0]
+    assert module.sent == []
+
+    unchanged = replace(started, time=server_time + timedelta(minutes=1))
+    assert worker._process_watch(unchanged) is None
+    assert len(telegram.messages) == 1
+
+    changed = replace(
+        unchanged,
+        touch_count=2,
+        rejection_count=2,
+        reason="M5_SECOND_REJECTION_CONFIRMED",
+    )
+    assert worker._process_watch(changed) is not None
+    assert "WATCH_UPDATE" in telegram.messages[-1][0]
+
+    worker._save_state()
+    restarted = CompositePortfolioWorker(config, mt5_module=module, telegram=telegram)
+    restarted_watch = replace(changed, time=server_time + timedelta(minutes=2))
+    assert restarted._process_watch(restarted_watch) is None
+
+    cancelled = replace(
+        restarted_watch,
+        state="CANCELLED",
+        reason="M5_ACCEPTANCE",
+    )
+    assert restarted._process_watch(cancelled) is not None
+    assert "CANCELLED" in telegram.messages[-1][0]
+    assert restarted.state["active_watches"] == {}
+    assert module.sent == []
+
+
+def test_bear_watch_reports_m5_preparation_without_entry(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _bind_env(monkeypatch)
+    config = load_worker_config(ROOT / "config/final/goldm/worker.json")
+    config = replace(
+        config,
+        execution_mode="signal_only",
+        orders_enabled=False,
+        state_path=tmp_path / "state.json",
+        audit_path=tmp_path / "audit.jsonl",
+    )
+    worker = CompositePortfolioWorker(config, mt5_module=FakeMt5())
+    server_tz = timezone(timedelta(hours=3))
+    setup_time = datetime(2026, 8, 20, 9, 30, tzinfo=server_tz)
+    setup = SimpleNamespace(
+        time=setup_time,
+        resistance=4500.0,
+        stop=4510.0,
+        entry=4495.0,
+        take_profit=4470.0,
+    )
+
+    class FakeSetupEngine:
+        def scan(self, _bars):
+            return [setup]
+
+    class FakeBearReplay:
+        def __init__(self) -> None:
+            self.setup_engine = FakeSetupEngine()
+            self.config = SimpleNamespace(
+                h1_sma_period=20,
+                m5_watch_bars=12,
+                m1_entry_bars=20,
+            )
+
+        @staticmethod
+        def _h1_bearish(_bars):
+            return True
+
+        @staticmethod
+        def _arm_on_m5(_setup, _history, _candidates, _available):
+            return {"state": "EXPIRED", "touches": 1, "rejections": 1}
+
+    worker.bear_replay = FakeBearReplay()
+    latest = datetime(2026, 8, 20, 9, 50, tzinfo=server_tz)
+    m5_bars = tuple(
+        SimpleNamespace(time=setup_time + timedelta(minutes=5 * index))
+        for index in range(4)
+    )
+    h1_bars = tuple(
+        SimpleNamespace(time=setup_time - timedelta(hours=index + 1))
+        for index in reversed(range(25))
+    )
+
+    watch = worker._bear_watch_event(
+        latest_m1=latest,
+        end=latest + timedelta(minutes=1),
+        start=latest - timedelta(days=30),
+        m1_bars=(),
+        m5_bars=m5_bars,
+        m15_bars=(),
+        h1_bars=h1_bars,
+        report=SimpleNamespace(outcomes=()),
+        signal=None,
+    )
+
+    assert watch is not None
+    assert watch.state == "WATCH"
+    assert watch.stage == "M5_VALIDATION"
+    assert watch.reason == "M5_RETEST_CONFIRMATION_PENDING"
+    assert watch.touch_count == 1
+    assert watch.rejection_count == 1
 
 
 def test_closed_position_result_includes_total_pl_and_balance(

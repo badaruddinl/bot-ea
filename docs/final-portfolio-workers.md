@@ -42,6 +42,13 @@ and sends: component decision/reason, entry/close, SL/TP, volume, total P/L
 including swap/commission/fee, planned R:R, realized R, duration, and current
 balance/equity. State and deduplication are persisted separately per group.
 
+Before entry, each worker persists an admin-only WATCH lifecycle. Revised
+reports M5 trigger and M1 range/momentum evidence. Bear reports its M15 setup,
+H1 context, M5 arm/retest, and M1 confirmation stage. Identical evidence is
+suppressed for five minutes, changes are immediate, and WATCH never executes an
+order. Instrument, watch ID, broker-server time, and VM-local time are included
+for debugging.
+
 ## Required environment
 
 Set Telegram variables plus distinct MT5 bindings:

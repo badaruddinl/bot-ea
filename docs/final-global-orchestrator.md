@@ -32,6 +32,13 @@ signal/order/deal/position IDs where applicable, broker-server time, and VM
 local time with its timezone. GOLD.i demo and GOLDm real use separate MT5
 executables and separate account bindings.
 
+Both composite workers also expose an admin-only preparation lifecycle:
+`WATCH_STARTED`, evidence-changing or five-minute `WATCH_UPDATE`, then
+`CANCELLED`/`EXPIRED` or the existing `ENTRY_READY` signal and order. WATCH
+uses only closed causal bars and can never call the order API. Approved GOLD.i
+subscribers do not receive WATCH diagnostics; they receive only final
+signal/entry/close messages.
+
 Desired ON/OFF state is persisted and restored after a reboot. Every worker
 has a single-instance lock and a health file. The orchestrator reports process
 exit, worker error/stale heartbeat, restarts a desired worker, and sends a
