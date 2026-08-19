@@ -53,6 +53,7 @@ def main() -> int:
     bar_times = [bar.time for bar in bars]
     replayed: list[dict[str, object]] = []
     skipped_overlap = 0
+    skipped_invalid_target = 0
     unavailable_until = start
     for original in sorted(report["outcomes"], key=lambda item: item["opened_at"]):
         opened_at = datetime.fromisoformat(original["opened_at"])
@@ -65,6 +66,13 @@ def main() -> int:
         stop = entry - widened_risk
         original_target = float(original["target"])
         target = entry + (original_target - entry) * args.target_multiplier
+        if target <= entry:
+            skipped_invalid_target += 1
+            continue
+        execution_target_r = (target - entry) / widened_risk
+        execution_first_obstacle_r = (
+            float(original["first_obstacle_r"]) / args.stop_multiplier
+        )
         start_index = bisect.bisect_left(bar_times, opened_at)
         result = "END_OF_TEST"
         closed_at = end
@@ -101,6 +109,10 @@ def main() -> int:
                 "result": result,
                 "outcome_r": outcome_r,
                 "stop": stop,
+                "target": target,
+                "engine_target": original_target,
+                "execution_target_r": execution_target_r,
+                "execution_first_obstacle_r": execution_first_obstacle_r,
                 "mfe": mfe,
                 "mae": mae,
                 "execution_stop_multiplier": args.stop_multiplier,
@@ -109,6 +121,13 @@ def main() -> int:
         )
         replayed.append(item)
         unavailable_until = closed_at
+    equity_r = 0.0
+    peak_r = 0.0
+    maximum_drawdown_r = 0.0
+    for item in sorted(replayed, key=lambda value: value["closed_at"]):
+        equity_r += float(item["outcome_r"])
+        peak_r = max(peak_r, equity_r)
+        maximum_drawdown_r = max(maximum_drawdown_r, peak_r - equity_r)
     payload = {
         **report,
         "outcomes": replayed,
@@ -125,9 +144,22 @@ def main() -> int:
             if replayed
             else 0.0
         ),
+        "maximum_drawdown_r": maximum_drawdown_r,
         "execution_stop_multiplier": args.stop_multiplier,
         "execution_target_multiplier": args.target_multiplier,
         "skipped_overlapping_signals": skipped_overlap,
+        "skipped_invalid_targets": skipped_invalid_target,
+        "execution_first_obstacle_violations": sum(
+            float(item["execution_first_obstacle_r"]) < 1.0 for item in replayed
+        ),
+        "targets_beyond_first_obstacle": sum(
+            float(item["execution_target_r"])
+            > float(item["execution_first_obstacle_r"])
+            for item in replayed
+        ),
+        "targets_below_one_r": sum(
+            float(item["execution_target_r"]) < 1.0 for item in replayed
+        ),
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(
@@ -145,9 +177,14 @@ def main() -> int:
                     "ambiguous_count",
                     "total_r",
                     "expectancy_r",
+                    "maximum_drawdown_r",
                     "execution_stop_multiplier",
                     "execution_target_multiplier",
                     "skipped_overlapping_signals",
+                    "skipped_invalid_targets",
+                    "execution_first_obstacle_violations",
+                    "targets_beyond_first_obstacle",
+                    "targets_below_one_r",
                 )
             },
             sort_keys=True,
