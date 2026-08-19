@@ -45,6 +45,7 @@ class GlobalOrchestrator:
 
     def run_forever(self) -> None:
         self._install_signal_handlers()
+        self._save_state()
         self._send_all(
             f"{self.config.orchestrator_id} ONLINE\n"
             f"pid={os.getpid()} workers={self._desired_summary()}"

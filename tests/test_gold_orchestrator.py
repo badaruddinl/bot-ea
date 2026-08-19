@@ -182,6 +182,12 @@ class GlobalOrchestratorTests(unittest.TestCase):
                 with SingleInstanceLock(lock_path):
                     pass
 
+    def test_initial_off_state_can_be_persisted_before_polling(self) -> None:
+        self.assertFalse(self.config.state_path.exists())
+        self.runtime._save_state()
+        state = json.loads(self.config.state_path.read_text(encoding="utf-8"))
+        self.assertEqual(state["desired"], {"goldi": False, "goldm": False})
+
 
 if __name__ == "__main__":
     unittest.main()
