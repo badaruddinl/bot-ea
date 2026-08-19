@@ -120,6 +120,9 @@ class RevisedEngineConfig:
     supply_displacement_atr: float = 0.80
     supply_confirmation_bars: int = 3
     zone_acceptance_closes: int = 2
+    h1_supply_breakout_trend_min_atr: float = 0.0
+    h1_supply_breakout_trend_max_atr: float = 2.0
+    h1_supply_breakout_max_efficiency: float = 0.20
     watch_max_m1_bars: int = 60
     fibonacci_lookback_m5: int = 12
     fibonacci_retest_separation_bars: int = 2
@@ -182,6 +185,13 @@ class RevisedEngineConfig:
             raise ValueError("supply confirmation window is too short")
         if self.zone_acceptance_closes < 2:
             raise ValueError("zone acceptance closes must be at least two")
+        if (
+            self.h1_supply_breakout_trend_max_atr
+            <= self.h1_supply_breakout_trend_min_atr
+        ):
+            raise ValueError("H1 supply breakout trend bounds are invalid")
+        if not 0 < self.h1_supply_breakout_max_efficiency <= 1:
+            raise ValueError("H1 supply breakout efficiency is invalid")
         if self.watch_max_m1_bars < self.range_max_bars:
             raise ValueError("watch window must cover the range window")
         if self.fibonacci_lookback_m5 < 3 or self.fibonacci_retest_separation_bars < 1:
@@ -310,6 +320,20 @@ class RevisedEngine:
             isinstance(supply_context, dict)
             and supply_context.get("kind") == "H1_SUPPLY_INSIDE"
         )
+        regime_context = risk_stats.get("market_regime") or {}
+        h1_trend_atr = float(regime_context.get("h1_trend_atr", 0.0))
+        h1_supply_breakout_ok = bool(
+            inside_h1_supply
+            and bool(regime_context.get("above_h1_sma20"))
+            and self.config.h1_supply_breakout_trend_min_atr
+            <= h1_trend_atr
+            < self.config.h1_supply_breakout_trend_max_atr
+            and float(regime_context.get("h1_efficiency", 1.0))
+            < self.config.h1_supply_breakout_max_efficiency
+        )
+        supply_entry_context_ok = bool(
+            not supply_context or h1_supply_breakout_ok
+        )
         strong_first_ok = bool(
             obstacle_r is not None
             and obstacle_r >= self.config.first_obstacle_strict_r
@@ -344,7 +368,7 @@ class RevisedEngine:
             and self.config.scalper_min_obstacle_r <= obstacle_r < self.config.first_obstacle_reject_r
             and obstacle_kind is not None
             and not obstacle_kind.startswith("PSYCH_")
-            and not inside_h1_supply
+            and not supply_context
             and strong_pattern
             and int(m1.get("votes", 0)) == 3
             and bool(m1.get("micro_break"))
@@ -439,17 +463,24 @@ class RevisedEngine:
         else:
             mode = ConfirmationMode.RANGE if strict_room else None
         eligible = bool(
-            momentum_ok
-            or strong_first_ok
-            or latched_retest_ok
-            or (range_ok and (not strict_room or strict_ok))
+            supply_entry_context_ok
+            and (
+                momentum_ok
+                or strong_first_ok
+                or latched_retest_ok
+                or (range_ok and (not strict_room or strict_ok))
+            )
         )
         if not eligible:
             return self._decision(
                 snapshot,
                 RevisedState.WATCH,
                 RevisedAction.OBSERVE,
-                "M1_RANGE_OR_MOMENTUM_GATE_PENDING",
+                (
+                    "SUPPLY_CONTEXT_PENDING"
+                    if not supply_entry_context_ok
+                    else "M1_RANGE_OR_MOMENTUM_GATE_PENDING"
+                ),
                 confidence=min(snapshot.confidence, self.config.promotion_confidence - 0.01),
                 entry=entry,
                 stop=stop,
