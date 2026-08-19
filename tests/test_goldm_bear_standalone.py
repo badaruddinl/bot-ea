@@ -9,6 +9,11 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from goldm_bear.cli import load_bars, main
+from goldm_bear.candidate import (
+    confluence_v1_config,
+    confluence_v2_config,
+    confluence_v3_config,
+)
 from goldm_bear.engine import (
     BearAction,
     BearBar,
@@ -17,6 +22,8 @@ from goldm_bear.engine import (
     BearEngineConfig,
     BearExitAction,
     ShortPosition,
+    _simple_rsi,
+    _stochastic_stats,
 )
 from goldm_bear.mt5_source import load_mt5_m15_bars
 from goldm_bear.mt5_cli import signal_context, signal_outcome
@@ -111,6 +118,61 @@ class StandaloneBearEngineTests(unittest.TestCase):
         source = inspect.getsource(__import__("goldm_bear.engine", fromlist=["*"]))
         self.assertNotIn("goldm_signal", source)
         self.assertNotIn("GoldMSniperParity", source)
+
+    def test_confluence_candidate_is_standalone_and_explicit(self) -> None:
+        source = inspect.getsource(
+            __import__("goldm_bear.candidate", fromlist=["*"])
+        )
+        config = confluence_v1_config()
+
+        self.assertTrue(config.confluence_enabled)
+        self.assertEqual(config.confluence_min_votes, 3)
+        self.assertNotIn("goldm_revised", source)
+        self.assertNotIn("goldm_signal", source)
+
+    def test_confluence_v2_requires_repeated_resistance_rejections(self) -> None:
+        engine = BearEngine(confluence_v2_config())
+        bars: list[BearBar] = []
+        for index in range(12):
+            if index in {2, 6, 10}:
+                bars.append(_bar(index, 4400.0, 4400.2, 4398.8, 4399.0))
+            else:
+                bars.append(_bar(index, 4399.0, 4399.2, 4397.8, 4398.2))
+
+        stats = engine._resistance_range_stats(bars, 4400.0, 2.0)
+
+        self.assertGreaterEqual(stats["touches"], 2)
+        self.assertGreaterEqual(stats["rejections"], 2)
+        self.assertFalse(stats["acceptance"])
+        self.assertTrue(stats["qualified"])
+
+    def test_confluence_v3_uses_only_closed_h1_downtrend(self) -> None:
+        engine = BearEngine(confluence_v3_config())
+        bars = []
+        for index in range(104):
+            open_ = 4500.0 - index * 0.5
+            close = open_ - 0.2
+            bars.append(_bar(index, open_, open_ + 0.1, close - 0.1, close))
+
+        stats = engine._h1_trend_stats(bars)
+
+        self.assertTrue(stats["bearish"])
+        self.assertLess(stats["close"], stats["sma"])
+        self.assertLess(stats["slope"], 0.0)
+
+    def test_rsi_turn_inputs_distinguish_rising_and_falling_closes(self) -> None:
+        self.assertEqual(_simple_rsi(list(range(10)), 7), 100.0)
+        self.assertEqual(_simple_rsi(list(range(10, 0, -1)), 7), 0.0)
+
+    def test_stochastic_uses_closed_bar_range(self) -> None:
+        bars = [
+            _bar(index, 100 + index, 102 + index, 99 + index, 101 + index)
+            for index in range(20)
+        ]
+        stats = _stochastic_stats(bars, 14, 3)
+
+        self.assertGreater(stats["k"], 50.0)
+        self.assertGreaterEqual(stats["recent_peak"], stats["k"])
 
     def test_mt5_runner_bootstraps_only_the_standalone_package(self) -> None:
         runner = (

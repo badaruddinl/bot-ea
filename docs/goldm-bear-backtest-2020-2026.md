@@ -64,12 +64,58 @@ The 2-ATR cap nearly reaches full-suite break-even but remains negative in two
 segmented windows. No cap passes all windows, so it is retained only as a
 diagnostic option and not made the default.
 
+## Standalone confluence experiments
+
+The original baseline remains available. Three explicit candidates were added
+behind CLI flags; none changes the default engine.
+
+### confluence-v1
+
+Implemented independently inside `goldm_bear`:
+
+- Fibonacci 38.2%–61.8% pullback zone from a confirmed bearish impulse;
+- M15 supply origin followed by bearish displacement;
+- RSI7 pullback and turn-down confirmation;
+- Stochastic 14/3 pullback and turn-down confirmation;
+- closed-candle bearish momentum restart;
+- exhaustion veto from shrinking body/range and oversold oscillators;
+- at least three of five votes, with momentum and Fibonacci/supply structure
+  mandatory;
+- maximum regime displacement of 4 ATR.
+
+### confluence-v2
+
+Because v1 remained weak, v2 independently reimplemented only the relevant
+REVISED concept: distinct resistance touches separated by retreat, repeated
+rejections, and acceptance cancellation. Strong failed-breakout momentum can
+bypass the repeated-touch requirement. There is no import or shared state with
+REVISED.
+
+### confluence-v3
+
+V2 did not improve results. V3 therefore returns to v1 and adds an independently
+implemented higher-timeframe regime gate: completed H1 bars must close below a
+falling H1 SMA20. It does not include the failed repeated-touch gate.
+
+| Window | Baseline + exit | Confluence v1 | Confluence v2 | Confluence v3 |
+|---|---:|---:|---:|---:|
+| Jan 2025–now | +6.81R | **+12.38R** | +4.16R | +8.40R |
+| Nov 2025–15 Feb 2026 | -10.62R | -5.20R | -6.13R | **-3.61R** |
+| Jun 2026–now | +6.42R | +3.34R | +1.63R | **+4.58R** |
+| Full suite | -126.68R | -52.54R | -55.98R | **-10.32R** |
+| Full-suite expectancy | -0.059R | -0.053R | -0.076R | **-0.024R** |
+| Full-suite max DD | 144.13R | 69.75R | 66.73R | **24.44R** |
+
+V3 is the strongest research result, but it remains negative in the full suite
+and the November–February window. Iteration stops here rather than adding
+post-hoc time/score filters targeted to the remaining losing window.
+
 ## Decision
 
-The existing `goldm_bear` engine fails the segmented-window and full-suite
-promotion test. No hour-of-day, score, or reason filter is selected post hoc.
-The engine remains research-only; no Scheduled Task, Telegram sender, order
-function, or production integration is created.
+The existing `goldm_bear` engine and all three confluence candidates fail the
+segmented-window and full-suite promotion test. No hour-of-day, score, or reason
+filter is selected post hoc. The engine remains research-only; no Scheduled
+Task, Telegram sender, order function, or production integration is created.
 
 The separate REVISED candidate remains frozen at stop multiplier 1.75, target
 multiplier 2.5, fixed lot 0.20, reference balance USD 100,000, and no

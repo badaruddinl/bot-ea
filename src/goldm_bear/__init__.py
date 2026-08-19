@@ -15,6 +15,11 @@ from .engine import (
     ShortPosition,
 )
 from .replay import BearReplay, BearReplayOutcome, BearReplayReport
+from .candidate import (
+    confluence_v1_config,
+    confluence_v2_config,
+    confluence_v3_config,
+)
 
 __all__ = [
     "BearAction",
@@ -28,4 +33,7 @@ __all__ = [
     "BearReplay",
     "BearReplayOutcome",
     "BearReplayReport",
+    "confluence_v1_config",
+    "confluence_v2_config",
+    "confluence_v3_config",
 ]

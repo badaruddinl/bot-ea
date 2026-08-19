@@ -33,6 +33,23 @@ class BearReplayOutcome:
     regime_drop_atr: float | None
     chase_distance_atr: float | None
     resistance_kind: str | None
+    confluence_votes: int
+    fibonacci_retest: bool
+    rsi_value: float | None
+    rsi_turn_down: bool
+    stochastic_k: float | None
+    stochastic_d: float | None
+    stochastic_turn_down: bool
+    supply_retest: bool
+    momentum_restart: bool
+    exhausted: bool
+    resistance_touch_count: int
+    resistance_rejection_count: int
+    resistance_acceptance: bool
+    h1_bearish: bool
+    h1_close: float | None
+    h1_sma: float | None
+    h1_sma_slope: float | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -200,4 +217,21 @@ class BearReplay:
             regime_drop_atr=signal.regime_drop_atr,
             chase_distance_atr=signal.chase_distance_atr,
             resistance_kind=signal.resistance_kind,
+            confluence_votes=signal.confluence_votes,
+            fibonacci_retest=signal.fibonacci_retest,
+            rsi_value=signal.rsi_value,
+            rsi_turn_down=signal.rsi_turn_down,
+            stochastic_k=signal.stochastic_k,
+            stochastic_d=signal.stochastic_d,
+            stochastic_turn_down=signal.stochastic_turn_down,
+            supply_retest=signal.supply_retest,
+            momentum_restart=signal.momentum_restart,
+            exhausted=signal.exhausted,
+            resistance_touch_count=signal.resistance_touch_count,
+            resistance_rejection_count=signal.resistance_rejection_count,
+            resistance_acceptance=signal.resistance_acceptance,
+            h1_bearish=signal.h1_bearish,
+            h1_close=signal.h1_close,
+            h1_sma=signal.h1_sma,
+            h1_sma_slope=signal.h1_sma_slope,
         )
