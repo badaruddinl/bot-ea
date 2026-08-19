@@ -86,6 +86,12 @@ def simulate(mt5, outcomes, info, account, *, balance: float, lot: float):
                 "stop_out_level_percent": stop_out_level,
             }
             balance = max(0.0, margin * stop_out_level / 100.0)
+            minimum_balance = min(minimum_balance, balance)
+            maximum_drawdown = max(maximum_drawdown, peak - balance)
+            maximum_drawdown_percent = max(
+                maximum_drawdown_percent,
+                (peak - balance) / peak * 100.0 if peak > 0 else 0.0,
+            )
             break
         exit_price = entry + float(outcome["outcome_r"]) * risk
         profit = mt5.order_calc_profit(
