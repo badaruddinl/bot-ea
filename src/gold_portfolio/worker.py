@@ -80,6 +80,9 @@ class CompositePortfolioWorker:
         )
         self.bear_replay = BearMultiTimeframeReplay(BearV4Config(**bear_values))
         self.state = self._load_state()
+        self.health_path = self.config.state_path.with_name("health.json")
+        self._last_error_key = ""
+        self._last_error_notification_at = 0.0
 
     def _revised_engine_config(self) -> RevisedEngineConfig:
         source = _json(str(self.config.revised["engine_config_path"]))
@@ -146,18 +149,25 @@ class CompositePortfolioWorker:
         }
 
     def run_forever(self) -> None:
-        self.session.connect()
-        if self.config.telegram.send_health:
-            account = self.session.account_info()
-            self.telegram.send(
-                f"{self.config.portfolio_id} STARTED\n"
-                f"symbol={self.config.symbol} mode={self.config.execution_mode}\n"
-                f"login={account.login} server={account.server} balance={account.balance:.2f}"
-            )
+        started_notified = False
         try:
             while True:
                 try:
-                    self.run_once()
+                    result = self.run_once()
+                    self._last_error_key = ""
+                    self._write_health(
+                        "RUNNING",
+                        "new bar" if result.get("new_bar") else "waiting for closed M1",
+                    )
+                    if not started_notified and self.config.telegram.send_health:
+                        account = self.session.account_info()
+                        self.telegram.send(
+                            f"{self.config.portfolio_id} STARTED\n"
+                            f"symbol={self.config.symbol} mode={self.config.execution_mode}\n"
+                            f"login={account.login} server={account.server} "
+                            f"balance={account.balance:.2f}"
+                        )
+                        started_notified = True
                 except Exception as exc:
                     self._audit(
                         {
@@ -166,11 +176,21 @@ class CompositePortfolioWorker:
                             "error": str(exc),
                         }
                     )
-                    if self.config.telegram.send_health:
+                    self._write_health("ERROR", str(exc))
+                    now = time.monotonic()
+                    error_key = f"{type(exc).__name__}:{exc}"
+                    should_notify = (
+                        error_key != self._last_error_key
+                        or now - self._last_error_notification_at >= 300.0
+                    )
+                    if self.config.telegram.send_health and should_notify:
                         self.telegram.send(f"{self.config.portfolio_id} ERROR\n{exc}")
+                        self._last_error_key = error_key
+                        self._last_error_notification_at = now
                     self.session.close()
                 time.sleep(self.config.poll_seconds)
         finally:
+            self._write_health("STOPPED", "worker stopped")
             self.session.close()
 
     def _revised_snapshot(self) -> RevisedSnapshot:
@@ -399,3 +419,42 @@ class CompositePortfolioWorker:
         self.config.audit_path.parent.mkdir(parents=True, exist_ok=True)
         with self.config.audit_path.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(payload, sort_keys=True, default=str) + "\n")
+
+    def _write_health(self, status: str, detail: str) -> None:
+        self.health_path.parent.mkdir(parents=True, exist_ok=True)
+        account_fields: dict[str, Any] = {}
+        if self.session.connected:
+            try:
+                account = self.session.mt5.account_info()
+            except Exception:
+                account = None
+            if account is not None:
+                account_fields = {
+                    "login": int(account.login),
+                    "server": str(account.server),
+                    "balance": float(account.balance),
+                    "equity": float(account.equity),
+                }
+        temporary = self.health_path.with_suffix(".tmp")
+        temporary.write_text(
+            json.dumps(
+                {
+                    "pid": os.getpid(),
+                    "group": self.config.group,
+                    "portfolio_id": self.config.portfolio_id,
+                    "symbol": self.config.symbol,
+                    "execution_mode": self.config.execution_mode,
+                    "status": status,
+                    "detail": detail,
+                    **account_fields,
+                    "updated_at": datetime.now(
+                        tz=self.session.server_timezone
+                    ).isoformat(),
+                },
+                indent=2,
+                sort_keys=True,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        os.replace(temporary, self.health_path)
