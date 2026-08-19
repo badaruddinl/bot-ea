@@ -21,6 +21,7 @@ class FakeTelegram:
     def __init__(self) -> None:
         self.updates: list[dict] = []
         self.sent: list[tuple[str, str]] = []
+        self.command_menus: list[tuple[tuple[dict[str, str], ...], set[str]]] = []
 
     def get_updates(self, *, offset, timeout):
         del offset, timeout
@@ -30,6 +31,10 @@ class FakeTelegram:
     def send_message(self, *, chat_id, text, **_kwargs):
         self.sent.append((str(chat_id), text))
         return {}
+
+    def replace_commands(self, *, commands, chat_ids, include_default=True):
+        del include_default
+        self.command_menus.append((commands, set(chat_ids)))
 
 
 class FakeProcess:
@@ -187,6 +192,16 @@ class GlobalOrchestratorTests(unittest.TestCase):
         self.runtime._save_state()
         state = json.loads(self.config.state_path.read_text(encoding="utf-8"))
         self.assertEqual(state["desired"], {"goldi": False, "goldm": False})
+
+    def test_command_menu_replaces_old_approval_commands(self) -> None:
+        self.runtime.publish_command_menu()
+        commands, chat_ids = self.telegram.command_menus[-1]
+        names = {item["command"] for item in commands}
+        self.assertEqual(chat_ids, {"123"})
+        self.assertIn("goldi_on", names)
+        self.assertIn("goldm_on", names)
+        self.assertNotIn("pending", names)
+        self.assertNotIn("control", names)
 
 
 if __name__ == "__main__":

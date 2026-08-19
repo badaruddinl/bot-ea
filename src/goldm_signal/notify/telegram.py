@@ -91,15 +91,49 @@ class TelegramBotClient:
         normalized_admins = normalize_admin_user_ids(
             admin_chat_ids, require_nonempty=False
         )
-        self._call(
-            "setMyCommands",
-            {"commands": list(PUBLIC_BOT_COMMANDS)},
+        self.replace_commands(
+            commands=PUBLIC_BOT_COMMANDS,
+            chat_ids=(),
         )
-        for chat_id in sorted(normalized_admins, key=int):
+        self.replace_commands(
+            commands=ADMIN_BOT_COMMANDS,
+            chat_ids=normalized_admins,
+            include_default=False,
+        )
+
+    def replace_commands(
+        self,
+        *,
+        commands: tuple[dict[str, str], ...],
+        chat_ids: set[str | int] | tuple[str, ...] = (),
+        include_default: bool = True,
+    ) -> None:
+        """Replace Telegram command menus for the default and selected chats."""
+        normalized_commands = [
+            {
+                "command": str(item["command"]).strip().lstrip("/"),
+                "description": str(item["description"]).strip(),
+            }
+            for item in commands
+        ]
+        if not normalized_commands or any(
+            not item["command"] or not item["description"]
+            for item in normalized_commands
+        ):
+            raise ValueError("Telegram command menu cannot be empty")
+        if include_default:
+            self._call(
+                "setMyCommands",
+                {"commands": normalized_commands},
+            )
+        normalized_chat_ids = normalize_admin_user_ids(
+            set(chat_ids), require_nonempty=False
+        )
+        for chat_id in sorted(normalized_chat_ids, key=int):
             self._call(
                 "setMyCommands",
                 {
-                    "commands": list(ADMIN_BOT_COMMANDS),
+                    "commands": normalized_commands,
                     "scope": {"type": "chat", "chat_id": chat_id},
                 },
             )

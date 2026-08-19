@@ -15,6 +15,20 @@ from goldm_signal.notify.telegram import TelegramBotClient
 from .config import OrchestratorConfig, ROOT, WorkerSpec
 
 
+ORCHESTRATOR_BOT_COMMANDS: tuple[dict[str, str], ...] = (
+    {"command": "status", "description": "Status kedua worker GOLD"},
+    {"command": "workers", "description": "Detail proses dan heartbeat"},
+    {"command": "heartbeat", "description": "Kirim status sekarang"},
+    {"command": "goldi_on", "description": "Hidupkan sinyal GOLD.i"},
+    {"command": "goldi_off", "description": "Matikan sinyal GOLD.i"},
+    {"command": "goldm_on", "description": "Hidupkan trading real GOLDm"},
+    {"command": "goldm_off", "description": "Matikan trading real GOLDm"},
+    {"command": "all_on", "description": "Hidupkan kedua worker"},
+    {"command": "all_off", "description": "Matikan kedua worker"},
+    {"command": "help", "description": "Daftar perintah orchestrator"},
+)
+
+
 class GlobalOrchestrator:
     """One Telegram poller and watchdog for both final portfolio workers."""
 
@@ -46,6 +60,7 @@ class GlobalOrchestrator:
     def run_forever(self) -> None:
         self._install_signal_handlers()
         self._save_state()
+        self.publish_command_menu()
         self._send_all(
             f"{self.config.orchestrator_id} ONLINE\n"
             f"pid={os.getpid()} workers={self._desired_summary()}"
@@ -66,6 +81,16 @@ class GlobalOrchestrator:
             for name in list(self._children):
                 self.stop_worker(name, notify=False)
             self._audit("ORCHESTRATOR_STOPPED", {})
+
+    def publish_command_menu(self) -> None:
+        self.telegram.replace_commands(
+            commands=ORCHESTRATOR_BOT_COMMANDS,
+            chat_ids=set(self.config.admin_chat_ids),
+        )
+        self._audit(
+            "TELEGRAM_COMMAND_MENU_UPDATED",
+            {"commands": [item["command"] for item in ORCHESTRATOR_BOT_COMMANDS]},
+        )
 
     def request_stop(self) -> None:
         self._stop_event.set()
