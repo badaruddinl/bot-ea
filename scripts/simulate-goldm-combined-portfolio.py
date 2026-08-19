@@ -22,17 +22,37 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--buy-lot", type=float, default=0.02)
     parser.add_argument("--sell-lot", type=float, default=0.02)
     parser.add_argument("--symbol", default="GOLD.i#")
+    parser.add_argument("--from-time", type=datetime.fromisoformat)
+    parser.add_argument("--to-time", type=datetime.fromisoformat)
+    parser.add_argument("--adaptive-lot-balance", type=float)
+    parser.add_argument("--adaptive-low-lot", type=float, default=0.01)
+    parser.add_argument("--adaptive-high-lot", type=float, default=0.02)
     parser.add_argument("--output", type=Path, required=True)
     return parser.parse_args()
 
 
-def _position(mt5, info, outcome, *, side: str, lot: float):
+def _position(
+    mt5,
+    info,
+    outcome,
+    *,
+    side: str,
+    lot: float,
+    leg: str = "FULL",
+    outcome_r: float | None = None,
+    closed_at: datetime | None = None,
+    result: str | None = None,
+):
     entry = float(outcome["entry"])
     stop = float(outcome["stop"])
     risk = abs(entry - stop)
-    outcome_r = float(outcome["outcome_r"])
+    resolved_outcome_r = (
+        float(outcome["outcome_r"]) if outcome_r is None else float(outcome_r)
+    )
     exit_price = (
-        entry + outcome_r * risk if side == "BUY" else entry - outcome_r * risk
+        entry + resolved_outcome_r * risk
+        if side == "BUY"
+        else entry - resolved_outcome_r * risk
     )
     order_type = mt5.ORDER_TYPE_BUY if side == "BUY" else mt5.ORDER_TYPE_SELL
     profit = mt5.order_calc_profit(order_type, info.name, lot, entry, exit_price)
@@ -40,19 +60,117 @@ def _position(mt5, info, outcome, *, side: str, lot: float):
     if profit is None or margin is None:
         raise RuntimeError(f"MT5 portfolio calculation failed: {mt5.last_error()}")
     return {
-        "id": f"{side}:{outcome['opened_at']}:{entry}",
+        "id": f"{side}:{outcome['opened_at']}:{entry}:{leg}",
         "strategy": "GOLDM_REVISED" if side == "BUY" else "GOLDM_BEAR_V4",
         "side": side,
         "lot": lot,
         "opened_at": datetime.fromisoformat(outcome["opened_at"]),
-        "closed_at": datetime.fromisoformat(outcome["closed_at"]),
+        "closed_at": closed_at or datetime.fromisoformat(outcome["closed_at"]),
         "entry": entry,
         "exit_price": exit_price,
         "profit": float(profit),
         "margin": float(margin),
-        "result": outcome["result"],
-        "outcome_r": outcome_r,
+        "result": result or outcome["result"],
+        "outcome_r": resolved_outcome_r,
+        "leg": leg,
     }
+
+
+def _positions(mt5, info, outcome, *, side: str, lot: float):
+    """Expand a dual-TP outcome into margin-accurate executable legs."""
+
+    tp1_fraction = float(outcome.get("tp1_fraction", 0.0))
+    runner_fraction = float(outcome.get("runner_fraction", 1.0))
+    is_split = 0.0 < tp1_fraction < 1.0 and 0.0 < runner_fraction < 1.0
+    if not is_split:
+        return [_position(mt5, info, outcome, side=side, lot=lot)]
+
+    volume_step = float(getattr(info, "volume_step", 0.01) or 0.01)
+    raw_tp1_lot = lot * tp1_fraction
+    raw_runner_lot = lot * runner_fraction
+    executable_split = bool(
+        raw_tp1_lot + 1e-12 >= volume_step
+        and raw_runner_lot + 1e-12 >= volume_step
+        and abs(round(raw_tp1_lot / volume_step) * volume_step - raw_tp1_lot)
+        < 1e-9
+        and abs(round(raw_runner_lot / volume_step) * volume_step - raw_runner_lot)
+        < 1e-9
+    )
+    if not executable_split:
+        full_outcome_r = float(outcome["outcome_r"])
+        if bool(outcome.get("tp1_taken")):
+            tp1_r = float(outcome["tp1_r"])
+            full_outcome_r = (
+                full_outcome_r - tp1_fraction * tp1_r
+            ) / runner_fraction
+        return [
+            _position(
+                mt5,
+                info,
+                outcome,
+                side=side,
+                lot=lot,
+                leg="PARTIAL_FALLBACK_FULL_RUNNER",
+                outcome_r=full_outcome_r,
+            )
+        ]
+
+    tp1_lot = round(raw_tp1_lot / volume_step) * volume_step
+    runner_lot = round(raw_runner_lot / volume_step) * volume_step
+
+    if not bool(outcome.get("tp1_taken")):
+        shared_outcome_r = float(outcome["outcome_r"])
+        return [
+            _position(
+                mt5,
+                info,
+                outcome,
+                side=side,
+                lot=tp1_lot,
+                leg="TP1_UNFILLED",
+                outcome_r=shared_outcome_r,
+            ),
+            _position(
+                mt5,
+                info,
+                outcome,
+                side=side,
+                lot=runner_lot,
+                leg="RUNNER",
+                outcome_r=shared_outcome_r,
+            ),
+        ]
+
+    tp1_taken_at = outcome.get("tp1_taken_at")
+    if not tp1_taken_at:
+        raise ValueError("partial outcome is missing causal tp1_taken_at")
+    tp1_r = float(outcome["tp1_r"])
+    total_outcome_r = float(outcome["outcome_r"])
+    runner_outcome_r = (
+        total_outcome_r - tp1_fraction * tp1_r
+    ) / runner_fraction
+    return [
+        _position(
+            mt5,
+            info,
+            outcome,
+            side=side,
+            lot=tp1_lot,
+            leg="TP1",
+            outcome_r=tp1_r,
+            closed_at=datetime.fromisoformat(tp1_taken_at),
+            result="TP1_PARTIAL",
+        ),
+        _position(
+            mt5,
+            info,
+            outcome,
+            side=side,
+            lot=runner_lot,
+            leg="RUNNER",
+            outcome_r=runner_outcome_r,
+        ),
+    ]
 
 
 def _floating_profit(position, price: float, contract_size: float) -> float:
@@ -65,10 +183,47 @@ def _floating_profit(position, price: float, contract_size: float) -> float:
     )
 
 
+def _select_trade_lot(
+    balance: float,
+    threshold: float | None,
+    low_lot: float,
+    high_lot: float,
+    static_lot: float,
+) -> float:
+    if threshold is None:
+        return static_lot
+    return high_lot if balance >= threshold else low_lot
+
+
 def main() -> int:
     args = parse_args()
     buy_report = json.loads(args.buy_report.read_text(encoding="utf-8"))
     sell_report = json.loads(args.sell_report.read_text(encoding="utf-8"))
+    start = args.from_time or min(
+        datetime.fromisoformat(buy_report["from_time"]),
+        datetime.fromisoformat(sell_report["from_time"]),
+    )
+    end = args.to_time or max(
+        datetime.fromisoformat(buy_report["to_time"]),
+        datetime.fromisoformat(sell_report["to_time"]),
+    )
+    if end <= start:
+        raise ValueError("to-time must be after from-time")
+    if args.adaptive_lot_balance is not None:
+        if args.adaptive_lot_balance <= 0.0:
+            raise ValueError("adaptive lot balance must be positive")
+        if not 0.0 < args.adaptive_low_lot <= args.adaptive_high_lot:
+            raise ValueError("adaptive lot sizes are invalid")
+    buy_outcomes = [
+        outcome
+        for outcome in buy_report["outcomes"]
+        if start <= datetime.fromisoformat(outcome["opened_at"]) < end
+    ]
+    sell_outcomes = [
+        outcome
+        for outcome in sell_report["outcomes"]
+        if start <= datetime.fromisoformat(outcome["opened_at"]) < end
+    ]
     import MetaTrader5 as mt5
 
     if not mt5.initialize():
@@ -78,26 +233,43 @@ def main() -> int:
         account = mt5.account_info()
         if info is None or account is None:
             raise RuntimeError(f"MT5 metadata unavailable: {mt5.last_error()}")
-        positions = [
-            _position(mt5, info, outcome, side="BUY", lot=args.buy_lot)
-            for outcome in buy_report["outcomes"]
-        ] + [
-            _position(mt5, info, outcome, side="SELL", lot=args.sell_lot)
-            for outcome in sell_report["outcomes"]
-        ]
+        trade_groups = []
+        for side, outcomes, static_lot in (
+            ("BUY", buy_outcomes, args.buy_lot),
+            ("SELL", sell_outcomes, args.sell_lot),
+        ):
+            variant_lots = (
+                {
+                    "LOW": args.adaptive_low_lot,
+                    "HIGH": args.adaptive_high_lot,
+                }
+                if args.adaptive_lot_balance is not None
+                else {"STATIC": static_lot}
+            )
+            for outcome in outcomes:
+                variants = {
+                    name: _positions(
+                        mt5,
+                        info,
+                        outcome,
+                        side=side,
+                        lot=lot,
+                    )
+                    for name, lot in variant_lots.items()
+                }
+                trade_groups.append(
+                    {
+                        "side": side,
+                        "opened_at": datetime.fromisoformat(outcome["opened_at"]),
+                        "static_lot": static_lot,
+                        "variants": variants,
+                    }
+                )
         contract_size = float(info.trade_contract_size)
         stop_out_level = float(getattr(account, "margin_so_so", 0.0) or 0.0)
     finally:
         mt5.shutdown()
 
-    start = min(
-        datetime.fromisoformat(buy_report["from_time"]),
-        datetime.fromisoformat(sell_report["from_time"]),
-    )
-    end = max(
-        datetime.fromisoformat(buy_report["to_time"]),
-        datetime.fromisoformat(sell_report["to_time"]),
-    )
     loader = RevisedMt5HistoryLoader()
     loader.connect()
     try:
@@ -118,10 +290,13 @@ def main() -> int:
 
     opens = defaultdict(list)
     closes = defaultdict(list)
-    for position in positions:
-        opens[position["opened_at"]].append(position)
-        closes[position["closed_at"]].append(position)
+    possible_close_times = set()
+    for group in trade_groups:
+        opens[group["opened_at"]].append(group)
+        for positions in group["variants"].values():
+            possible_close_times.update(position["closed_at"] for position in positions)
     active = {}
+    selected_positions = []
     balance = args.balance
     peak_balance = balance
     peak_equity = balance
@@ -136,6 +311,10 @@ def main() -> int:
     ledger = []
     realized_buy_net = 0.0
     realized_sell_net = 0.0
+    low_lot_trades = 0
+    high_lot_trades = 0
+    static_lot_trades = 0
+    first_high_lot_time = None
 
     def close_positions(timestamp):
         nonlocal balance, peak_balance, minimum_balance, maximum_realized_drawdown
@@ -164,21 +343,58 @@ def main() -> int:
                     "profit": position["profit"],
                     "balance": balance,
                     "result": position["result"],
+                    "leg": position["leg"],
                 }
             )
 
     def open_positions(timestamp):
         nonlocal maximum_concurrent, maximum_margin, failure
-        for position in opens.get(timestamp, []):
-            projected_margin = sum(item["margin"] for item in active.values()) + position["margin"]
-            if projected_margin > balance:
-                failure = {
-                    "reason": "INSUFFICIENT_SHARED_MARGIN_AT_ENTRY",
-                    "time": timestamp.isoformat(),
-                    "balance": balance,
-                    "required_margin": projected_margin,
-                }
-                return
+        nonlocal low_lot_trades, high_lot_trades, static_lot_trades
+        nonlocal first_high_lot_time
+        candidates = []
+        selected_groups = []
+        for group in opens.get(timestamp, []):
+            lot = _select_trade_lot(
+                balance,
+                args.adaptive_lot_balance,
+                args.adaptive_low_lot,
+                args.adaptive_high_lot,
+                group["static_lot"],
+            )
+            if args.adaptive_lot_balance is None:
+                variant_name = "STATIC"
+            elif lot == args.adaptive_high_lot:
+                variant_name = "HIGH"
+            else:
+                variant_name = "LOW"
+            positions = group["variants"][variant_name]
+            candidates.extend(positions)
+            selected_groups.append((variant_name, lot, positions))
+        projected_margin = sum(item["margin"] for item in active.values()) + sum(
+            position["margin"] for position in candidates
+        )
+        if projected_margin > balance:
+            failure = {
+                "reason": "INSUFFICIENT_SHARED_MARGIN_AT_ENTRY",
+                "time": timestamp.isoformat(),
+                "balance": balance,
+                "required_margin": projected_margin,
+            }
+            return
+        for variant_name, lot, positions in selected_groups:
+            if variant_name == "LOW":
+                low_lot_trades += 1
+            elif variant_name == "HIGH":
+                high_lot_trades += 1
+                if first_high_lot_time is None:
+                    first_high_lot_time = timestamp
+            else:
+                static_lot_trades += 1
+            for position in positions:
+                position["trade_lot"] = lot
+                selected_positions.append(position)
+                closes[position["closed_at"]].append(position)
+        for position in candidates:
             active[position["id"]] = position
             maximum_concurrent = max(maximum_concurrent, len(active))
             maximum_margin = max(
@@ -192,11 +408,12 @@ def main() -> int:
                     "strategy": position["strategy"],
                     "side": position["side"],
                     "lot": position["lot"],
+                    "leg": position["leg"],
                     "balance": balance,
                 }
             )
 
-    all_event_times = sorted(set(opens) | set(closes))
+    all_event_times = sorted(set(opens) | possible_close_times)
     event_index = 0
     for bar in bars:
         while event_index < len(all_event_times) and all_event_times[event_index] <= bar.time:
@@ -265,10 +482,14 @@ def main() -> int:
             event_index += 1
 
     requested_buy_net = sum(
-        position["profit"] for position in positions if position["side"] == "BUY"
+        position["profit"]
+        for position in selected_positions
+        if position["side"] == "BUY"
     )
     requested_sell_net = sum(
-        position["profit"] for position in positions if position["side"] == "SELL"
+        position["profit"]
+        for position in selected_positions
+        if position["side"] == "SELL"
     )
     payload = {
         "starting_balance": args.balance,
@@ -280,8 +501,21 @@ def main() -> int:
         "requested_sell_net_if_all_closed": requested_sell_net,
         "buy_lot": args.buy_lot,
         "sell_lot": args.sell_lot,
-        "positions_requested": len(positions),
+        "positions_requested": len(selected_positions),
         "positions_closed": sum(item["event"] == "CLOSE" for item in ledger),
+        "partial_fallback_positions": sum(
+            position["leg"] == "PARTIAL_FALLBACK_FULL_RUNNER"
+            for position in selected_positions
+        ),
+        "adaptive_lot_balance": args.adaptive_lot_balance,
+        "adaptive_low_lot": args.adaptive_low_lot,
+        "adaptive_high_lot": args.adaptive_high_lot,
+        "low_lot_trades": low_lot_trades,
+        "high_lot_trades": high_lot_trades,
+        "static_lot_trades": static_lot_trades,
+        "first_high_lot_time": (
+            first_high_lot_time.isoformat() if first_high_lot_time else None
+        ),
         "maximum_concurrent_positions": maximum_concurrent,
         "maximum_shared_margin": maximum_margin,
         "minimum_margin_level_percent": (

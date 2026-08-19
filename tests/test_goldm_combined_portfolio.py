@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
 
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "simulate-goldm-combined-portfolio.py"
@@ -27,3 +30,100 @@ def test_shared_floating_profit_uses_one_market_price_for_both_sides() -> None:
         + module._floating_profit(sell, 101.0, 100.0)
         == 0.0
     )
+
+
+def test_adaptive_lot_steps_up_and_down_on_realized_balance() -> None:
+    module = _module()
+
+    assert module._select_trade_lot(99.99, 100.0, 0.01, 0.02, 0.05) == 0.01
+    assert module._select_trade_lot(100.0, 100.0, 0.01, 0.02, 0.05) == 0.02
+    assert module._select_trade_lot(95.0, 100.0, 0.01, 0.02, 0.05) == 0.01
+    assert module._select_trade_lot(95.0, None, 0.01, 0.02, 0.05) == 0.05
+
+
+def test_dual_tp_outcome_releases_tp1_leg_at_causal_fill_time() -> None:
+    module = _module()
+
+    class FakeMt5:
+        ORDER_TYPE_BUY = 0
+        ORDER_TYPE_SELL = 1
+
+        @staticmethod
+        def order_calc_profit(order_type, symbol, lot, entry, exit_price):
+            direction = 1.0 if order_type == FakeMt5.ORDER_TYPE_BUY else -1.0
+            return direction * (exit_price - entry) * 100.0 * lot
+
+        @staticmethod
+        def order_calc_margin(order_type, symbol, lot, entry):
+            return entry * 100.0 * lot / 1000.0
+
+    outcome = {
+        "opened_at": "2026-08-18T10:00:00+03:00",
+        "closed_at": "2026-08-18T10:02:00+03:00",
+        "entry": 100.0,
+        "stop": 99.0,
+        "result": "STOP_AFTER_TP1",
+        "outcome_r": 0.1,
+        "tp1_r": 0.8,
+        "tp1_fraction": 0.5,
+        "runner_fraction": 0.5,
+        "tp1_taken": True,
+        "tp1_taken_at": "2026-08-18T10:01:00+03:00",
+    }
+
+    positions = module._positions(
+        FakeMt5,
+        SimpleNamespace(name="GOLD.i#"),
+        outcome,
+        side="BUY",
+        lot=0.02,
+    )
+
+    assert [position["leg"] for position in positions] == ["TP1", "RUNNER"]
+    assert [position["lot"] for position in positions] == [0.01, 0.01]
+    assert positions[0]["closed_at"].isoformat() == outcome["tp1_taken_at"]
+    assert positions[1]["outcome_r"] == pytest.approx(-0.6)
+    assert sum(position["profit"] for position in positions) == pytest.approx(0.2)
+
+
+def test_non_executable_point_zero_one_partial_falls_back_to_full_runner() -> None:
+    module = _module()
+
+    class FakeMt5:
+        ORDER_TYPE_BUY = 0
+        ORDER_TYPE_SELL = 1
+
+        @staticmethod
+        def order_calc_profit(order_type, symbol, lot, entry, exit_price):
+            return (exit_price - entry) * 100.0 * lot
+
+        @staticmethod
+        def order_calc_margin(order_type, symbol, lot, entry):
+            return entry * 100.0 * lot / 1000.0
+
+    outcome = {
+        "opened_at": "2026-08-18T10:00:00+03:00",
+        "closed_at": "2026-08-18T10:02:00+03:00",
+        "entry": 100.0,
+        "stop": 99.0,
+        "result": "STOP_AFTER_TP1",
+        "outcome_r": 0.1,
+        "tp1_r": 0.8,
+        "tp1_fraction": 0.5,
+        "runner_fraction": 0.5,
+        "tp1_taken": True,
+        "tp1_taken_at": "2026-08-18T10:01:00+03:00",
+    }
+
+    positions = module._positions(
+        FakeMt5,
+        SimpleNamespace(name="GOLD.i#", volume_step=0.01),
+        outcome,
+        side="BUY",
+        lot=0.01,
+    )
+
+    assert len(positions) == 1
+    assert positions[0]["leg"] == "PARTIAL_FALLBACK_FULL_RUNNER"
+    assert positions[0]["lot"] == 0.01
+    assert positions[0]["outcome_r"] == pytest.approx(-0.6)

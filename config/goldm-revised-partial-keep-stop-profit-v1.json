@@ -1,0 +1,19 @@
+{
+  "candidate_id": "GOLDM_REVISED_PARTIAL_KEEP_STOP_PROFIT_V1",
+  "status": "LOCKED_IN_SAMPLE_RESEARCH",
+  "side": "BUY",
+  "total_lot": 0.02,
+  "tp1_lot": 0.01,
+  "runner_lot": 0.01,
+  "confirmation_mode": "RANGE",
+  "tp1_r_min_inclusive": 0.75,
+  "tp1_r_max_exclusive": 1.0,
+  "tp2_to_tp1_min_ratio": 2.0,
+  "entry_stop_to_m5_atr_max_exclusive": 1.1,
+  "runner_stop_action": "KEEP_ORIGINAL_STRUCTURAL_STOP",
+  "uses_break_even": false,
+  "sell_policy": "FULL_TP2_UNCHANGED",
+  "research_balance_usd": 100.0,
+  "commission_swap_slippage_included": false,
+  "validation_note": "Profit finalist selected from an in-sample ATR-limit sweep; forward shadow required."
+}

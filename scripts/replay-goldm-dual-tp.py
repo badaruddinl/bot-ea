@@ -19,10 +19,16 @@ POLICIES = (
     "FULL_TP1",
     "SPLIT_KEEP_STOP",
     "SPLIT_BE_AFTER_TP1",
+    "SPLIT_PROFIT_LOCK_AFTER_TP1",
     "FULL_TP2_BE_AFTER_TP1",
     "ENGINE_BE_AFTER_TP1",
+    "ENGINE_PARTIAL_KEEP_STOP",
+    "ENGINE_PARTIAL_BE",
+    "ENGINE_PARTIAL_PROFIT_LOCK",
     "ADAPTIVE_ENGINE",
 )
+
+PROFIT_LOCK_RETAINED_FRACTION = 0.25
 
 
 def adaptive_runner_fraction(side: str, outcome, tp1_r: float, tp2_r: float) -> float:
@@ -68,15 +74,73 @@ def adaptive_runner_fraction(side: str, outcome, tp1_r: float, tp2_r: float) -> 
     return 1.0 if score >= 4 else 0.5 if score >= 2 else 0.0
 
 
-def policy_runner_fraction(policy: str, side: str, outcome, tp1_r: float, tp2_r: float) -> float:
+def engine_partial_runner_fraction(
+    side: str,
+    outcome,
+    tp1_r: float,
+    tp2_r: float,
+    *,
+    risk_atr_limit: float = 1.0,
+) -> float:
+    """Choose whether a 0.02 position needs a 0.01 structural partial.
+
+    The price of TP1 is supplied by the engine and is never derived from the
+    TP2 midpoint. BUY partials require a close structural TP1, a materially
+    farther TP2, and an entry stop tighter than one M5 ATR. The ATR condition
+    prevents wide-dollar-risk setups from dominating fixed-lot cash results.
+    No SELL sample justified reducing its runner, so SELL remains full-size
+    until separate causal evidence exists.
+    """
+
+    target_ratio = tp2_r / tp1_r if tp1_r > 0 else 99.0
+    market_regime = outcome.get("market_regime") or {}
+    m5_atr = float(market_regime.get("m5_atr", 0.0))
+    entry = float(outcome.get("entry", 0.0))
+    stop = float(outcome.get("stop", entry))
+    risk_atr = abs(entry - stop) / m5_atr if m5_atr > 0.0 else 99.0
+    if side == "BUY" and bool(
+        outcome.get("confirmation_mode") == "RANGE"
+        and 0.75 <= tp1_r < 1.0
+        and target_ratio >= 2.0
+        and risk_atr < risk_atr_limit
+    ):
+        return 0.5
+    return 1.0
+
+
+def policy_runner_fraction(
+    policy: str,
+    side: str,
+    outcome,
+    tp1_r: float,
+    tp2_r: float,
+    *,
+    partial_risk_atr_limit: float = 1.0,
+) -> float:
     if policy == "FULL_TP2":
         return 1.0
     if policy in {"FULL_TP2_BE_AFTER_TP1", "ENGINE_BE_AFTER_TP1"}:
         return 1.0
     if policy == "FULL_TP1":
         return 0.0
-    if policy in {"SPLIT_KEEP_STOP", "SPLIT_BE_AFTER_TP1"}:
+    if policy in {
+        "SPLIT_KEEP_STOP",
+        "SPLIT_BE_AFTER_TP1",
+        "SPLIT_PROFIT_LOCK_AFTER_TP1",
+    }:
         return 0.5
+    if policy in {
+        "ENGINE_PARTIAL_KEEP_STOP",
+        "ENGINE_PARTIAL_BE",
+        "ENGINE_PARTIAL_PROFIT_LOCK",
+    }:
+        return engine_partial_runner_fraction(
+            side,
+            outcome,
+            tp1_r,
+            tp2_r,
+            risk_atr_limit=partial_risk_atr_limit,
+        )
     return adaptive_runner_fraction(side, outcome, tp1_r, tp2_r)
 
 
@@ -95,6 +159,80 @@ def engine_should_move_be(side: str, outcome, tp1_r: float, tp2_r: float) -> boo
     )
 
 
+def policy_moves_be_after_tp1(
+    policy: str,
+    side: str,
+    outcome,
+    tp1_r: float,
+    tp2_r: float,
+    runner_fraction: float,
+) -> bool:
+    """Return the entry-time BEP decision for the remaining runner.
+
+    ENGINE_PARTIAL_BE is intentionally different from ENGINE_BE_AFTER_TP1:
+    it moves the stop only when the engine selected an executable 0.01/0.01
+    partial allocation. Strong setups keep the full 0.02 runner and its
+    structural stop. The policy does not force a TP1-only exit.
+    """
+
+    if policy in {"SPLIT_BE_AFTER_TP1", "FULL_TP2_BE_AFTER_TP1"}:
+        return runner_fraction > 0.0
+    if policy == "ENGINE_BE_AFTER_TP1":
+        return runner_fraction > 0.0 and engine_should_move_be(
+            side,
+            outcome,
+            tp1_r,
+            tp2_r,
+        )
+    if policy == "ENGINE_PARTIAL_BE":
+        return runner_fraction == 0.5
+    return False
+
+
+def profit_lock_runner_stop_r(
+    tp1_r: float,
+    tp1_fraction: float,
+    runner_fraction: float,
+    *,
+    retained_fraction: float = PROFIT_LOCK_RETAINED_FRACTION,
+) -> float:
+    """Return a sub-BEP runner stop that keeps basket P/L positive.
+
+    The retained fraction applies to realized TP1 profit, not to TP2 distance.
+    The stop is clamped to the original -1R risk and never placed beyond BEP.
+    """
+
+    if not 0.0 < runner_fraction < 1.0:
+        raise ValueError("profit lock requires a partial allocation")
+    if not 0.0 < retained_fraction < 1.0:
+        raise ValueError("retained fraction must be between zero and one")
+    realized_r = tp1_fraction * tp1_r
+    basket_floor_r = realized_r * retained_fraction
+    runner_stop_r = (basket_floor_r - realized_r) / runner_fraction
+    return max(-1.0, min(0.0, runner_stop_r))
+
+
+def policy_uses_profit_lock(policy: str, runner_fraction: float) -> bool:
+    return bool(
+        policy
+        in {
+            "SPLIT_PROFIT_LOCK_AFTER_TP1",
+            "ENGINE_PARTIAL_PROFIT_LOCK",
+        }
+        and 0.0 < runner_fraction < 1.0
+    )
+
+
+def allocation_mode(runner_fraction: float) -> str:
+    if runner_fraction == 0.0:
+        return "FULL_TP1"
+    if runner_fraction == 0.5:
+        return "PARTIAL_TP1_RUNNER_TP2"
+    if runner_fraction == 1.0:
+        return "FULL_TP2"
+    raise ValueError(f"unsupported runner fraction: {runner_fraction}")
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--report", type=Path, required=True)
@@ -104,10 +242,27 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--symbol", default="GOLD.i#")
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--summary", type=Path, required=True)
+    parser.add_argument(
+        "--policy",
+        action="append",
+        choices=POLICIES,
+        help="Replay only the selected policy; repeat for multiple policies.",
+    )
+    parser.add_argument("--partial-risk-atr-limit", type=float, default=1.0)
     return parser.parse_args()
 
 
-def replay_policy(report, bars, times, *, side, tp1_field, tp2_field, policy):
+def replay_policy(
+    report,
+    bars,
+    times,
+    *,
+    side,
+    tp1_field,
+    tp2_field,
+    policy,
+    partial_risk_atr_limit=1.0,
+):
     start = datetime.fromisoformat(report["from_time"])
     end = datetime.fromisoformat(report["to_time"])
     replayed = []
@@ -144,10 +299,30 @@ def replay_policy(report, bars, times, *, side, tp1_field, tp2_field, policy):
             original,
             tp1_r,
             tp2_r,
+            partial_risk_atr_limit=partial_risk_atr_limit,
         )
         tp1_fraction = 1.0 - runner_fraction
+        move_be_after_tp1 = policy_moves_be_after_tp1(
+            policy,
+            side,
+            original,
+            tp1_r,
+            tp2_r,
+            runner_fraction,
+        )
+        use_profit_lock = policy_uses_profit_lock(policy, runner_fraction)
+        runner_stop_after_tp1_r = (
+            profit_lock_runner_stop_r(
+                tp1_r,
+                tp1_fraction,
+                runner_fraction,
+            )
+            if use_profit_lock
+            else 0.0 if move_be_after_tp1 else -1.0
+        )
         active_stop = stop
         tp1_taken = False
+        tp1_taken_at = None
         result = "END_OF_TEST"
         closed_at = end
         outcome_r = 0.0
@@ -185,26 +360,23 @@ def replay_policy(report, bars, times, *, side, tp1_field, tp2_field, policy):
                     result = "TP2"
                     outcome_r = tp1_fraction * tp1_r + runner_fraction * tp2_r
                     tp1_taken = True
+                    tp1_taken_at = closed_at
                     break
                 if tp1_hit:
                     tp1_taken = True
+                    tp1_taken_at = bar.time + timedelta(minutes=1)
                     if runner_fraction <= 0.0:
                         closed_at = bar.time + timedelta(minutes=1)
                         result = "TP1"
                         outcome_r = tp1_r
                         break
-                    if policy in {
-                        "SPLIT_BE_AFTER_TP1",
-                        "FULL_TP2_BE_AFTER_TP1",
-                    } or (
-                        policy == "ENGINE_BE_AFTER_TP1"
-                        and engine_should_move_be(
-                            side,
-                            original,
-                            tp1_r,
-                            tp2_r,
+                    if use_profit_lock:
+                        active_stop = (
+                            entry + risk * runner_stop_after_tp1_r
+                            if side == "BUY"
+                            else entry - risk * runner_stop_after_tp1_r
                         )
-                    ):
+                    elif move_be_after_tp1:
                         active_stop = entry
                     continue
             else:
@@ -251,13 +423,23 @@ def replay_policy(report, bars, times, *, side, tp1_field, tp2_field, policy):
                 "tp1_r": tp1_r,
                 "tp2_r": tp2_r,
                 "tp1_taken": tp1_taken,
+                "tp1_taken_at": (
+                    tp1_taken_at.isoformat() if tp1_taken_at is not None else None
+                ),
                 "tp1_fraction": tp1_fraction,
                 "runner_fraction": runner_fraction,
-                "engine_be_enabled": engine_should_move_be(
-                    side,
-                    original,
-                    tp1_r,
-                    tp2_r,
+                "allocation_mode": allocation_mode(runner_fraction),
+                "partial_close_taken": bool(
+                    tp1_taken and 0.0 < tp1_fraction < 1.0
+                ),
+                "engine_be_enabled": move_be_after_tp1,
+                "profit_lock_enabled": use_profit_lock,
+                "runner_stop_after_tp1_r": runner_stop_after_tp1_r,
+                "locked_basket_profit_r": (
+                    tp1_fraction * tp1_r
+                    + runner_fraction * runner_stop_after_tp1_r
+                    if use_profit_lock
+                    else None
                 ),
                 "mfe": mfe_r,
                 "mae": mae_r,
@@ -283,7 +465,9 @@ def replay_policy(report, bars, times, *, side, tp1_field, tp2_field, policy):
         "tp1_only_count": sum(item["runner_fraction"] == 0.0 for item in replayed),
         "split_count": sum(item["runner_fraction"] == 0.5 for item in replayed),
         "tp2_only_count": sum(item["runner_fraction"] == 1.0 for item in replayed),
+        "partial_close_count": sum(item["partial_close_taken"] for item in replayed),
         "engine_be_enabled_count": sum(item["engine_be_enabled"] for item in replayed),
+        "profit_lock_enabled_count": sum(item["profit_lock_enabled"] for item in replayed),
         "total_r": total_r,
         "expectancy_r": total_r / len(replayed) if replayed else 0.0,
         "maximum_drawdown_r": maximum_drawdown,
@@ -319,7 +503,7 @@ def main() -> int:
     times = [bar.time for bar in bars]
     args.output_dir.mkdir(parents=True, exist_ok=True)
     summary = []
-    for policy in POLICIES:
+    for policy in args.policy or POLICIES:
         payload = replay_policy(
             report,
             bars,
@@ -328,12 +512,14 @@ def main() -> int:
             tp1_field=args.tp1_field,
             tp2_field=args.tp2_field,
             policy=policy,
+            partial_risk_atr_limit=args.partial_risk_atr_limit,
         )
         path = args.output_dir / f"{policy.lower()}.json"
         path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         summary.append(
             {
                 "policy": policy,
+                "partial_risk_atr_limit": args.partial_risk_atr_limit,
                 "report": str(path),
                 "signals": payload["signals"],
                 "tp1": payload["tp1_count"],
@@ -343,7 +529,9 @@ def main() -> int:
                 "tp1_only": payload["tp1_only_count"],
                 "split": payload["split_count"],
                 "tp2_only": payload["tp2_only_count"],
+                "partial_close": payload["partial_close_count"],
                 "engine_be_enabled": payload["engine_be_enabled_count"],
+                "profit_lock_enabled": payload["profit_lock_enabled_count"],
                 "total_r": payload["total_r"],
                 "expectancy_r": payload["expectancy_r"],
                 "maximum_drawdown_r": payload["maximum_drawdown_r"],
