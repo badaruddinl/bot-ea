@@ -26,7 +26,7 @@ from goldm_revised.engine import (
     RevisedSnapshot,
     RevisedState,
 )
-from goldm_revised.setup import RevisedSetupDetector
+from goldm_revised.setup import RevisedDetectorState, RevisedSetupDetector
 from goldm_signal.notify.telegram import TelegramBotClient
 
 from .config import PortfolioWorkerConfig, TelegramConfig
@@ -123,6 +123,13 @@ class CompositePortfolioWorker:
             datetime(1970, 1, 1, tzinfo=self.session.server_timezone)
         )
         self.state = self._load_state()
+        detector_payload = self.state.get("revised_detector")
+        if detector_payload is not None:
+            detector_state = RevisedDetectorState.from_payload(detector_payload)
+            expected_maximum = self.revised_engine.config.watch_max_m1_bars
+            if detector_state.maximum_m1_bars != expected_maximum:
+                raise ValueError("persisted Revised detector window differs from engine config")
+            self.revised_detector = RevisedSetupDetector.from_state(detector_state)
         self.health_path = self.config.state_path.with_name("health.json")
         self._last_error_key = ""
         self._last_error_notification_at = 0.0
@@ -900,6 +907,7 @@ class CompositePortfolioWorker:
         return payload if isinstance(payload, dict) else {"seen": []}
 
     def _save_state(self) -> None:
+        self.state["revised_detector"] = self.revised_detector.snapshot().to_payload()
         self.config.state_path.parent.mkdir(parents=True, exist_ok=True)
         temporary = self.config.state_path.with_suffix(".tmp")
         temporary.write_text(
