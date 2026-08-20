@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import subprocess
 import sys
+import tempfile
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -97,19 +98,22 @@ def _run_core_coverage() -> None:
     tests = REPOSITORY_ROOT / "tests" / "gold_engine_core"
     if not tests.is_dir():
         raise RuntimeError("gold_engine_core exists without tests/gold_engine_core")
-    _run(
-        [
-            sys.executable,
-            "-m",
-            "pytest",
-            "-q",
-            "--cov=gold_engine_core",
-            "--cov-branch",
-            "--cov-report=term-missing",
-            "--cov-fail-under=90",
-            tests.as_posix(),
-        ]
-    )
+    with tempfile.TemporaryDirectory(prefix="bot-ea-quality-") as temporary_root:
+        pytest_temp = Path(temporary_root) / "pytest"
+        _run(
+            [
+                sys.executable,
+                "-m",
+                "pytest",
+                "-q",
+                f"--basetemp={pytest_temp.as_posix()}",
+                "--cov=gold_engine_core",
+                "--cov-branch",
+                "--cov-report=term-missing",
+                "--cov-fail-under=90",
+                tests.as_posix(),
+            ]
+        )
 
 
 def build_parser() -> argparse.ArgumentParser:

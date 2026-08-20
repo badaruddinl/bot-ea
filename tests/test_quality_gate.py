@@ -79,3 +79,22 @@ def test_git_uses_repository_local_safe_directory(monkeypatch, tmp_path: Path) -
         "status",
         "--short",
     ]
+
+
+def test_core_coverage_uses_isolated_pytest_temp(monkeypatch, tmp_path: Path) -> None:
+    (tmp_path / "src" / "gold_engine_core").mkdir(parents=True)
+    (tmp_path / "tests" / "gold_engine_core").mkdir(parents=True)
+    observed: list[str] = []
+
+    def fake_run(command, *, capture=False):
+        observed.extend(command)
+        return subprocess.CompletedProcess(command, 0, stdout="")
+
+    monkeypatch.setattr(quality_gate, "REPOSITORY_ROOT", tmp_path)
+    monkeypatch.setattr(quality_gate, "_run", fake_run)
+
+    quality_gate._run_core_coverage()
+
+    basetemp = next(value for value in observed if value.startswith("--basetemp="))
+    assert "bot-ea-quality-" in basetemp
+    assert "pytest-current" not in basetemp
