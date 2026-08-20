@@ -12,6 +12,7 @@ from .corpus import (
     CorpusDomain,
     PlannedGeometry,
     StateTransition,
+    load_corpus,
     write_corpus,
 )
 from .profile import ProfileManifest, canonical_sha256, load_named_profile
@@ -413,8 +414,13 @@ def _record(
     profile: ProfileManifest,
     definition: ScenarioDefinition,
     index: int,
+    pinned: dict[str, BehaviorRecord],
 ) -> BehaviorRecord:
-    source_sha256, _ = _source_evidence(repository_root, definition.source_ref)
+    prior = pinned.get(definition.scenario_id)
+    if prior is not None and prior.source_ref == definition.source_ref:
+        source_sha256 = prior.source_sha256
+    else:
+        source_sha256, _ = _source_evidence(repository_root, definition.source_ref)
     available_at = datetime(2026, 8, 18, 7, 0, tzinfo=timezone(timedelta(hours=3))) + timedelta(
         minutes=index
     )
@@ -458,8 +464,14 @@ def build_current_behavior_corpus(
     results: dict[str, str] = {}
     for profile_id in ("GOLDI", "GOLDM"):
         profile = load_named_profile(repository_root, profile_id)
+        baseline_path = repository_root / "corpus" / "current_behavior" / f"{profile_id}.jsonl"
+        pinned = (
+            {record.scenario_id: record for record in load_corpus(baseline_path)}
+            if baseline_path.is_file()
+            else {}
+        )
         records = tuple(
-            _record(repository_root, profile, definition, index)
+            _record(repository_root, profile, definition, index, pinned)
             for index, definition in enumerate(SCENARIOS)
         )
         results[profile_id] = write_corpus(destination / f"{profile_id}.jsonl", records)

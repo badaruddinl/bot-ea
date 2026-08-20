@@ -586,7 +586,7 @@ Goal hanya selesai bila seluruh required cell PASS.
 | G01 Dual-profile fingerprints | PASS | PASS | PASS | PASS | `evidence/G01-profile-fingerprints/` |
 | G02 Current behavior corpus | PASS | PASS | PASS | N/A | `evidence/G02-current-behavior-corpus/` |
 | G03 Common strategy contract | PASS | N/A | N/A | PASS | `evidence/G03-common-strategy-contract/` |
-| G04 Pure rule extraction | NOT_STARTED | NOT_STARTED | NOT_STARTED | N/A | |
+| G04 Pure rule extraction | PASS | PASS | PASS | N/A | `evidence/G04-pure-rule-extraction/` |
 | G05 Bear incremental parity | NOT_STARTED | NOT_STARTED | NOT_STARTED | N/A | |
 | G06 Revised restart parity | NOT_STARTED | NOT_STARTED | NOT_STARTED | N/A | |
 | G07 Event-driven reference runtime | NOT_STARTED | NOT_STARTED | NOT_STARTED | NOT_STARTED | |

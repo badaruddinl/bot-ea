@@ -83,7 +83,12 @@ def test_git_uses_repository_local_safe_directory(monkeypatch, tmp_path: Path) -
 
 def test_core_coverage_uses_isolated_pytest_temp(monkeypatch, tmp_path: Path) -> None:
     (tmp_path / "src" / "gold_engine_core").mkdir(parents=True)
+    (tmp_path / "src" / "gold_engine_core" / "rules").mkdir()
     (tmp_path / "tests" / "gold_engine_core").mkdir(parents=True)
+    for relative in quality_gate.EXTRACTED_RULE_TESTS:
+        path = tmp_path / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("pass\n", encoding="utf-8")
     observed: list[str] = []
     observed_environment: dict[str, str] = {}
 
@@ -101,3 +106,4 @@ def test_core_coverage_uses_isolated_pytest_temp(monkeypatch, tmp_path: Path) ->
     assert "bot-ea-quality-" in basetemp
     assert "pytest-current" not in basetemp
     assert "bot-ea-quality-" in observed_environment["COVERAGE_FILE"]
+    assert "--cov-fail-under=75" in observed

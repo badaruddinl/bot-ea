@@ -10,6 +10,18 @@ from pathlib import Path
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 QUALITY_ROOTS = frozenset({"scripts", "src", "tests"})
+EXTRACTED_RULE_TESTS = (
+    "tests/test_goldm_revised.py",
+    "tests/test_goldm_revised_runtime.py",
+    "tests/test_goldm_revised_stop_paths.py",
+    "tests/test_goldm_revised_management.py",
+    "tests/test_goldm_revised_risk.py",
+    "tests/test_goldm_revised_trailing.py",
+    "tests/test_goldm_bear_standalone.py",
+    "tests/test_goldm_bear_v4.py",
+    "tests/test_goldm_bear_replay.py",
+    "tests/test_goldm_confluence.py",
+)
 
 
 def _run(
@@ -108,7 +120,7 @@ def _run_core_coverage() -> None:
     with tempfile.TemporaryDirectory(prefix="bot-ea-quality-") as temporary_root:
         pytest_temp = Path(temporary_root) / "pytest"
         environment = os.environ.copy()
-        environment["COVERAGE_FILE"] = str(Path(temporary_root) / ".coverage")
+        environment["COVERAGE_FILE"] = str(Path(temporary_root) / ".coverage-core")
         _run(
             [
                 sys.executable,
@@ -116,13 +128,41 @@ def _run_core_coverage() -> None:
                 "pytest",
                 "-q",
                 f"--basetemp={pytest_temp.as_posix()}",
-                "--cov=gold_engine_core",
+                "--cov=gold_engine_core.contracts",
+                "--cov=gold_engine_core.corpus",
+                "--cov=gold_engine_core.current_behavior",
+                "--cov=gold_engine_core.profile",
                 "--cov-branch",
                 "--cov-report=term-missing",
                 "--cov-fail-under=90",
                 tests.as_posix(),
             ],
             environment=environment,
+        )
+        rules = REPOSITORY_ROOT / "src" / "gold_engine_core" / "rules"
+        if not rules.is_dir():
+            return
+        missing = [
+            value for value in EXTRACTED_RULE_TESTS if not (REPOSITORY_ROOT / value).is_file()
+        ]
+        if missing:
+            raise RuntimeError(f"missing extracted-rule tests: {', '.join(missing)}")
+        rule_environment = os.environ.copy()
+        rule_environment["COVERAGE_FILE"] = str(Path(temporary_root) / ".coverage-rules")
+        _run(
+            [
+                sys.executable,
+                "-m",
+                "pytest",
+                "-q",
+                f"--basetemp={(Path(temporary_root) / 'pytest-rules').as_posix()}",
+                "--cov=gold_engine_core.rules",
+                "--cov-branch",
+                "--cov-report=term-missing",
+                "--cov-fail-under=75",
+                *EXTRACTED_RULE_TESTS,
+            ],
+            environment=rule_environment,
         )
 
 
