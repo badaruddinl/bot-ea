@@ -15,7 +15,7 @@ REAL order authority: **DISABLED**
 | G03 | PASS | SHARED, CROSS_PROFILE | `evidence/G03-common-strategy-contract/` | Pure state-explicit contracts, causal/ownership guards, quality gate, and full regression passed. |
 | G04 | PASS | SHARED, GOLDI, GOLDM | `evidence/G04-pure-rule-extraction/` | Revised/Bear pure rules, legacy identity, corpus stability, type/lint ratchets, quality gate, and full regression passed. |
 | G05 | PASS | SHARED, GOLDI, GOLDM | `evidence/G05-bear-incremental-state/` | Bar-by-bar/replay parity, bounded recovery, live-worker migration, quality gate, and full regression passed. |
-| G06 | IN_PROGRESS | SHARED, GOLDI, GOLDM | `evidence/G06-revised-restart-parity/` | Revised detector checkpoint/restore and restart-point parity are under implementation. |
+| G06 | PASS | SHARED, GOLDI, GOLDM | `evidence/G06-revised-restart-parity/` | Full restart matrix, stale-resurrection guards, dual-profile worker recovery, quality gate, and regression passed. |
 | G01-G21 | NOT_STARTED | — | — | No engine implementation starts before G00 review. |
 
 Raw or large evidence is stored outside Git under:

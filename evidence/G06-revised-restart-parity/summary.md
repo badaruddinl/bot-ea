@@ -1,6 +1,6 @@
 # G06 Revised Restart Parity
 
-Status: **IN_PROGRESS**
+Status: **PASS**
 
 Scope: SHARED, GOLDI, GOLDM. REAL authority remains disabled.
 
@@ -47,4 +47,25 @@ rule branch coverage: 82.62%
 rule_coverage_xml_sha256=3cd98a0e14e273709b9c568832c7b0d515e04d97e2ffc45ab6c065dc6f923b12
 ```
 
-Quality-gate E2E and full regression remain required before G06 becomes PASS.
+## Final verification
+
+```text
+python scripts/quality_gate.py --base 0d1dbe97f4682ce268b5001537a9751c0f22460d --head HEAD
+exit=0
+quality_python_files=6
+ruff_format=PASS
+ruff_lint=PASS
+mypy=PASS (4 changed source files)
+new_core=56 passed, 91.77%
+rule_and_restart_suite=106 passed, 82.66%
+
+python -m pytest -q --basetemp=<external>/G06-revised-restart-parity/full-pytest-temp --junitxml=<external>/G06-revised-restart-parity/full-pytest-junit.xml
+exit=0
+result=777 passed, 1 skipped, 2 warnings, 141 subtests passed
+junit_tests=919
+junit_failures=0
+junit_errors=0
+junit_sha256=5d841b54590824bd7a8370dee715943f6ccded0839a931597d9909871ec91053
+```
+
+No terminal, account, or order API was used. The production REAL profile remained disabled throughout G06.
