@@ -92,6 +92,13 @@ from .reference_runtime import (
     SlowLaneOutput,
     run_isolated_profile_steps,
 )
+from .runtime_validation import (
+    RuntimeValidationBinding,
+    RuntimeValidationError,
+    RuntimeValidationManifest,
+    load_runtime_validation_manifest,
+    validate_runtime_binding,
+)
 
 __all__ = [
     "Bar",
@@ -145,6 +152,9 @@ __all__ = [
     "ReplayTradeOutcome",
     "ReplayTradeResult",
     "RuntimeIdentity",
+    "RuntimeValidationBinding",
+    "RuntimeValidationError",
+    "RuntimeValidationManifest",
     "SetupState",
     "Side",
     "SignalPlan",
@@ -168,11 +178,13 @@ __all__ = [
     "load_execution_policy",
     "load_named_profile",
     "load_profile_manifest",
+    "load_runtime_validation_manifest",
     "resolve_signal_path",
     "run_isolated_profile_steps",
     "validate_demo_binding",
     "validate_execution",
     "validate_profile_pair",
+    "validate_runtime_binding",
     "verify_g10_evidence",
     "write_corpus",
 ]

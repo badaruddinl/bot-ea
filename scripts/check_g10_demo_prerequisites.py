@@ -14,9 +14,12 @@ sys.path.insert(0, str(REPOSITORY_ROOT / "src"))
 
 from gold_engine_core import (  # noqa: E402
     DemoRuntimeBinding,
+    RuntimeValidationBinding,
     load_demo_validation_manifest,
     load_named_profile,
+    load_runtime_validation_manifest,
     validate_demo_binding,
+    validate_runtime_binding,
 )
 
 
@@ -24,13 +27,17 @@ def build_report(repository_root: Path) -> dict[str, object]:
     profiles: list[dict[str, object]] = []
     errors: list[str] = []
     definitions = (
-        ("GOLDI", "GOLDI_DEMO.json"),
-        ("GOLDM", "GOLDM_DEMO_VALIDATION.json"),
+        ("GOLDI", "demo_execution", "GOLDI_DEMO.json"),
+        ("GOLDM", "read_only", "GOLDM_REAL_READ_ONLY.json"),
     )
-    for profile_id, filename in definitions:
-        manifest = load_demo_validation_manifest(
-            repository_root / "config" / "validation_profiles" / filename
-        )
+    for profile_id, access_mode, filename in definitions:
+        manifest_path = repository_root / "config" / "validation_profiles" / filename
+        if profile_id == "GOLDI":
+            demo_manifest = load_demo_validation_manifest(manifest_path)
+            manifest = demo_manifest
+        else:
+            read_only_manifest = load_runtime_validation_manifest(manifest_path)
+            manifest = read_only_manifest
         production = load_named_profile(repository_root, profile_id)
         path_value = os.environ.get(manifest.terminal_path_env, "").strip()
         login_value = os.environ.get(manifest.login_env, "").strip()
@@ -39,28 +46,48 @@ def build_report(repository_root: Path) -> dict[str, object]:
         path_exists = bool(path_value and Path(path_value).is_file())
         login_present = login_value.isascii() and login_value.isdecimal()
         server_present = bool(server_value)
+        terminal_path_sha256 = (
+            hashlib.sha256(str(Path(path_value).resolve()).casefold().encode("utf-8")).hexdigest()
+            if path_exists
+            else None
+        )
         binding_valid = False
         if path_exists and login_present and server_present:
             try:
-                production_login_value = os.environ.get(
-                    production.terminal.expected_login_env, ""
-                ).strip()
-                production_login = (
-                    int(production_login_value) if production_login_value.isdecimal() else None
-                )
-                validate_demo_binding(
-                    manifest,
-                    production,
-                    DemoRuntimeBinding(
-                        manifest.validation_profile_id,
-                        path_value,
-                        int(login_value),
-                        server_value,
-                        "demo",
-                        manifest.symbol,
-                    ),
-                    production_login=production_login,
-                )
+                if profile_id == "GOLDI":
+                    production_login_value = os.environ.get(
+                        production.terminal.expected_login_env, ""
+                    ).strip()
+                    production_login = (
+                        int(production_login_value) if production_login_value.isdecimal() else None
+                    )
+                    validate_demo_binding(
+                        demo_manifest,
+                        production,
+                        DemoRuntimeBinding(
+                            manifest.validation_profile_id,
+                            path_value,
+                            int(login_value),
+                            server_value,
+                            "demo",
+                            manifest.symbol,
+                        ),
+                        production_login=production_login,
+                    )
+                else:
+                    validate_runtime_binding(
+                        read_only_manifest,
+                        production,
+                        RuntimeValidationBinding(
+                            manifest.validation_profile_id,
+                            path_value,
+                            int(login_value),
+                            server_value,
+                            "real",
+                            manifest.symbol,
+                            access_mode,
+                        ),
+                    )
                 binding_valid = True
             except ValueError as exc:
                 errors.append(f"{profile_id}:{type(exc).__name__}:{exc}")
@@ -76,6 +103,7 @@ def build_report(repository_root: Path) -> dict[str, object]:
         profiles.append(
             {
                 "audience": manifest.audience,
+                "access_mode": access_mode,
                 "binding_valid": binding_valid,
                 "derived_profile_fingerprint": manifest.derived_profile_fingerprint,
                 "login_env_present": login_present,
@@ -85,9 +113,17 @@ def build_report(repository_root: Path) -> dict[str, object]:
                 "symbol": manifest.symbol,
                 "terminal_path_env_present": path_present,
                 "terminal_path_exists": path_exists,
+                "terminal_path_sha256": terminal_path_sha256,
                 "validation_profile_id": manifest.validation_profile_id,
             }
         )
+    path_hashes = [
+        profile["terminal_path_sha256"]
+        for profile in profiles
+        if profile["terminal_path_sha256"] is not None
+    ]
+    if len(path_hashes) == 2 and len(set(path_hashes)) != 2:
+        errors.append("validation_terminal_paths_are_not_distinct")
     mt5_module_available = importlib.util.find_spec("MetaTrader5") is not None
     if not mt5_module_available:
         errors.append("MetaTrader5_module_available=false")

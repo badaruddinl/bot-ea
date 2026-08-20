@@ -139,6 +139,7 @@ def _run_core_coverage() -> None:
                 "--cov=gold_engine_core.g10_evidence",
                 "--cov=gold_engine_core.profile",
                 "--cov=gold_engine_core.reference_runtime",
+                "--cov=gold_engine_core.runtime_validation",
                 "--cov-branch",
                 "--cov-report=term-missing",
                 "--cov-fail-under=90",

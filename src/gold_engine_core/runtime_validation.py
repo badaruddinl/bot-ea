@@ -8,18 +8,19 @@ from typing import cast
 from .profile import ProfileManifest, canonical_json, canonical_sha256
 
 
-class DemoValidationError(ValueError):
-    """Raised when a DEMO validation profile could reach production authority."""
+class RuntimeValidationError(ValueError):
+    """Raised when a validation binding could broaden trading authority."""
 
 
 @dataclass(frozen=True, slots=True)
-class DemoValidationManifest:
+class RuntimeValidationManifest:
     schema_version: int
     validation_profile_id: str
     derived_profile_id: str
     derived_profile_fingerprint: str
     symbol: str
     required_trade_mode: str
+    access_mode: str
     terminal_path_env: str
     login_env: str
     server_env: str
@@ -30,7 +31,7 @@ class DemoValidationManifest:
 
     def __post_init__(self) -> None:
         if self.schema_version != 1:
-            raise DemoValidationError("demo manifest schema_version must equal 1")
+            raise RuntimeValidationError("validation schema_version must equal 1")
         for name, value in (
             ("validation_profile_id", self.validation_profile_id),
             ("derived_profile_id", self.derived_profile_id),
@@ -44,23 +45,29 @@ class DemoValidationManifest:
             ("audience", self.audience),
         ):
             if not value:
-                raise DemoValidationError(f"demo manifest {name} is required")
+                raise RuntimeValidationError(f"validation manifest {name} is required")
         if len(self.derived_profile_fingerprint) != 64:
-            raise DemoValidationError("derived profile fingerprint is invalid")
-        if self.required_trade_mode != "demo":
-            raise DemoValidationError("validation trade mode must be demo")
+            raise RuntimeValidationError("derived profile fingerprint is invalid")
+        if self.required_trade_mode not in {"demo", "real"}:
+            raise RuntimeValidationError("required trade mode must be demo or real")
+        if self.access_mode not in {"demo_execution", "read_only"}:
+            raise RuntimeValidationError("validation access mode is invalid")
+        if self.access_mode == "read_only" and self.required_trade_mode != "real":
+            raise RuntimeValidationError("read-only broker validation must bind REAL mode")
+        if self.access_mode == "demo_execution" and self.required_trade_mode != "demo":
+            raise RuntimeValidationError("DEMO execution validation must bind DEMO mode")
         if self.production_real_authority:
-            raise DemoValidationError("validation profile cannot carry REAL authority")
-        env_names = (self.terminal_path_env, self.login_env, self.server_env)
-        if len(set(env_names)) != len(env_names):
-            raise DemoValidationError("validation environment names must be distinct")
+            raise RuntimeValidationError("validation profile cannot carry REAL authority")
+        if len({self.terminal_path_env, self.login_env, self.server_env}) != 3:
+            raise RuntimeValidationError("validation environment names must be distinct")
         if self.state_namespace == self.evidence_namespace:
-            raise DemoValidationError("validation state and evidence namespaces must differ")
+            raise RuntimeValidationError("validation state and evidence namespaces must differ")
 
     @classmethod
-    def from_payload(cls, payload: object) -> DemoValidationManifest:
-        data = _mapping(payload, "demo_validation_manifest")
+    def from_payload(cls, payload: object) -> RuntimeValidationManifest:
+        data = _mapping(payload, "runtime_validation_manifest")
         expected = {
+            "access_mode",
             "audience",
             "derived_profile_fingerprint",
             "derived_profile_id",
@@ -76,13 +83,13 @@ class DemoValidationManifest:
             "validation_profile_id",
         }
         if set(data) != expected:
-            raise DemoValidationError(f"demo manifest keys must be {sorted(expected)}")
+            raise RuntimeValidationError(f"validation manifest keys must be {sorted(expected)}")
         schema = data["schema_version"]
         authority = data["production_real_authority"]
         if isinstance(schema, bool) or not isinstance(schema, int):
-            raise DemoValidationError("schema_version must be an integer")
+            raise RuntimeValidationError("schema_version must be an integer")
         if not isinstance(authority, bool):
-            raise DemoValidationError("production_real_authority must be boolean")
+            raise RuntimeValidationError("production_real_authority must be boolean")
         return cls(
             schema,
             _string(data["validation_profile_id"], "validation_profile_id"),
@@ -90,6 +97,7 @@ class DemoValidationManifest:
             _string(data["derived_profile_fingerprint"], "derived_profile_fingerprint"),
             _string(data["symbol"], "symbol"),
             _string(data["required_trade_mode"], "required_trade_mode"),
+            _string(data["access_mode"], "access_mode"),
             _string(data["terminal_path_env"], "terminal_path_env"),
             _string(data["login_env"], "login_env"),
             _string(data["server_env"], "server_env"),
@@ -101,6 +109,7 @@ class DemoValidationManifest:
 
     def to_payload(self) -> dict[str, object]:
         return {
+            "access_mode": self.access_mode,
             "audience": self.audience,
             "derived_profile_fingerprint": self.derived_profile_fingerprint,
             "derived_profile_id": self.derived_profile_id,
@@ -122,13 +131,14 @@ class DemoValidationManifest:
 
 
 @dataclass(frozen=True, slots=True)
-class DemoRuntimeBinding:
+class RuntimeValidationBinding:
     validation_profile_id: str
     terminal_path: str
     login: int
     server: str
     trade_mode: str
     symbol: str
+    access_mode: str
 
     def __post_init__(self) -> None:
         if (
@@ -137,76 +147,64 @@ class DemoRuntimeBinding:
             or self.login <= 0
             or not self.server
             or not self.symbol
+            or not self.access_mode
         ):
-            raise DemoValidationError("DEMO runtime binding is incomplete")
+            raise RuntimeValidationError("runtime validation binding is incomplete")
 
 
-def validate_demo_binding(
-    manifest: DemoValidationManifest,
+def validate_runtime_binding(
+    manifest: RuntimeValidationManifest,
     production: ProfileManifest,
-    binding: DemoRuntimeBinding,
-    *,
-    production_login: int | None = None,
+    binding: RuntimeValidationBinding,
 ) -> None:
     if (
         manifest.derived_profile_id != production.profile_id
         or manifest.derived_profile_fingerprint != production.fingerprint
         or manifest.symbol != production.symbol
     ):
-        raise DemoValidationError("DEMO manifest does not derive from production fingerprint")
+        raise RuntimeValidationError("validation manifest does not derive from production")
     if binding.validation_profile_id != manifest.validation_profile_id:
-        raise DemoValidationError("runtime validation profile ID mismatch")
-    if binding.trade_mode != "demo":
-        raise DemoValidationError("runtime account is not DEMO")
+        raise RuntimeValidationError("runtime validation profile ID mismatch")
+    if binding.trade_mode != manifest.required_trade_mode:
+        raise RuntimeValidationError("runtime account trade mode mismatch")
+    if binding.access_mode != manifest.access_mode:
+        raise RuntimeValidationError("runtime access mode mismatch")
     if binding.symbol != manifest.symbol:
-        raise DemoValidationError("runtime symbol mismatch")
-    if (
-        production.profile_id == "GOLDM"
-        and production_login is not None
-        and binding.login == production_login
-    ):
-        raise DemoValidationError("DEMO validation login equals production login")
-    production_envs = {
-        production.terminal.path_env,
-        production.terminal.expected_login_env,
-        production.terminal.expected_server_env,
-    }
-    validation_envs = {
-        manifest.terminal_path_env,
-        manifest.login_env,
-        manifest.server_env,
-    }
-    if production.profile_id == "GOLDM" and production_envs & validation_envs:
-        raise DemoValidationError("GOLDM DEMO reuses production environment binding")
-    if production.profile_id == "GOLDM" and manifest.audience != "admin_only":
-        raise DemoValidationError("GOLDM DEMO evidence must remain admin-only")
+        raise RuntimeValidationError("runtime symbol mismatch")
+    if manifest.access_mode == "read_only":
+        if production.profile_id != "GOLDM":
+            raise RuntimeValidationError("REAL read-only exception is GOLDM-only")
+        if manifest.audience != "admin_only":
+            raise RuntimeValidationError("GOLDM read-only evidence must remain admin-only")
 
 
-def load_demo_validation_manifest(path: Path) -> DemoValidationManifest:
+def load_runtime_validation_manifest(path: Path) -> RuntimeValidationManifest:
     try:
         payload: object = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
-        raise DemoValidationError(f"cannot read DEMO validation manifest: {path}") from exc
-    manifest = DemoValidationManifest.from_payload(payload)
+        raise RuntimeValidationError(f"cannot read runtime validation manifest: {path}") from exc
+    manifest = RuntimeValidationManifest.from_payload(payload)
     if canonical_json(manifest.to_payload()) != canonical_json(payload):
-        raise DemoValidationError("DEMO validation manifest is not canonical")
+        raise RuntimeValidationError("runtime validation manifest is not canonical")
     checksum_path = path.with_suffix(".sha256")
     try:
         fields = checksum_path.read_text(encoding="ascii").strip().split()
     except OSError as exc:
-        raise DemoValidationError(f"cannot read DEMO manifest checksum: {checksum_path}") from exc
+        raise RuntimeValidationError(
+            f"cannot read runtime validation checksum: {checksum_path}"
+        ) from exc
     if len(fields) != 2 or fields[1] != path.name or fields[0] != manifest.fingerprint:
-        raise DemoValidationError("DEMO validation manifest checksum mismatch")
+        raise RuntimeValidationError("runtime validation manifest checksum mismatch")
     return manifest
 
 
 def _mapping(value: object, field: str) -> dict[str, object]:
     if not isinstance(value, dict) or not all(isinstance(key, str) for key in value):
-        raise DemoValidationError(f"{field} must be an object")
+        raise RuntimeValidationError(f"{field} must be an object")
     return cast(dict[str, object], value)
 
 
 def _string(value: object, field: str) -> str:
     if not isinstance(value, str) or not value:
-        raise DemoValidationError(f"{field} must be a non-empty string")
+        raise RuntimeValidationError(f"{field} must be a non-empty string")
     return value

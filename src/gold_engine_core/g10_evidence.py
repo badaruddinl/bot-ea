@@ -8,6 +8,7 @@ from typing import cast
 
 from .demo_validation import load_demo_validation_manifest
 from .profile import canonical_sha256, load_named_profile
+from .runtime_validation import load_runtime_validation_manifest
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,31 +43,58 @@ def verify_g10_evidence(repository_root: Path, evidence_root: Path) -> G10Accept
 
     probes: dict[str, dict[str, object]] = {}
     lifecycles: dict[str, dict[str, object]] = {}
-    for profile_id, manifest_name in (
-        ("GOLDI", "GOLDI_DEMO.json"),
-        ("GOLDM", "GOLDM_DEMO_VALIDATION.json"),
+    for profile_id, manifest_name, trade_mode, access_mode in (
+        ("GOLDI", "GOLDI_DEMO.json", "demo", "demo_execution"),
+        ("GOLDM", "GOLDM_REAL_READ_ONLY.json", "real", "read_only"),
     ):
         production = load_named_profile(repository_root, profile_id)
-        validation = load_demo_validation_manifest(
-            repository_root / "config" / "validation_profiles" / manifest_name
+        manifest_path = repository_root / "config" / "validation_profiles" / manifest_name
+        validation = (
+            load_demo_validation_manifest(manifest_path)
+            if profile_id == "GOLDI"
+            else load_runtime_validation_manifest(manifest_path)
         )
         probe = _read_optional(evidence_root / f"{profile_id}-probe.json", reasons)
-        lifecycle = _read_optional(evidence_root / f"{profile_id}-lifecycle.json", reasons)
         if probe is not None:
             payloads[f"{profile_id}_probe"] = probe
             probes[profile_id] = probe
-            _verify_probe(profile_id, production.fingerprint, validation.symbol, probe, reasons)
-        if lifecycle is not None:
-            payloads[f"{profile_id}_lifecycle"] = lifecycle
-            lifecycles[profile_id] = lifecycle
-            _verify_lifecycle(
+            _verify_probe(
                 profile_id,
-                validation.validation_profile_id,
                 production.fingerprint,
                 validation.symbol,
-                lifecycle,
+                trade_mode,
+                access_mode,
+                probe,
                 reasons,
             )
+        if profile_id == "GOLDI":
+            lifecycle = _read_optional(evidence_root / "GOLDI-lifecycle.json", reasons)
+            if lifecycle is not None:
+                payloads["GOLDI_lifecycle"] = lifecycle
+                lifecycles["GOLDI"] = lifecycle
+                _verify_lifecycle(
+                    profile_id,
+                    validation.validation_profile_id,
+                    production.fingerprint,
+                    validation.symbol,
+                    lifecycle,
+                    reasons,
+                )
+
+    goldm_production = load_named_profile(repository_root, "GOLDM")
+    goldm_validation = load_runtime_validation_manifest(
+        repository_root / "config" / "validation_profiles" / "GOLDM_REAL_READ_ONLY.json"
+    )
+    tester_batch = _read_optional(evidence_root / "GOLDM-tester-batch.json", reasons)
+    if tester_batch is not None:
+        payloads["GOLDM_tester_batch"] = tester_batch
+        _verify_tester_batch(
+            goldm_production.fingerprint,
+            goldm_validation.validation_profile_id,
+            goldm_validation.symbol,
+            tester_batch,
+            reasons,
+        )
 
     concurrency = _read_optional(evidence_root / "concurrency.json", reasons)
     if concurrency is not None:
@@ -77,21 +105,11 @@ def verify_g10_evidence(repository_root: Path, evidence_root: Path) -> G10Accept
         if probes["GOLDI"].get("account_login_sha256") == probes["GOLDM"].get(
             "account_login_sha256"
         ):
-            reasons.append("DEMO profiles reuse one account login")
-        if probes["GOLDI"].get("terminal_executable_sha256") == probes["GOLDM"].get(
-            "terminal_executable_sha256"
+            reasons.append("validation profiles reuse one account login")
+        if probes["GOLDI"].get("terminal_path_sha256") == probes["GOLDM"].get(
+            "terminal_path_sha256"
         ):
-            reasons.append("DEMO profiles do not prove distinct terminal executables")
-    if set(lifecycles) == {"GOLDI", "GOLDM"}:
-        goldi_start = _timestamp(lifecycles["GOLDI"].get("guarded_started_at"))
-        goldi_end = _timestamp(lifecycles["GOLDI"].get("finished_at"))
-        goldm_start = _timestamp(lifecycles["GOLDM"].get("guarded_started_at"))
-        goldm_end = _timestamp(lifecycles["GOLDM"].get("finished_at"))
-        if None not in (goldi_start, goldi_end, goldm_start, goldm_end):
-            assert goldi_start is not None and goldi_end is not None
-            assert goldm_start is not None and goldm_end is not None
-            if min(goldi_end, goldm_end) <= max(goldi_start, goldm_start):
-                reasons.append("guarded DEMO lifecycle windows do not overlap")
+            reasons.append("validation profiles do not prove distinct terminal paths")
 
     unique_reasons = tuple(sorted(set(reasons)))
     fingerprint = None if unique_reasons else str(canonical_sha256(payloads))
@@ -102,6 +120,8 @@ def _verify_probe(
     profile_id: str,
     fingerprint: str,
     symbol: str,
+    trade_mode: str,
+    access_mode: str,
     probe: dict[str, object],
     reasons: list[str],
 ) -> None:
@@ -109,14 +129,20 @@ def _verify_probe(
         "profile_id": profile_id,
         "profile_fingerprint": fingerprint,
         "symbol": symbol,
-        "account_trade_mode": "demo",
+        "account_trade_mode": trade_mode,
+        "access_mode": access_mode,
+        "order_api_calls": 0,
         "orders_sent": 0,
         "production_real_orders": "DISABLED",
     }
     for field, value in expected.items():
         if probe.get(field) != value:
             reasons.append(f"{profile_id} probe {field} mismatch")
-    for field in ("account_login_sha256", "terminal_executable_sha256"):
+    for field in (
+        "account_login_sha256",
+        "terminal_executable_sha256",
+        "terminal_path_sha256",
+    ):
         if not _sha256(probe.get(field)):
             reasons.append(f"{profile_id} probe {field} invalid")
     if not _positive_number(probe.get("latency_ms"), allow_zero=True):
@@ -124,6 +150,70 @@ def _verify_probe(
     bars = probe.get("bars")
     if not isinstance(bars, dict) or set(bars) != {"M1", "M5", "M15", "H1"}:
         reasons.append(f"{profile_id} probe closed bars incomplete")
+
+
+def _verify_tester_batch(
+    fingerprint: str,
+    validation_profile_id: str,
+    symbol: str,
+    batch: dict[str, object],
+    reasons: list[str],
+) -> None:
+    expected = {
+        "batch_schema_version": 1,
+        "execution_environment": "strategy_tester",
+        "live_order_api_calls": 0,
+        "modeling": "every_tick_based_on_real_ticks",
+        "production_real_orders": "DISABLED",
+        "profile_fingerprint": fingerprint,
+        "profile_id": "GOLDM",
+        "symbol": symbol,
+        "validation_profile_id": validation_profile_id,
+    }
+    for field, value in expected.items():
+        if batch.get(field) != value:
+            reasons.append(f"GOLDM tester batch {field} mismatch")
+    for field in ("binary_sha256", "source_commit_sha"):
+        if not _sha256(batch.get(field)):
+            reasons.append(f"GOLDM tester batch {field} invalid")
+    runs = batch.get("runs")
+    if not isinstance(runs, list) or len(runs) < 3:
+        reasons.append("GOLDM tester batch requires at least three runs")
+        return
+    classifications: set[str] = set()
+    for index, value in enumerate(runs):
+        if not isinstance(value, dict):
+            reasons.append(f"GOLDM tester run {index} is not an object")
+            continue
+        classification = value.get("classification")
+        if isinstance(classification, str):
+            classifications.add(classification)
+        if classification not in {"regression", "historical_holdout", "walk_forward_oos"}:
+            reasons.append(f"GOLDM tester run {index} classification invalid")
+        if not isinstance(value.get("window_id"), str) or not value["window_id"]:
+            reasons.append(f"GOLDM tester run {index} window_id invalid")
+        start = _timestamp(value.get("start"))
+        end = _timestamp(value.get("end"))
+        if start is None or end is None or start >= end:
+            reasons.append(f"GOLDM tester run {index} time window invalid")
+        if value.get("event_state_parity_pct") != 100:
+            reasons.append(f"GOLDM tester run {index} event/state parity is not 100")
+        price_error = value.get("max_price_error_ticks")
+        if (
+            isinstance(price_error, bool)
+            or not isinstance(price_error, (int, float))
+            or price_error < 0
+            or price_error > 1
+        ):
+            reasons.append(f"GOLDM tester run {index} price tolerance exceeded")
+        if value.get("duplicate_count") != 0:
+            reasons.append(f"GOLDM tester run {index} duplicate count is not zero")
+        if value.get("restart_recovery_pass") is not True:
+            reasons.append(f"GOLDM tester run {index} restart recovery did not pass")
+    if "regression" not in classifications:
+        reasons.append("GOLDM tester batch lacks regression coverage")
+    if not classifications & {"historical_holdout", "walk_forward_oos"}:
+        reasons.append("GOLDM tester batch lacks historical holdout/OOS coverage")
 
 
 def _verify_lifecycle(
@@ -175,6 +265,13 @@ def _verify_concurrency(value: dict[str, object], reasons: list[str]) -> None:
         reasons.append("concurrency overlap is not positive")
     if value.get("production_real_orders") != "DISABLED":
         reasons.append("concurrency does not prove REAL disabled")
+    if value.get("live_order_api_calls") != 0:
+        reasons.append("concurrency live order API count is not zero")
+    if value.get("access_modes") != {
+        "GOLDI": "demo_execution",
+        "GOLDM": "read_only",
+    }:
+        reasons.append("concurrency access modes mismatch")
     if value.get("state_bleed_count") != 0 or value.get("privacy_bleed_count") != 0:
         reasons.append("concurrency bleed count is not zero")
 
