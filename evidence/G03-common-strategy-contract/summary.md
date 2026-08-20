@@ -1,6 +1,6 @@
 # G03 Common Strategy Contract
 
-Status: **IN_PROGRESS**
+Status: **PASS**
 
 Scope: SHARED and CROSS_PROFILE. No Revised/Bear rules are migrated in this gate. REAL authority remains disabled.
 
@@ -49,4 +49,27 @@ branch_coverage=91.91%
 coverage_xml_sha256=dcc0a15b9a8ec3d3dfed1f9caffa1f98ddc939edf8fda55e64cb4dadeba9d9f3
 ```
 
-The first focused run exposed non-finite Decimal exception leakage; the shared validator was corrected and the authoritative rerun passed. Quality-gate E2E and full regression remain required before PASS.
+The first focused run exposed non-finite Decimal exception leakage; the shared validator was corrected and the authoritative rerun passed.
+
+## Final verification
+
+```text
+python scripts/quality_gate.py --base f152f584ecf06d57d8980a9ff06354c23e1d9be5 --head HEAD
+exit=0
+quality_python_files=3
+ruff_format=PASS
+ruff_lint=PASS
+mypy=PASS (2 changed source files)
+core_tests=37 passed
+branch_coverage=91.91%
+
+python -m pytest -q --basetemp=<external>/G03-common-strategy-contract/full-pytest-temp --junitxml=<external>/G03-common-strategy-contract/full-pytest-junit.xml
+exit=0
+result=757 passed, 2 skipped, 2 warnings, 141 subtests passed
+junit_tests=900
+junit_failures=0
+junit_errors=0
+junit_sha256=de60804f1f2b09a2c1737ec3c8d48b1b9fec08169e15244580bfec524cc37c4c
+```
+
+No strategy semantics, runtime worker, terminal, account, or order executor was changed or started. REAL authority remained disabled throughout G03.
