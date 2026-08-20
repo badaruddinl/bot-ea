@@ -42,6 +42,13 @@ from .corpus import (
     load_corpus,
     write_corpus,
 )
+from .demo_validation import (
+    DemoRuntimeBinding,
+    DemoValidationError,
+    DemoValidationManifest,
+    load_demo_validation_manifest,
+    validate_demo_binding,
+)
 from .execution import (
     BrokerCheck,
     ExecutionAccount,
@@ -98,6 +105,9 @@ __all__ = [
     "ContractError",
     "CorpusError",
     "DecisionAction",
+    "DemoRuntimeBinding",
+    "DemoValidationError",
+    "DemoValidationManifest",
     "EngineEvent",
     "EngineEventType",
     "EngineOutput",
@@ -152,11 +162,13 @@ __all__ = [
     "canonical_json",
     "canonical_sha256",
     "load_corpus",
+    "load_demo_validation_manifest",
     "load_execution_policy",
     "load_named_profile",
     "load_profile_manifest",
     "resolve_signal_path",
     "run_isolated_profile_steps",
+    "validate_demo_binding",
     "validate_execution",
     "validate_profile_pair",
     "write_corpus",

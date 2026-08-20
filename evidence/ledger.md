@@ -19,6 +19,7 @@ REAL order authority: **DISABLED**
 | G07 | PASS | SHARED, GOLDI, GOLDM, CROSS_PROFILE | `evidence/G07-event-driven-reference-runtime/` | Fast/bar/slow lanes, deterministic sequence, outbox isolation, stall containment, quality gate, and regression passed. |
 | G08 | PASS | SHARED, GOLDI, GOLDM, CROSS_PROFILE | `evidence/G08-execution-validity/` | Immutable plan/policy, all pre-send guards, no quote chasing, integration, quality gate, and regression passed. |
 | G09 | PASS | SHARED, GOLDI, GOLDM | `evidence/G09-causal-tick-replay/` | Common-runtime replay, forming-bar exclusion, tick/same-bar policy, profile reports, quality gate, and regression passed. |
+| G10 | IN_PROGRESS | SHARED, GOLDI, GOLDM, CROSS_PROFILE | `evidence/G10-reference-live-validation/` | Safe-DEMO manifests and prerequisite harness are being prepared; actual dual-terminal DEMO evidence is unavailable. |
 | G01-G21 | NOT_STARTED | — | — | No engine implementation starts before G00 review. |
 
 Raw or large evidence is stored outside Git under:

@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "validation_profile_id": "GOLDM_DEMO_VALIDATION",
+  "derived_profile_id": "GOLDM",
+  "derived_profile_fingerprint": "c2e513cb100da86c814d9d65566c835da96f3ea1fd79d35602f2c34fd7b6dac6",
+  "symbol": "GOLDm#",
+  "required_trade_mode": "demo",
+  "terminal_path_env": "GOLDM_DEMO_MT5_TERMINAL_PATH",
+  "login_env": "GOLDM_DEMO_MT5_LOGIN",
+  "server_env": "GOLDM_DEMO_MT5_SERVER",
+  "state_namespace": "runtime_data/validation/goldm/state.json",
+  "evidence_namespace": "runtime_data/validation/goldm/evidence.jsonl",
+  "audience": "admin_only",
+  "production_real_authority": false
+}
