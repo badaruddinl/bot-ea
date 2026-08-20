@@ -1,0 +1,2 @@
+corpus/current_behavior/*.jsonl text eol=lf
+corpus/current_behavior/*.sha256 text eol=lf
