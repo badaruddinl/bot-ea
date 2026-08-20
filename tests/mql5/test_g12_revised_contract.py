@@ -17,7 +17,10 @@ CONFIRMATION_PATH = (
 CONTEXT_PATH = REPOSITORY_ROOT / "mt5" / "Include" / "bot-ea" / "GoldEngineRevisedContext.mqh"
 ZONES_PATH = REPOSITORY_ROOT / "mt5" / "Include" / "bot-ea" / "GoldEngineRevisedZones.mqh"
 SETUP_PATH = REPOSITORY_ROOT / "mt5" / "Include" / "bot-ea" / "GoldEngineRevisedSetup.mqh"
+DECISION_PATH = REPOSITORY_ROOT / "mt5" / "Include" / "bot-ea" / "GoldEngineRevised.mqh"
+HARNESS_PATH = REPOSITORY_ROOT / "mt5" / "Experts" / "bot-ea" / "GoldEngineRevisedParityHarness.mq5"
 GEOMETRY_PATH = REPOSITORY_ROOT / "mt5" / "Include" / "bot-ea" / "GoldEngineRevisedGeometry.mqh"
+RUNTIME_PATH = REPOSITORY_ROOT / "mt5" / "Include" / "bot-ea" / "GoldEngineRuntime.mqh"
 
 
 def assignment(source: str, name: str) -> str:
@@ -153,3 +156,60 @@ def test_setup_detector_preserves_pattern_priority_and_restart_state() -> None:
     assert "RevisedDetectorState Snapshot(void) const" in value
     assert "void Restore(const RevisedDetectorState &state)" in value
     assert "trigger_time<=consumed" in value
+    assert "void SeedWarmup(const datetime latest_closed_m5)" in value
+
+
+def test_complete_decision_tree_preserves_gate_order_and_reasons() -> None:
+    value = DECISION_PATH.read_text(encoding="utf-8")
+    reasons = (
+        "M5_SETUP_UNAVAILABLE",
+        "ATR_UNAVAILABLE",
+        "HARD_INVALIDATION_ACCEPTED",
+        "SCALPER_FIRST_OBSTACLE_ENTRY",
+        "SOFT_FAIL_FIRST_OBSTACLE_ROOM",
+        "SUPPLY_CONTEXT_PENDING",
+        "M1_RANGE_OR_MOMENTUM_GATE_PENDING",
+        "MOMENTUM_ENTRY",
+        "STRONG_FIRST_CONFIRMATION",
+        "LATCHED_CONFIRMATION_RETEST",
+        "RANGE_REJECTIONS_CONFIRMED",
+    )
+    for reason in reasons:
+        assert f'"{reason}"' in value
+    positions = [value.index(f'"{reason}"') for reason in reasons[:7]]
+    assert positions == sorted(positions)
+    assert 'decision.strategy_id="GOLDM_REVISED"' in value
+    assert 'decision.strategy_version="0.6.0"' in value
+    assert "side==ENGINE_SIDE_SELL || local_retest_scalper" in value
+    assert "confidence=MathMin(confidence,m_config.promotion_confidence+20.0)" in value
+    assert "strict_room && !strict_ok" in value
+
+
+def test_native_parity_harness_locks_python_range_vector() -> None:
+    value = HARNESS_PATH.read_text(encoding="utf-8")
+
+    assert 'decision.reason=="STRONG_FIRST_CONFIRMATION"' in value
+    assert "decision.touch_count==4" in value
+    assert "decision.rejection_count==4" in value
+    assert "decision.m1_votes==3" in value
+    assert "CloseEnough(decision.entry,4394.6,0.01)" in value
+    assert "CloseEnough(decision.stop,4394.2,0.01)" in value
+    assert "CloseEnough(decision.target,4399.76,0.01)" in value
+    assert "CloseEnough(decision.first_obstacle,4400.0,0.01)" in value
+    assert 'decision.first_obstacle_kind=="PSYCH_10"' in value
+    assert "return HarnessPassed ? INIT_SUCCEEDED : INIT_FAILED" in value
+    assert "OrderSend" not in value
+
+
+def test_runtime_wires_bounded_revised_state_without_historical_promotion() -> None:
+    value = RUNTIME_PATH.read_text(encoding="utf-8")
+
+    assert "LoadHistory(PERIOD_M5,300,m_m5_history)" in value
+    assert "LoadHistory(PERIOD_M1,300,m_m1_history)" in value
+    assert "m_revised_detector.SeedWarmup" in value
+    assert "AppendBounded(m_m1_history,bar,512)" in value
+    assert "EvaluateRevisedSide(ENGINE_SIDE_BUY)" in value
+    assert "EvaluateRevisedSide(ENGINE_SIDE_SELL)" in value
+    assert "m_revised_detector.Consume(side,setup.trigger_time)" in value
+    assert "ENGINE_EVENT_ENTRY_READY" in value
+    assert "OrderSend" not in value

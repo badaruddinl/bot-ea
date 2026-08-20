@@ -250,6 +250,12 @@ public:
       m_maximum_age_seconds=MathMax(1,maximum_m1_bars)*60;
      }
 
+   void SeedWarmup(const datetime latest_closed_m5)
+     {
+      if(!m_state.buy_active && !m_state.sell_active)
+         m_state.last_classified_m5=latest_closed_m5;
+     }
+
    RevisedDetectorState Snapshot(void) const
      {
       return m_state;
