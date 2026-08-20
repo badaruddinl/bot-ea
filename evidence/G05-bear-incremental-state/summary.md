@@ -1,6 +1,6 @@
 # G05 Bear Incremental State Machine
 
-Status: **IN_PROGRESS**
+Status: **PASS**
 
 Scope: SHARED, GOLDI, GOLDM. REAL authority remains disabled.
 
@@ -53,4 +53,25 @@ rule branch coverage: 82.67% (fail-closed threshold 75%)
 rule_coverage_xml_sha256=bda6231d99d776f39e4d68efd5f26ed29f84ced6f82a5cc2e4fac8a702e6ab13
 ```
 
-Quality-gate E2E and full regression remain required before G05 becomes PASS.
+## Final verification
+
+```text
+python scripts/quality_gate.py --base ed5a88f2c19fc60054adba7cba0b183c13a28291 --head HEAD
+exit=0
+quality_python_files=5
+ruff_format=PASS
+ruff_lint=PASS
+mypy=PASS (incremental machine, worker, quality tooling)
+new_core=49 passed, 91.77%
+extracted_and_incremental_rules=99 passed, 82.67%
+
+python -m pytest -q --basetemp=<external>/G05-bear-incremental-state/full-pytest-temp --junitxml=<external>/G05-bear-incremental-state/full-pytest-junit.xml
+exit=0
+result=769 passed, 2 skipped, 2 warnings, 141 subtests passed
+junit_tests=912
+junit_failures=0
+junit_errors=0
+junit_sha256=52244be19493e3e3e5ab7b073ffaf3ead051684ecd24d43f4356055e6c4872d0
+```
+
+No strategy parameter, terminal, account, or order authority was changed. The production REAL profile remained disabled throughout G05.
