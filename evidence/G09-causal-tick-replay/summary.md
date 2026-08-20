@@ -1,6 +1,6 @@
 # G09 Causal Tick-Aware Replay
 
-Status: **IN_PROGRESS**
+Status: **PASS**
 
 Scope: SHARED, GOLDI, GOLDM. REAL authority remains disabled.
 
@@ -43,4 +43,26 @@ causal_replay.py coverage: 87%
 core_coverage_xml_sha256=f9d752466ba78ed139c6240914d85f4f4a0f5f214199c293d85e136e395c139b
 ```
 
-Quality-gate E2E and full regression remain required before G09 becomes PASS.
+## Final verification
+
+```text
+python scripts/quality_gate.py --base 5dd77b079612f8296dd54cb5012c6ceadc77b1bd --head HEAD
+exit=0
+quality_python_files=5
+ruff_format=PASS
+ruff_lint=PASS
+mypy=PASS (2 changed source files)
+causal_replay_core=84 passed, 91.87%
+rule_and_restart_suite=106 passed, 82.66%
+
+python -m pytest -q --basetemp=<external>/G09-causal-tick-replay/full-pytest-temp --junitxml=<external>/G09-causal-tick-replay/full-pytest-junit.xml
+exit=0
+result=809 passed, 2 warnings, 141 subtests passed
+junit_tests=950
+junit_failures=0
+junit_errors=0
+junit_skipped=0
+junit_sha256=d97f17bec81f1af716b2769c61a90b0e817be1523d53c60cd94964946949e0a0
+```
+
+No terminal, broker account, or order API was used. The production REAL profile remained disabled throughout G09.
