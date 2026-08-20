@@ -583,7 +583,7 @@ Goal hanya selesai bila seluruh required cell PASS.
 | Gate | Shared | GOLD.i | GOLDm | Cross-profile | Evidence |
 |---|---|---|---|---|---|
 | G00 Exact baseline | PASS | PASS | PASS | PASS | `evidence/G00-baseline/` |
-| G01 Dual-profile fingerprints | NOT_STARTED | NOT_STARTED | NOT_STARTED | NOT_STARTED | |
+| G01 Dual-profile fingerprints | PASS | PASS | PASS | PASS | `evidence/G01-profile-fingerprints/` |
 | G02 Current behavior corpus | NOT_STARTED | NOT_STARTED | NOT_STARTED | N/A | |
 | G03 Common strategy contract | NOT_STARTED | N/A | N/A | NOT_STARTED | |
 | G04 Pure rule extraction | NOT_STARTED | NOT_STARTED | NOT_STARTED | N/A | |

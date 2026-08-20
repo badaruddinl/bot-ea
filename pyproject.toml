@@ -74,4 +74,4 @@ package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["bot_ea*", "gold_orchestrator*", "gold_portfolio*", "goldm_bear*", "goldm_revised*", "goldm_signal*"]
+include = ["bot_ea*", "gold_engine_core*", "gold_orchestrator*", "gold_portfolio*", "goldm_bear*", "goldm_revised*", "goldm_signal*"]

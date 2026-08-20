@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "profile_id": "GOLDI",
+  "profile_version": "1.0.0",
+  "strategy_version": "revised-bear-baseline-b042d51",
+  "symbol": "GOLD.i#",
+  "expected_trade_mode": "demo",
+  "engineering_trade_mode": "demo",
+  "order_authority_default": "disabled",
+  "terminal": {
+    "identity": "GOLDI_DEDICATED_TERMINAL",
+    "path_env": "GOLDI_MT5_TERMINAL_PATH",
+    "expected_login_env": "GOLDI_MT5_LOGIN",
+    "expected_server_env": "GOLDI_MT5_SERVER",
+    "require_account_binding": true
+  },
+  "magic": 26081911,
+  "sizing_tiers": [
+    {"minimum_balance": "0.0", "lot": "0.01"},
+    {"minimum_balance": "100.0", "lot": "0.02"}
+  ],
+  "max_positions": 2,
+  "max_total_lot": "0.04",
+  "deviation_points": 30,
+  "revised_config": {
+    "path": "config/final/goldi/revised.json",
+    "canonical_sha256": "89c39b905244b974176abdf808b7ac8ee3b2b82479ffce5bc4554fea22d8fd81"
+  },
+  "bear_config": {
+    "path": "config/final/goldi/bear.json",
+    "canonical_sha256": "5baba839aaf30f7e97811efc1de2016b9eeaab3d75126b8904aed4bb028c41ac"
+  },
+  "state_namespace": "runtime_data/final/goldi/state.json",
+  "audit_namespace": "runtime_data/final/goldi/audit.jsonl",
+  "telegram_audience": "goldi_approved",
+  "event_privacy": "approved_final_entry_close"
+}
