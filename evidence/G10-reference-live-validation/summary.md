@@ -1,6 +1,6 @@
 # G10 Reference Live DEMO Validation
 
-Status: **IN_PROGRESS — ACTUAL DEMO PREREQUISITES MISSING**
+Status: **BLOCKED — ACTUAL DEMO PREREQUISITES MISSING**
 
 Scope: SHARED, GOLDI, GOLDM, CROSS_PROFILE. REAL authority remains disabled.
 
@@ -53,3 +53,5 @@ production_real_orders=DISABLED
 G10 cannot become PASS until actual evidence proves both profiles concurrently on separate DEMO terminals, shadow health, guarded DEMO entry, position/close lifecycle, restart recovery, no duplicate/state/privacy bleed, no live replay, measured latency, and continued GOLDM REAL disablement.
 
 G11 and later gates must not begin before these prerequisites and G10 PASS are available.
+
+The same external blocker was reconfirmed for three consecutive goal turns: the scoped IDCloudHost console remains on its login page, and neither GOLDI nor GOLDM safe-DEMO terminal/account bindings can be inspected. Per goal governance, G10 is now explicitly BLOCKED rather than left indefinitely IN_PROGRESS.
