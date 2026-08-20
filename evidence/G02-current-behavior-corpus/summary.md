@@ -1,6 +1,6 @@
 # G02 Current-Behavior Corpus
 
-Status: **IN_PROGRESS**
+Status: **PASS**
 
 Scope: GOLDI and GOLDM current Python semantics. REAL order authority remains disabled.
 
@@ -55,4 +55,25 @@ branch_coverage=93.62%
 coverage_xml_sha256=c914e28459f54de09b133d1b812236d5ae8b363185ae212aaf6bfbe206d700e7
 ```
 
-Quality-gate E2E and full regression are still required before G02 becomes PASS.
+## Final verification
+
+```text
+python scripts/quality_gate.py --base 24b77fa2c032d366326d2ef1b780df138041ab1c --head HEAD
+exit=0
+quality_python_files=5
+ruff_format=PASS
+ruff_lint=PASS
+mypy=PASS (3 changed source files)
+core_tests=27 passed
+branch_coverage=93.62%
+
+python -m pytest -q --basetemp=<external>/G02-current-behavior-corpus/full-pytest-temp --junitxml=<external>/G02-current-behavior-corpus/full-pytest-junit.xml
+exit=0
+result=748 passed, 1 skipped, 2 warnings, 141 subtests passed
+junit_tests=890
+junit_failures=0
+junit_errors=0
+junit_sha256=0bbd2b6f9a774ade57d836b3d4467e96efba5b4848d60c8153c10c0c8234e6b4
+```
+
+No engine rule, profile risk, terminal, worker, account, or order executor was changed or started. REAL authority remained disabled throughout G02.
