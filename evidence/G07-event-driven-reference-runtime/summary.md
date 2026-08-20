@@ -1,6 +1,6 @@
 # G07 Event-Driven Python Reference Runtime
 
-Status: **IN_PROGRESS**
+Status: **PASS**
 
 Scope: SHARED, GOLDI, GOLDM, CROSS_PROFILE. REAL authority remains disabled.
 
@@ -53,4 +53,25 @@ reference_runtime.py coverage: 98%
 core_coverage_xml_sha256=53f7b7482c86f4093e55924ce494929fc21c675aaac810cfa6909cea3fd0c867
 ```
 
-Quality-gate E2E and full regression remain required before G07 becomes PASS.
+## Final verification
+
+```text
+python scripts/quality_gate.py --base d5057802963d60cee15aed6864beb8d9c1bc786b --head HEAD
+exit=0
+quality_python_files=4
+ruff_format=PASS
+ruff_lint=PASS
+mypy=PASS (2 changed source files)
+event_runtime_core=68 passed, 93.37%
+rule_and_restart_suite=106 passed, 82.66%
+
+python -m pytest -q --basetemp=<external>/G07-event-driven-reference-runtime/full-pytest-temp --junitxml=<external>/G07-event-driven-reference-runtime/full-pytest-junit.xml
+exit=0
+result=788 passed, 2 skipped, 2 warnings, 141 subtests passed
+junit_tests=931
+junit_failures=0
+junit_errors=0
+junit_sha256=0e3c2a0226933060809f265f640209dd1ac2c346ba340eaf619578b61e44cbab
+```
+
+No terminal, broker account, database, Telegram, or order API was invoked. The production REAL profile remained disabled throughout G07.
