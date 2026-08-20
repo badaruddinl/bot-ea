@@ -12,6 +12,7 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 QUALITY_ROOTS = frozenset({"scripts", "src", "tests"})
 EXTRACTED_RULE_TESTS = (
     "tests/gold_engine_core/test_bear_incremental.py",
+    "tests/gold_engine_core/test_revised_restart.py",
     "tests/test_goldm_revised.py",
     "tests/test_goldm_revised_runtime.py",
     "tests/test_goldm_revised_stop_paths.py",

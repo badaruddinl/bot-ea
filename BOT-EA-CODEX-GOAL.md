@@ -588,7 +588,7 @@ Goal hanya selesai bila seluruh required cell PASS.
 | G03 Common strategy contract | PASS | N/A | N/A | PASS | `evidence/G03-common-strategy-contract/` |
 | G04 Pure rule extraction | PASS | PASS | PASS | N/A | `evidence/G04-pure-rule-extraction/` |
 | G05 Bear incremental parity | PASS | PASS | PASS | N/A | `evidence/G05-bear-incremental-state/` |
-| G06 Revised restart parity | NOT_STARTED | NOT_STARTED | NOT_STARTED | N/A | |
+| G06 Revised restart parity | PASS | PASS | PASS | N/A | `evidence/G06-revised-restart-parity/` |
 | G07 Event-driven reference runtime | NOT_STARTED | NOT_STARTED | NOT_STARTED | NOT_STARTED | |
 | G08 Execution validity | NOT_STARTED | NOT_STARTED | NOT_STARTED | NOT_STARTED | |
 | G09 Causal/tick-aware backtest | NOT_STARTED | NOT_STARTED | NOT_STARTED | N/A | |

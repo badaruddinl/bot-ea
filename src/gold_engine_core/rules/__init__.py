@@ -40,7 +40,14 @@ from .revised import (
     RevisedSnapshot,
     RevisedState,
 )
-from .revised_setup import RevisedM5Setup, RevisedSetupDetector, classify_m5_setup
+from .revised_setup import (
+    RevisedConsumedSetup,
+    RevisedDetectorState,
+    RevisedM5Setup,
+    RevisedSetupDetector,
+    RevisedTermination,
+    classify_m5_setup,
+)
 
 __all__ = [
     "BearAction",
@@ -67,7 +74,9 @@ __all__ = [
     "ConfirmationMode",
     "RevisedAction",
     "RevisedBar",
+    "RevisedConsumedSetup",
     "RevisedDecision",
+    "RevisedDetectorState",
     "RevisedEngine",
     "RevisedEngineConfig",
     "RevisedM5Setup",
@@ -75,6 +84,7 @@ __all__ = [
     "RevisedSide",
     "RevisedSnapshot",
     "RevisedState",
+    "RevisedTermination",
     "ShortPosition",
     "classify_m5_setup",
     "confluence_v1_config",
