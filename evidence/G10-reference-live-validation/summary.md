@@ -31,6 +31,8 @@ Missing facts:
 
 No credential value is present in the report. The standard MT5/MetaEditor build 6090 installation alone cannot substitute for two bound DEMO terminals.
 
+The strict acceptance verifier currently returns `accepted=false` (SHA-256 `0b955ffdfa0627a019e8e955a0b7a1ada7fce4dd17ba115227945eef3f9bb58d`) because both probe/lifecycle files and concurrency evidence are absent and preflight is not ready.
+
 ## Prepared verification
 
 ```text
@@ -42,6 +44,7 @@ core_coverage_xml_sha256=de20995062eda69b09866294e1ec17ba8572800391aa392a46345b1
 quality_gate=PASS (7 changed Python files)
 full_regression=817 passed, 1 skipped, 2 warnings, 141 subtests passed
 full_junit_sha256=945d437bdb52f61faa7e64bada942766a336398c7f13acdbdd52cc29d3ad120f
+acceptance_verifier_tests=5 passed
 production_real_orders=DISABLED
 ```
 

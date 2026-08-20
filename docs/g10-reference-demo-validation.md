@@ -42,3 +42,11 @@ Do not substitute production GOLDM, enable a REAL login, modify the production m
 ## Acceptance
 
 G10 remains non-PASS until actual evidence contains both profiles running concurrently, a guarded DEMO lifecycle, restart recovery, no duplicates/state/privacy bleed, latency, and an explicit `production_real_orders=DISABLED` record.
+
+Run the fail-closed verifier against the external evidence directory:
+
+```powershell
+python scripts/verify_g10_demo_evidence.py --evidence-root <external-evidence> --output <external-evidence>\acceptance.json
+```
+
+Only `accepted=true` with a non-null evidence fingerprint permits closing G10.

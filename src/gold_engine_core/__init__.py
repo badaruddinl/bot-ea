@@ -63,6 +63,7 @@ from .execution import (
     load_execution_policy,
     validate_execution,
 )
+from .g10_evidence import G10Acceptance, verify_g10_evidence
 from .profile import (
     ComponentFingerprint,
     ManifestError,
@@ -121,6 +122,7 @@ __all__ = [
     "ExecutionSymbol",
     "ExecutionValidation",
     "FastLaneOutput",
+    "G10Acceptance",
     "GuardResult",
     "IsolatedProfileStep",
     "IsolatedStepsOutput",
@@ -171,5 +173,6 @@ __all__ = [
     "validate_demo_binding",
     "validate_execution",
     "validate_profile_pair",
+    "verify_g10_evidence",
     "write_corpus",
 ]

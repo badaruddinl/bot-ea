@@ -4,3 +4,5 @@ evidence/G09-causal-tick-replay/*-report.json text eol=lf
 evidence/G09-causal-tick-replay/*-report.sha256 text eol=lf
 evidence/G10-reference-live-validation/prerequisites.json text eol=lf
 evidence/G10-reference-live-validation/prerequisites.sha256 text eol=lf
+evidence/G10-reference-live-validation/acceptance.json text eol=lf
+evidence/G10-reference-live-validation/acceptance.sha256 text eol=lf
