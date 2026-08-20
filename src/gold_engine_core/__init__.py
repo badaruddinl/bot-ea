@@ -1,3 +1,11 @@
+from .corpus import (
+    BehaviorRecord,
+    CorpusError,
+    PlannedGeometry,
+    StateTransition,
+    load_corpus,
+    write_corpus,
+)
 from .profile import (
     ComponentFingerprint,
     ManifestError,
@@ -13,15 +21,21 @@ from .profile import (
 )
 
 __all__ = [
+    "BehaviorRecord",
     "ComponentFingerprint",
+    "CorpusError",
     "ManifestError",
+    "PlannedGeometry",
     "ProfileManifest",
     "RuntimeIdentity",
     "SizingTier",
+    "StateTransition",
     "TerminalContract",
     "canonical_json",
     "canonical_sha256",
+    "load_corpus",
     "load_named_profile",
     "load_profile_manifest",
     "validate_profile_pair",
+    "write_corpus",
 ]
