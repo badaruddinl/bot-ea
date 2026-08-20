@@ -2,9 +2,9 @@ name: goldm-core-v2
 
 on:
   pull_request:
-    branches: [main, development, release/goldm-core-v2]
+    branches: [main, development, release/goldm-core-v2, feature/global-orchestrator, feature/mql5-*]
   push:
-    branches: [main, development, release/goldm-core-v2]
+    branches: [main, development, release/goldm-core-v2, feature/global-orchestrator, feature/mql5-*]
   workflow_dispatch:
 
 permissions:
@@ -24,6 +24,7 @@ jobs:
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
+          fetch-depth: 0
       - name: Install CPython 3.14
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
@@ -34,21 +35,37 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
           python -m pip install --disable-pip-version-check --upgrade pip
-          python -m pip install --disable-pip-version-check -e ".[desktop,live]" pytest
+          python -m pip install --disable-pip-version-check -e ".[desktop,live,dev]"
+      - name: Run incremental format, lint, type, and core coverage gates
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          if ("${{ github.event_name }}" -eq "pull_request") {
+            $base = "${{ github.event.pull_request.base.sha }}"
+          } elseif ("${{ github.event.before }}" -and
+                    "${{ github.event.before }}" -notmatch "^0+$") {
+            $base = "${{ github.event.before }}"
+          } else {
+            $base = (git rev-parse HEAD^).Trim()
+          }
+          python scripts/quality_gate.py --base $base --head HEAD
+          if ($LASTEXITCODE -ne 0) { throw "incremental quality gate failed" }
       - name: Verify clean patch and compile Python
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
           git diff --check
           python -m compileall -q src tests
-      - name: Discover and run every test
+      - name: Discover and run every test with pytest
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
           New-Item -ItemType Directory -Path .ci-evidence -Force | Out-Null
-          python -m unittest discover -s tests -p "test_*.py" 2>&1 |
-            Tee-Object -FilePath .ci-evidence\full-unittest.txt
-          if ($LASTEXITCODE -ne 0) { throw "full unittest discovery failed" }
+          python -m pytest -q `
+            --basetemp=.ci-pytest-temp `
+            --junitxml=.ci-evidence\pytest-junit.xml 2>&1 |
+              Tee-Object -FilePath .ci-evidence\full-pytest.txt
+          if ($LASTEXITCODE -ne 0) { throw "full pytest suite failed" }
       - name: Capture immutable identity evidence
         if: always()
         shell: pwsh
