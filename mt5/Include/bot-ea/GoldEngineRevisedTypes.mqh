@@ -151,6 +151,51 @@ struct RevisedDecision
    int                     m1_votes;
   };
 
+struct RevisedRangeStats
+  {
+   int    bars;
+   double high;
+   double low;
+   double width;
+   int    touches;
+   int    rejections;
+   int    acceptance;
+   double excursion;
+   double boundary;
+  };
+
+struct RevisedM1Confirmation
+  {
+   int    votes;
+   bool   directional;
+   bool   micro_break;
+   bool   rsi_ok;
+   double rsi7;
+   double body_ratio;
+   double close_location;
+  };
+
+struct RevisedMomentumStats
+  {
+   bool   momentum;
+   bool   exhausted;
+   double displacement_atr;
+   double body_ratio;
+   double close_location;
+   int    exhaustion_signals;
+  };
+
+struct RevisedFibonacciStats
+  {
+   bool   available;
+   double anchor_start;
+   double anchor_end;
+   double zone_low;
+   double zone_high;
+   int    retests;
+   bool   current_rejection;
+  };
+
 void LoadRevisedConfig(RevisedEngineConfig &config,const string symbol)
   {
    config.symbol=symbol;

@@ -2,7 +2,7 @@
 #define GOLD_ENGINE_RUNTIME_MQH
 
 #include "GoldEngineProfile.mqh"
-#include "GoldEngineRevisedIndicators.mqh"
+#include "GoldEngineRevisedContext.mqh"
 #include "GoldEngineScheduler.mqh"
 
 class CGoldEngineRuntime

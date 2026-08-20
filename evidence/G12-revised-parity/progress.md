@@ -7,6 +7,11 @@ Completed sub-batch:
 - exact scalar Revised config defaults;
 - explicit snapshot/decision optional geometry;
 - ATR, Wilder RSI, swing high/low, and tick normalization primitives;
+- repeated-touch range, rejection, acceptance, and excursion statistics;
+- M1 vote, micro-break, close-location, strong and latched confirmation;
+- momentum displacement/expansion and exhaustion signals;
+- Fibonacci impulse/retest/current-rejection statistics;
+- hard invalidation acceptance;
 - dual-profile compile: 0 errors, 0 warnings;
 - G11 runtime invariants remain intact;
 - 10 focused tests passed.
@@ -14,11 +19,8 @@ Completed sub-batch:
 Remaining before PASS:
 
 - setup detector and restart state;
-- range/rejection/acceptance statistics;
-- momentum and exhaustion;
 - supply/demand and first obstacle;
-- Fibonacci retest;
-- hard invalidation, entry/stop/target;
+- entry/stop/target;
 - complete decision reasons and evidence;
 - Python/MQL5 event-state-reason parity 100%;
 - entry/SL/TP tolerance no greater than one profile tick.

@@ -11,6 +11,10 @@ from gold_engine_core.rules.revised import RevisedEngineConfig
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 TYPES_PATH = REPOSITORY_ROOT / "mt5" / "Include" / "bot-ea" / "GoldEngineRevisedTypes.mqh"
 INDICATORS_PATH = REPOSITORY_ROOT / "mt5" / "Include" / "bot-ea" / "GoldEngineRevisedIndicators.mqh"
+CONFIRMATION_PATH = (
+    REPOSITORY_ROOT / "mt5" / "Include" / "bot-ea" / "GoldEngineRevisedConfirmation.mqh"
+)
+CONTEXT_PATH = REPOSITORY_ROOT / "mt5" / "Include" / "bot-ea" / "GoldEngineRevisedContext.mqh"
 
 
 def assignment(source: str, name: str) -> str:
@@ -62,3 +66,35 @@ def test_mql5_indicators_preserve_python_window_and_smoothing_semantics() -> Non
     assert "pivot<=bars[index-offset].high" in value
     assert "pivot>=bars[index-offset].low" in value
     assert "MathCeil((value-1.0e-12)/tick)*tick" in value
+
+
+def test_range_and_m1_confirmation_preserve_reference_thresholds() -> None:
+    value = CONFIRMATION_PATH.read_text(encoding="utf-8")
+
+    assert "bars[start].open_time<=trigger" in value
+    assert "config.range_max_bars" in value
+    assert "config.range_touch_separation_bars" in value
+    assert "retreat_since_touch<width*config.range_retreat_fraction" in value
+    assert "retreat>=width*0.10" in value
+    assert "outside>=config.acceptance_close_count" in value
+    assert "latest.close>previous.high" in value
+    assert "latest.close<previous.low" in value
+    assert "result.rsi7>=50.0" in value
+    assert "result.rsi7<=50.0" in value
+    assert "stats.excursion>=stats.width*config.range_min_excursion_fraction" in value
+
+
+def test_momentum_fibonacci_and_hard_invalidation_preserve_reference_rules() -> None:
+    value = CONTEXT_PATH.read_text(encoding="utf-8")
+
+    assert "count<config.momentum_bars || atr<=0.0" in value
+    assert "stats.displacement_atr>=config.momentum_min_displacement_atr" in value
+    assert "body_ratio<0.35" in value
+    assert "stats.exhaustion_signals>=config.exhaustion_min_signals" in value
+    assert "best_end-best_range*0.618" in value
+    assert "best_end-best_range*0.382" in value
+    assert "config.fibonacci_retest_separation_bars" in value
+    assert "last_touch>=after_count-3" in value
+    assert "count-start<config.acceptance_close_count" in value
+    assert "outside>=3" in value
+    assert "displacement>=atr_m1*config.acceptance_displacement_atr" in value
