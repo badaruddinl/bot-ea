@@ -74,6 +74,21 @@ class TelegramBotClientTests(unittest.TestCase):
             {"inline_keyboard": []},
         )
 
+    def test_command_scope_accepts_negative_group_chat_id(self) -> None:
+        client = RecordingTelegramBotClient()
+
+        client.replace_commands(
+            commands=({"command": "stop", "description": "Stop"},),
+            chat_ids={"-5299542070"},
+            include_default=False,
+        )
+
+        self.assertEqual(client.calls[0][0], "setMyCommands")
+        self.assertEqual(
+            client.calls[0][1]["scope"],
+            {"type": "chat", "chat_id": "-5299542070"},
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

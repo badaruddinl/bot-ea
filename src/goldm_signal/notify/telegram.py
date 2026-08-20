@@ -159,9 +159,19 @@ class TelegramBotClient:
                 "setMyCommands",
                 {"commands": normalized_commands},
             )
-        normalized_chat_ids = normalize_admin_user_ids(
-            set(chat_ids), require_nonempty=False
-        )
+        normalized_chat_ids: set[str] = set()
+        for raw_chat_id in chat_ids:
+            text = str(raw_chat_id).strip()
+            digits = text[1:] if text.startswith("-") else text
+            if (
+                not text.isascii()
+                or not digits.isdecimal()
+                or int(text) == 0
+            ):
+                raise ValueError(
+                    "Telegram command-scope chat IDs must be non-zero integers"
+                )
+            normalized_chat_ids.add(str(int(text)))
         for chat_id in sorted(normalized_chat_ids, key=int):
             self._call(
                 "setMyCommands",

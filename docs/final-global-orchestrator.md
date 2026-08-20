@@ -14,12 +14,14 @@ Telegram `getUpdates`, so polling conflicts cannot occur.
 
 Admin commands:
 
-- `/workers`, `/status`, `/heartbeat`
-- `/goldi_on`, `/goldi_off`
-- `/goldm_on`, `/goldm_off`
-- `/all_on`, `/all_off`
+- `/status` (state-aware worker control panel)
 - `/pending`, `/subscribers`
-- `/approve ID`, `/deny ID`, `/remove ID`
+- `/help`
+
+Legacy text controls remain accepted for backward compatibility but are not
+published in the Telegram menu. Public command menus are scoped per chat:
+unregistered chats see only `/start`, pending chats only `/subscription`, and
+approved GOLD.i chats `/subscription` plus `/stop`.
 
 Public users can request GOLD.i notifications with `/start`, inspect access with
 `/subscription`, and unsubscribe with `/stop`. Approved users receive only
@@ -40,6 +42,10 @@ worker button always shows the opposite action from its current desired state:
 OFF shows **Hidupkan**, ON shows **Matikan**. After confirmation, the same panel
 is edited with the result and refreshed buttons. GOLDm is explicitly labelled
 REAL.
+
+Telegram long polling isolates every update. A failed callback or message edit
+is audited, its offset is advanced, and later updates continue; transient
+polling failures back off without terminating the orchestrator.
 
 Every signal, executed entry, and close notification identifies the instrument,
 signal/order/deal/position IDs where applicable, broker-server time, and VM

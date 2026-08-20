@@ -17,27 +17,24 @@ from .config import OrchestratorConfig, ROOT, WorkerSpec
 
 PUBLIC_GOLDI_COMMANDS: tuple[dict[str, str], ...] = (
     {"command": "start", "description": "Minta akses notifikasi GOLD.i"},
+)
+
+
+PENDING_GOLDI_COMMANDS: tuple[dict[str, str], ...] = (
+    {"command": "subscription", "description": "Cek status akses GOLD.i"},
+)
+
+
+APPROVED_GOLDI_COMMANDS: tuple[dict[str, str], ...] = (
     {"command": "subscription", "description": "Cek status akses GOLD.i"},
     {"command": "stop", "description": "Berhenti menerima GOLD.i"},
 )
 
 
 ORCHESTRATOR_BOT_COMMANDS: tuple[dict[str, str], ...] = (
-    *PUBLIC_GOLDI_COMMANDS,
     {"command": "status", "description": "Status kedua worker GOLD"},
-    {"command": "workers", "description": "Detail proses dan heartbeat"},
-    {"command": "heartbeat", "description": "Kirim status sekarang"},
-    {"command": "goldi_on", "description": "Hidupkan entry demo GOLD.i"},
-    {"command": "goldi_off", "description": "Matikan entry demo GOLD.i"},
-    {"command": "goldm_on", "description": "Hidupkan trading real GOLDm"},
-    {"command": "goldm_off", "description": "Matikan trading real GOLDm"},
-    {"command": "all_on", "description": "Hidupkan kedua worker"},
-    {"command": "all_off", "description": "Matikan kedua worker"},
     {"command": "pending", "description": "Permintaan akses GOLD.i"},
     {"command": "subscribers", "description": "Subscriber GOLD.i aktif"},
-    {"command": "approve", "description": "Approve ID untuk GOLD.i"},
-    {"command": "deny", "description": "Tolak permintaan GOLD.i"},
-    {"command": "remove", "description": "Hapus subscriber GOLD.i"},
     {"command": "help", "description": "Daftar perintah orchestrator"},
 )
 AUDIT_MAX_BYTES = 5 * 1024 * 1024
@@ -75,8 +72,14 @@ class GlobalOrchestrator:
     def run_forever(self) -> None:
         self._install_signal_handlers()
         self._save_state()
-        self.publish_command_menu()
-        self._announce_online()
+        try:
+            self.publish_command_menu()
+        except Exception as exc:
+            self._audit_runtime_failure("TELEGRAM_MENU_SYNC_FAILED", exc)
+        try:
+            self._announce_online()
+        except Exception as exc:
+            self._audit_runtime_failure("ONLINE_NOTICE_FAILED", exc)
         self._last_heartbeat = self._monotonic()
         self._audit("ORCHESTRATOR_ONLINE", {"pid": os.getpid()})
         try:
@@ -88,11 +91,29 @@ class GlobalOrchestrator:
                 if now - self._last_heartbeat >= self.config.heartbeat_seconds:
                     self._send_all(self.status_text(title="SCHEDULED HEARTBEAT"))
                     self._last_heartbeat = now
-                self.poll_once(timeout=self.config.poll_timeout_seconds)
+                try:
+                    self.poll_once(timeout=self.config.poll_timeout_seconds)
+                except Exception as exc:
+                    self._audit_runtime_failure("TELEGRAM_POLL_FAILED", exc)
+                    self._stop_event.wait(
+                        min(5.0, self.config.supervision_interval_seconds)
+                    )
         finally:
             for name in list(self._children):
                 self.stop_worker(name, notify=False)
             self._audit("ORCHESTRATOR_STOPPED", {})
+
+    def _audit_runtime_failure(self, event: str, exc: Exception) -> None:
+        try:
+            self._audit(
+                event,
+                {
+                    "error_type": type(exc).__name__,
+                    "error": str(exc)[:500],
+                },
+            )
+        except Exception:
+            pass
 
     def _announce_online(self) -> bool:
         now = datetime.now(timezone.utc)
@@ -123,10 +144,36 @@ class GlobalOrchestrator:
             chat_ids=set(self.config.admin_chat_ids),
             include_default=False,
         )
+        subscribers = set(self._state.get("goldi_subscribers") or [])
+        pending = set((self._state.get("goldi_pending") or {}).keys())
+        for chat_id in sorted(pending - subscribers, key=int):
+            self._safe_set_subscription_menu(chat_id, "pending")
+        for chat_id in sorted(subscribers, key=int):
+            self._safe_set_subscription_menu(chat_id, "approved")
         self._audit(
             "TELEGRAM_COMMAND_MENU_UPDATED",
             {"commands": [item["command"] for item in ORCHESTRATOR_BOT_COMMANDS]},
         )
+
+    def _set_subscription_menu(self, chat_id: str, state: str) -> None:
+        commands = (
+            APPROVED_GOLDI_COMMANDS
+            if state == "approved"
+            else PENDING_GOLDI_COMMANDS
+            if state == "pending"
+            else PUBLIC_GOLDI_COMMANDS
+        )
+        self.telegram.replace_commands(
+            commands=commands,
+            chat_ids={chat_id},
+            include_default=False,
+        )
+
+    def _safe_set_subscription_menu(self, chat_id: str, state: str) -> None:
+        try:
+            self._set_subscription_menu(chat_id, state)
+        except Exception as exc:
+            self._audit_runtime_failure("SUBSCRIPTION_MENU_SYNC_FAILED", exc)
 
     def request_stop(self) -> None:
         self._stop_event.set()
@@ -139,21 +186,34 @@ class GlobalOrchestrator:
             update_id = int(update.get("update_id") or 0)
             if update_id:
                 self._state["telegram_offset"] = update_id + 1
-            callback = update.get("callback_query") or {}
-            if callback:
+            try:
+                callback = update.get("callback_query") or {}
+                if callback:
+                    handled += 1
+                    self.handle_callback(callback)
+                    continue
+                message = update.get("message") or {}
+                chat = message.get("chat") or {}
+                actor_id = str(chat.get("id") or "")
+                text = str(message.get("text") or "").strip()
+                if not text:
+                    continue
                 handled += 1
-                self.handle_callback(callback)
-                continue
-            message = update.get("message") or {}
-            chat = message.get("chat") or {}
-            actor_id = str(chat.get("id") or "")
-            text = str(message.get("text") or "").strip()
-            if not text:
-                continue
-            handled += 1
-            self.handle_command(actor_id=actor_id, text=text, chat=chat)
-        if updates:
-            self._save_state()
+                self.handle_command(actor_id=actor_id, text=text, chat=chat)
+            except Exception as exc:
+                self._audit_runtime_failure(
+                    "TELEGRAM_UPDATE_FAILED",
+                    exc,
+                )
+                callback = update.get("callback_query") or {}
+                self._safe_answer_callback(
+                    str(callback.get("id") or ""),
+                    "Aksi gagal diproses. Bot tetap aktif; coba Refresh.",
+                    show_alert=True,
+                )
+            finally:
+                if update_id:
+                    self._save_state()
         return handled
 
     def handle_command(
@@ -215,12 +275,11 @@ class GlobalOrchestrator:
         actor_id = str(actor.get("id") or "")
         data = str(callback.get("data") or "")
         if actor_id not in set(self.config.admin_chat_ids):
-            if callback_id:
-                self.telegram.answer_callback_query(
-                    callback_query_id=callback_id,
-                    text="Tombol ini khusus admin.",
-                    show_alert=True,
-                )
+            self._safe_answer_callback(
+                callback_id,
+                "Tombol ini khusus admin.",
+                show_alert=True,
+            )
             self._audit("UNAUTHORIZED_CALLBACK", {"actor_id": actor_id})
             return
         if data.startswith("worker:"):
@@ -243,13 +302,13 @@ class GlobalOrchestrator:
                 "cancel_remove",
             }
         ):
-            if callback_id:
-                self.telegram.answer_callback_query(
-                    callback_query_id=callback_id,
-                    text="Aksi tidak dikenal.",
-                    show_alert=True,
-                )
+            self._safe_answer_callback(
+                callback_id,
+                "Aksi tidak dikenal.",
+                show_alert=True,
+            )
             return
+        self._safe_answer_callback(callback_id, "Diproses…")
         message = callback.get("message") or {}
         message_chat = message.get("chat") or {}
         message_chat_id = str(message_chat.get("id") or "")
@@ -293,11 +352,24 @@ class GlobalOrchestrator:
                 text=text,
                 reply_markup=markup,
             )
-        if callback_id:
+
+    def _safe_answer_callback(
+        self,
+        callback_id: str,
+        text: str,
+        *,
+        show_alert: bool = False,
+    ) -> None:
+        if not callback_id:
+            return
+        try:
             self.telegram.answer_callback_query(
                 callback_query_id=callback_id,
-                text=result,
+                text=text[:180],
+                show_alert=show_alert,
             )
+        except Exception as exc:
+            self._audit_runtime_failure("CALLBACK_ANSWER_FAILED", exc)
 
     def _handle_public_command(
         self,
@@ -335,6 +407,7 @@ class GlobalOrchestrator:
                     }
                     self._state["goldi_pending"] = pending
                     self._save_state()
+                    self._safe_set_subscription_menu(actor_id, "pending")
                     response = "Permintaan akses GOLD.i dikirim ke admin."
                     self._send_goldi_approval_cards(actor_id, pending[actor_id])
                     self._audit(
@@ -363,6 +436,7 @@ class GlobalOrchestrator:
             self._state["goldi_pending"] = pending
             self._state["goldi_subscriber_details"] = subscriber_details
             self._clear_approval_buttons(actor_id)
+            self._safe_set_subscription_menu(actor_id, "unregistered")
             self._save_state()
             response = "Notifikasi GOLD.i dihentikan."
             self._audit("GOLDI_SUBSCRIPTION_STOPPED", {"chat_id": actor_id})
@@ -564,6 +638,10 @@ class GlobalOrchestrator:
         self._state["goldi_subscribers"] = sorted(subscribers, key=int)
         self._state["goldi_subscriber_details"] = subscriber_details
         self._clear_approval_buttons(target_id)
+        self._safe_set_subscription_menu(
+            target_id,
+            "approved" if command == "/approve" else "unregistered",
+        )
         self._save_state()
         self.telegram.send_message(chat_id=target_id, text=target_message)
         self._audit(event, {"chat_id": target_id})
@@ -744,6 +822,7 @@ class GlobalOrchestrator:
 
     def _handle_worker_callback(self, callback: dict[str, Any]) -> None:
         callback_id = str(callback.get("id") or "")
+        self._safe_answer_callback(callback_id, "Diproses…")
         data = str(callback.get("data") or "")
         parts = data.split(":")
         message = callback.get("message") or {}
@@ -791,11 +870,6 @@ class GlobalOrchestrator:
                 message_id=message_id,
                 text=text,
                 reply_markup=markup,
-            )
-        if callback_id:
-            self.telegram.answer_callback_query(
-                callback_query_id=callback_id,
-                text=result.splitlines()[0][:180],
             )
 
     @staticmethod

@@ -228,8 +228,7 @@ class GlobalOrchestratorTests(unittest.TestCase):
         commands, chat_ids = self.telegram.command_menus[-1]
         names = {item["command"] for item in commands}
         self.assertEqual(chat_ids, {"123"})
-        self.assertIn("goldi_on", names)
-        self.assertIn("goldm_on", names)
+        self.assertEqual(names, {"status", "pending", "subscribers", "help"})
         self.assertIn("pending", names)
         self.assertNotIn("control", names)
 
@@ -237,7 +236,7 @@ class GlobalOrchestratorTests(unittest.TestCase):
         self.assertEqual(public_chat_ids, set())
         self.assertEqual(
             {item["command"] for item in public_commands},
-            {"start", "subscription", "stop"},
+            {"start"},
         )
 
     def test_approval_is_goldi_subscription_only(self) -> None:
@@ -260,6 +259,12 @@ class GlobalOrchestratorTests(unittest.TestCase):
                 "goldi_sub:prompt_approve:-999",
                 "goldi_sub:prompt_deny:-999",
             },
+        )
+        pending_menu = self.telegram.command_menus[-1]
+        self.assertEqual(pending_menu[1], {"-999"})
+        self.assertEqual(
+            {item["command"] for item in pending_menu[0]},
+            {"subscription"},
         )
 
         self.runtime.handle_command(actor_id="123", text="/pending")
@@ -303,6 +308,12 @@ class GlobalOrchestratorTests(unittest.TestCase):
             {"inline_keyboard": []},
         )
         self.assertGreaterEqual(len(self.telegram.edited_markups), 2)
+        approved_menu = self.telegram.command_menus[-1]
+        self.assertEqual(approved_menu[1], {"-999"})
+        self.assertEqual(
+            {item["command"] for item in approved_menu[0]},
+            {"subscription", "stop"},
+        )
 
     def test_worker_panel_buttons_follow_opposite_state_with_confirmation(self) -> None:
         self.runtime.handle_command(actor_id="123", text="/status")
@@ -348,6 +359,42 @@ class GlobalOrchestratorTests(unittest.TestCase):
         self.runtime._state["goldi_subscribers"] = ["999"]
         self.runtime.handle_command(actor_id="999", text="/goldm_on")
         self.assertNotIn("goldm", self.runtime._children)
+
+    def test_failed_callback_isolated_and_later_update_still_processed(self) -> None:
+        original_edit = self.telegram.edit_message_text
+
+        def fail_edit(**_kwargs):
+            raise RuntimeError("simulated edit failure")
+
+        self.telegram.edit_message_text = fail_edit
+        self.telegram.updates = [
+            {
+                "update_id": 50,
+                "callback_query": {
+                    "id": "broken-callback",
+                    "from": {"id": 123},
+                    "data": "worker:refresh",
+                    "message": {"message_id": 10, "chat": {"id": 123}},
+                },
+            },
+            {
+                "update_id": 51,
+                "message": {"chat": {"id": 123}, "text": "/help"},
+            },
+        ]
+
+        self.assertEqual(self.runtime.poll_once(timeout=0), 2)
+        self.telegram.edit_message_text = original_edit
+        self.assertEqual(self.runtime._state["telegram_offset"], 52)
+        self.assertTrue(any("GOLD worker control" in text for _, text in self.telegram.sent))
+        audit = self.config.audit_path.read_text(encoding="utf-8")
+        self.assertIn("TELEGRAM_UPDATE_FAILED", audit)
+        self.assertTrue(
+            any(
+                item.get("text") == "Diproses…"
+                for item in self.telegram.callback_answers
+            )
+        )
 
 
 if __name__ == "__main__":
