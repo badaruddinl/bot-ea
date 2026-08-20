@@ -27,8 +27,8 @@ ORCHESTRATOR_BOT_COMMANDS: tuple[dict[str, str], ...] = (
     {"command": "status", "description": "Status kedua worker GOLD"},
     {"command": "workers", "description": "Detail proses dan heartbeat"},
     {"command": "heartbeat", "description": "Kirim status sekarang"},
-    {"command": "goldi_on", "description": "Hidupkan sinyal GOLD.i"},
-    {"command": "goldi_off", "description": "Matikan sinyal GOLD.i"},
+    {"command": "goldi_on", "description": "Hidupkan entry demo GOLD.i"},
+    {"command": "goldi_off", "description": "Matikan entry demo GOLD.i"},
     {"command": "goldm_on", "description": "Hidupkan trading real GOLDm"},
     {"command": "goldm_off", "description": "Matikan trading real GOLDm"},
     {"command": "all_on", "description": "Hidupkan kedua worker"},
@@ -76,10 +76,7 @@ class GlobalOrchestrator:
         self._install_signal_handlers()
         self._save_state()
         self.publish_command_menu()
-        self._send_all(
-            f"{self.config.orchestrator_id} ONLINE\n"
-            f"pid={os.getpid()} workers={self._desired_summary()}"
-        )
+        self._announce_online()
         self._last_heartbeat = self._monotonic()
         self._audit("ORCHESTRATOR_ONLINE", {"pid": os.getpid()})
         try:
@@ -96,6 +93,25 @@ class GlobalOrchestrator:
             for name in list(self._children):
                 self.stop_worker(name, notify=False)
             self._audit("ORCHESTRATOR_STOPPED", {})
+
+    def _announce_online(self) -> bool:
+        now = datetime.now(timezone.utc)
+        raw_previous = str(self._state.get("last_online_notice_at") or "")
+        try:
+            previous = datetime.fromisoformat(raw_previous)
+            elapsed = (now - previous.astimezone(timezone.utc)).total_seconds()
+        except ValueError:
+            elapsed = 300.0
+        if elapsed < 300.0:
+            return False
+        self._send_all(
+            f"🟢 ORCHESTRATOR ONLINE\n"
+            f"Worker: {self._desired_summary()}\n"
+            f"Waktu: {self._human_time(now)}"
+        )
+        self._state["last_online_notice_at"] = now.isoformat()
+        self._save_state()
+        return True
 
     def publish_command_menu(self) -> None:
         self.telegram.replace_commands(
@@ -123,6 +139,11 @@ class GlobalOrchestrator:
             update_id = int(update.get("update_id") or 0)
             if update_id:
                 self._state["telegram_offset"] = update_id + 1
+            callback = update.get("callback_query") or {}
+            if callback:
+                handled += 1
+                self.handle_callback(callback)
+                continue
             message = update.get("message") or {}
             chat = message.get("chat") or {}
             actor_id = str(chat.get("id") or "")
@@ -130,23 +151,34 @@ class GlobalOrchestrator:
             if not text:
                 continue
             handled += 1
-            self.handle_command(actor_id=actor_id, text=text)
+            self.handle_command(actor_id=actor_id, text=text, chat=chat)
         if updates:
             self._save_state()
         return handled
 
-    def handle_command(self, *, actor_id: str, text: str) -> None:
+    def handle_command(
+        self,
+        *,
+        actor_id: str,
+        text: str,
+        chat: dict[str, Any] | None = None,
+    ) -> None:
         command_parts = text.split()
         command = command_parts[0].split("@", 1)[0].lower()
         arguments = command_parts[1:]
         if actor_id not in set(self.config.admin_chat_ids):
-            self._handle_public_command(actor_id=actor_id, command=command)
+            self._handle_public_command(
+                actor_id=actor_id,
+                command=command,
+                chat=chat or {},
+            )
             return
         if command in {"/start", "/help"}:
             response = self.help_text()
         elif command in {"/status", "/workers", "/heartbeat"}:
             self.supervise_once(now=self._monotonic())
-            response = self.status_text()
+            self._send_worker_panel(actor_id)
+            return
         elif command in {"/goldi_on", "/goldm_on"}:
             name = command[1:].removesuffix("_on")
             response = self.set_desired(name, True)
@@ -160,41 +192,155 @@ class GlobalOrchestrator:
             responses = [self.set_desired(name, False) for name in ("goldi", "goldm")]
             response = "\n".join(responses)
         elif command == "/pending":
-            response = self.pending_text()
+            response = self._send_pending_cards(actor_id)
         elif command == "/subscribers":
-            response = self.subscribers_text()
+            response = self._send_subscriber_cards(actor_id)
         elif command in {"/approve", "/deny", "/remove"}:
             if not arguments:
                 response = f"Gunakan {command} <chat_id>."
             else:
-                response = self._admin_subscription_action(
-                    command=command,
+                self._send_subscription_confirmation(
+                    actor_id=actor_id,
+                    action=command.lstrip("/"),
                     target_id=arguments[0],
                 )
+                return
         else:
             response = "Perintah tidak dikenal. Gunakan /help."
         self.telegram.send_message(chat_id=actor_id, text=response)
 
-    def _handle_public_command(self, *, actor_id: str, command: str) -> None:
+    def handle_callback(self, callback: dict[str, Any]) -> None:
+        callback_id = str(callback.get("id") or "")
+        actor = callback.get("from") or {}
+        actor_id = str(actor.get("id") or "")
+        data = str(callback.get("data") or "")
+        if actor_id not in set(self.config.admin_chat_ids):
+            if callback_id:
+                self.telegram.answer_callback_query(
+                    callback_query_id=callback_id,
+                    text="Tombol ini khusus admin.",
+                    show_alert=True,
+                )
+            self._audit("UNAUTHORIZED_CALLBACK", {"actor_id": actor_id})
+            return
+        if data.startswith("worker:"):
+            self._handle_worker_callback(callback)
+            return
+        parts = data.split(":", 2)
+        if (
+            len(parts) != 3
+            or parts[0] != "goldi_sub"
+            or parts[1]
+            not in {
+                "prompt_approve",
+                "prompt_deny",
+                "prompt_remove",
+                "confirm_approve",
+                "confirm_deny",
+                "confirm_remove",
+                "cancel_approve",
+                "cancel_deny",
+                "cancel_remove",
+            }
+        ):
+            if callback_id:
+                self.telegram.answer_callback_query(
+                    callback_query_id=callback_id,
+                    text="Aksi tidak dikenal.",
+                    show_alert=True,
+                )
+            return
+        message = callback.get("message") or {}
+        message_chat = message.get("chat") or {}
+        message_chat_id = str(message_chat.get("id") or "")
+        message_id = int(message.get("message_id") or 0)
+        phase, action = parts[1].split("_", 1)
+        target_id = parts[2]
+        result = ""
+        if phase == "prompt":
+            label = self._subscription_action_label(action, target_id)
+            text = f"⚠️ KONFIRMASI\n\n{label}\n\nYakin menjalankan tindakan ini?"
+            markup = {
+                "inline_keyboard": [
+                    [
+                        {
+                            "text": "✅ Yakin",
+                            "callback_data": f"goldi_sub:confirm_{action}:{target_id}",
+                        },
+                        {
+                            "text": "↩️ Batal",
+                            "callback_data": f"goldi_sub:cancel_{action}:{target_id}",
+                        },
+                    ]
+                ]
+            }
+            result = "Pilih Yakin atau Batal."
+        elif phase == "cancel":
+            text, markup = self._subscription_card_for_action(action, target_id)
+            result = "Tindakan dibatalkan."
+        else:
+            result = self._admin_subscription_action(
+                command=f"/{action}",
+                target_id=target_id,
+            )
+            icon = "✅" if action in {"approve", "remove"} else "❌"
+            text = f"{icon} STATUS PERMINTAAN\n\n{result}"
+            markup = {"inline_keyboard": []}
+        if message_chat_id and message_id:
+            self.telegram.edit_message_text(
+                chat_id=message_chat_id,
+                message_id=message_id,
+                text=text,
+                reply_markup=markup,
+            )
+        if callback_id:
+            self.telegram.answer_callback_query(
+                callback_query_id=callback_id,
+                text=result,
+            )
+
+    def _handle_public_command(
+        self,
+        *,
+        actor_id: str,
+        command: str,
+        chat: dict[str, Any],
+    ) -> None:
         if command == "/start":
             subscribers = set(self._state.get("goldi_subscribers") or [])
             if actor_id in subscribers:
                 response = "Akses notifikasi GOLD.i sudah aktif."
             else:
                 pending = dict(self._state.get("goldi_pending") or {})
-                pending[actor_id] = {
-                    "requested_at": datetime.now(timezone.utc).isoformat(),
-                }
-                self._state["goldi_pending"] = pending
-                self._save_state()
-                response = "Permintaan akses GOLD.i dikirim ke admin."
-                self._send_all(
-                    "GOLD.i SUBSCRIPTION REQUEST\n"
-                    f"chat_id={actor_id}\n"
-                    f"approve: /approve {actor_id}\n"
-                    f"deny: /deny {actor_id}"
-                )
-                self._audit("GOLDI_SUBSCRIPTION_REQUESTED", {"chat_id": actor_id})
+                if actor_id in pending:
+                    response = "Permintaan akses GOLD.i masih menunggu keputusan admin."
+                else:
+                    display_name = str(
+                        chat.get("title")
+                        or chat.get("username")
+                        or " ".join(
+                            item
+                            for item in (
+                                str(chat.get("first_name") or "").strip(),
+                                str(chat.get("last_name") or "").strip(),
+                            )
+                            if item
+                        )
+                        or "Tanpa nama"
+                    )
+                    pending[actor_id] = {
+                        "requested_at": datetime.now(timezone.utc).isoformat(),
+                        "display_name": display_name,
+                        "chat_type": str(chat.get("type") or "unknown"),
+                    }
+                    self._state["goldi_pending"] = pending
+                    self._save_state()
+                    response = "Permintaan akses GOLD.i dikirim ke admin."
+                    self._send_goldi_approval_cards(actor_id, pending[actor_id])
+                    self._audit(
+                        "GOLDI_SUBSCRIPTION_REQUESTED",
+                        {"chat_id": actor_id, "display_name": display_name},
+                    )
         elif command == "/subscription":
             subscribers = set(self._state.get("goldi_subscribers") or [])
             pending = dict(self._state.get("goldi_pending") or {})
@@ -209,8 +355,14 @@ class GlobalOrchestrator:
             subscribers.discard(actor_id)
             pending = dict(self._state.get("goldi_pending") or {})
             pending.pop(actor_id, None)
+            subscriber_details = dict(
+                self._state.get("goldi_subscriber_details") or {}
+            )
+            subscriber_details.pop(actor_id, None)
             self._state["goldi_subscribers"] = sorted(subscribers, key=int)
             self._state["goldi_pending"] = pending
+            self._state["goldi_subscriber_details"] = subscriber_details
+            self._clear_approval_buttons(actor_id)
             self._save_state()
             response = "Notifikasi GOLD.i dihentikan."
             self._audit("GOLDI_SUBSCRIPTION_STOPPED", {"chat_id": actor_id})
@@ -219,43 +371,252 @@ class GlobalOrchestrator:
             self._audit("UNAUTHORIZED_COMMAND", {"actor_id": actor_id})
         self.telegram.send_message(chat_id=actor_id, text=response)
 
+    @staticmethod
+    def _approval_markup(target_id: str) -> dict[str, Any]:
+        return {
+            "inline_keyboard": [
+                [
+                    {
+                        "text": "✅ Approve",
+                        "callback_data": f"goldi_sub:prompt_approve:{target_id}",
+                    },
+                    {
+                        "text": "❌ Reject",
+                        "callback_data": f"goldi_sub:prompt_deny:{target_id}",
+                    },
+                ]
+            ]
+        }
+
+    @staticmethod
+    def _subscription_action_label(action: str, target_id: str) -> str:
+        labels = {
+            "approve": "Setujui akses notifikasi GOLD.i",
+            "deny": "Tolak permintaan akses GOLD.i",
+            "remove": "Hapus akses subscriber GOLD.i",
+        }
+        return f"{labels.get(action, 'Aksi tidak dikenal')}\nChat ID: {target_id}"
+
+    def _subscription_card_for_action(
+        self,
+        action: str,
+        target_id: str,
+    ) -> tuple[str, dict[str, Any]]:
+        if action in {"approve", "deny"}:
+            values = dict((self._state.get("goldi_pending") or {}).get(target_id) or {})
+            return (
+                self._approval_card_text(target_id, values),
+                self._approval_markup(target_id),
+            )
+        values = dict(
+            (self._state.get("goldi_subscriber_details") or {}).get(target_id) or {}
+        )
+        return (
+            self._subscriber_card_text(target_id, values),
+            {
+                "inline_keyboard": [
+                    [
+                        {
+                            "text": "🗑 Hapus akses",
+                            "callback_data": f"goldi_sub:prompt_remove:{target_id}",
+                        }
+                    ]
+                ]
+            },
+        )
+
+    def _send_subscription_confirmation(
+        self,
+        *,
+        actor_id: str,
+        action: str,
+        target_id: str,
+    ) -> None:
+        normalized = self._normalize_chat_id(target_id)
+        if normalized is None:
+            self.telegram.send_message(
+                chat_id=actor_id,
+                text="Chat ID harus berupa angka positif atau negatif, selain 0.",
+            )
+            return
+        self.telegram.send_message(
+            chat_id=actor_id,
+            text=(
+                "⚠️ KONFIRMASI\n\n"
+                f"{self._subscription_action_label(action, normalized)}\n\n"
+                "Yakin menjalankan tindakan ini?"
+            ),
+            reply_markup={
+                "inline_keyboard": [
+                    [
+                        {
+                            "text": "✅ Yakin",
+                            "callback_data": f"goldi_sub:confirm_{action}:{normalized}",
+                        },
+                        {
+                            "text": "↩️ Batal",
+                            "callback_data": f"goldi_sub:cancel_{action}:{normalized}",
+                        },
+                    ]
+                ]
+            },
+        )
+
+    def _approval_card_text(
+        self,
+        target_id: str,
+        values: dict[str, Any],
+    ) -> str:
+        return (
+            "🔐 Permintaan akses GOLD.i\n"
+            f"Nama: {values.get('display_name', 'Tanpa nama')}\n"
+            f"Chat ID: {target_id}\n"
+            f"Jenis chat: {values.get('chat_type', 'unknown')}\n"
+            f"Waktu: {self._human_time(values.get('requested_at'))}"
+        )
+
+    @staticmethod
+    def _subscriber_card_text(
+        target_id: str,
+        values: dict[str, Any],
+    ) -> str:
+        return (
+            "🔔 Subscriber GOLD.i\n"
+            f"Nama: {values.get('display_name', 'Tanpa nama')}\n"
+            f"Chat ID: {target_id}\n"
+            f"Jenis chat: {values.get('chat_type', 'unknown')}"
+        )
+
+    def _send_goldi_approval_cards(
+        self,
+        target_id: str,
+        values: dict[str, Any],
+        *,
+        recipients: tuple[str, ...] | None = None,
+    ) -> int:
+        text = self._approval_card_text(target_id, values)
+        messages = dict(self._state.get("goldi_approval_messages") or {})
+        tracked = list(messages.get(target_id) or [])
+        sent = 0
+        for admin_id in recipients or self.config.admin_chat_ids:
+            result = self.telegram.send_message(
+                chat_id=admin_id,
+                text=text,
+                reply_markup=self._approval_markup(target_id),
+            )
+            message_id = int((result or {}).get("message_id") or 0)
+            if message_id > 0:
+                tracked.append(
+                    {"chat_id": str(admin_id), "message_id": message_id}
+                )
+            sent += 1
+        messages[target_id] = tracked[-20:]
+        self._state["goldi_approval_messages"] = messages
+        self._save_state()
+        return sent
+
+    def _send_pending_cards(self, actor_id: str) -> str:
+        pending = dict(self._state.get("goldi_pending") or {})
+        if not pending:
+            return "Tidak ada permintaan GOLD.i pending."
+        for target_id, values in sorted(
+            pending.items(), key=lambda item: int(item[0])
+        ):
+            self._send_goldi_approval_cards(
+                target_id,
+                dict(values or {}),
+                recipients=(actor_id,),
+            )
+        return f"{len(pending)} permintaan GOLD.i ditampilkan dengan tombol keputusan."
+
     def _admin_subscription_action(self, *, command: str, target_id: str) -> str:
-        if not target_id.isascii() or not target_id.isdecimal() or int(target_id) <= 0:
-            return "chat_id harus berupa angka positif."
-        target_id = str(int(target_id))
+        normalized = self._normalize_chat_id(target_id)
+        if normalized is None:
+            return "Chat ID harus berupa angka positif atau negatif, selain 0."
+        target_id = normalized
         pending = dict(self._state.get("goldi_pending") or {})
         subscribers = set(self._state.get("goldi_subscribers") or [])
+        subscriber_details = dict(
+            self._state.get("goldi_subscriber_details") or {}
+        )
         if command == "/approve":
-            pending.pop(target_id, None)
+            request_details = dict(pending.pop(target_id, {}) or {})
             subscribers.add(target_id)
+            subscriber_details[target_id] = request_details
             result = f"GOLD.i subscriber APPROVED: {target_id}"
             target_message = "Akses notifikasi entry GOLD.i telah disetujui."
             event = "GOLDI_SUBSCRIPTION_APPROVED"
         elif command == "/deny":
             pending.pop(target_id, None)
             subscribers.discard(target_id)
+            subscriber_details.pop(target_id, None)
             result = f"Permintaan GOLD.i ditolak: {target_id}"
             target_message = "Permintaan akses notifikasi GOLD.i ditolak."
             event = "GOLDI_SUBSCRIPTION_DENIED"
         else:
             pending.pop(target_id, None)
             subscribers.discard(target_id)
+            subscriber_details.pop(target_id, None)
             result = f"GOLD.i subscriber dihapus: {target_id}"
             target_message = "Akses notifikasi GOLD.i dihentikan oleh admin."
             event = "GOLDI_SUBSCRIPTION_REMOVED"
         self._state["goldi_pending"] = pending
         self._state["goldi_subscribers"] = sorted(subscribers, key=int)
+        self._state["goldi_subscriber_details"] = subscriber_details
+        self._clear_approval_buttons(target_id)
         self._save_state()
         self.telegram.send_message(chat_id=target_id, text=target_message)
         self._audit(event, {"chat_id": target_id})
         return result
+
+    @staticmethod
+    def _normalize_chat_id(value: object) -> str | None:
+        text = str(value).strip()
+        if not text or not text.isascii():
+            return None
+        digits = text[1:] if text.startswith("-") else text
+        if not digits.isdecimal():
+            return None
+        number = int(text)
+        return str(number) if number != 0 else None
+
+    def _clear_approval_buttons(self, target_id: str) -> None:
+        messages = dict(self._state.get("goldi_approval_messages") or {})
+        tracked = list(messages.pop(target_id, []) or [])
+        for item in tracked:
+            try:
+                self.telegram.edit_message_reply_markup(
+                    chat_id=str(item["chat_id"]),
+                    message_id=int(item["message_id"]),
+                    reply_markup={"inline_keyboard": []},
+                )
+            except Exception as exc:
+                self._audit(
+                    "GOLDI_APPROVAL_BUTTON_CLEAR_FAILED",
+                    {
+                        "target_id": target_id,
+                        "chat_id": item.get("chat_id"),
+                        "message_id": item.get("message_id"),
+                        "error": type(exc).__name__,
+                    },
+                )
+        self._state["goldi_approval_messages"] = messages
+
+    @staticmethod
+    def _human_time(value: object) -> str:
+        try:
+            parsed = datetime.fromisoformat(str(value))
+        except ValueError:
+            return str(value or "-")
+        return parsed.astimezone().strftime("%d %b %Y • %H:%M %Z")
 
     def pending_text(self) -> str:
         pending = dict(self._state.get("goldi_pending") or {})
         if not pending:
             return "Tidak ada permintaan GOLD.i pending."
         return "GOLD.i PENDING\n" + "\n".join(
-            f"{chat_id} requested_at={values.get('requested_at', '-')}"
+            f"{chat_id} • {values.get('display_name', 'Tanpa nama')} • "
+            f"{self._human_time(values.get('requested_at', '-'))}"
             for chat_id, values in sorted(pending.items(), key=lambda item: int(item[0]))
         )
 
@@ -267,14 +628,217 @@ class GlobalOrchestrator:
             sorted((str(item) for item in subscribers), key=int)
         )
 
-    def set_desired(self, name: str, enabled: bool) -> str:
+    def _send_subscriber_cards(self, actor_id: str) -> str:
+        subscribers = sorted(
+            (str(item) for item in (self._state.get("goldi_subscribers") or [])),
+            key=int,
+        )
+        if not subscribers:
+            return "Belum ada subscriber GOLD.i."
+        details = dict(self._state.get("goldi_subscriber_details") or {})
+        for target_id in subscribers:
+            values = dict(details.get(target_id) or {})
+            self.telegram.send_message(
+                chat_id=actor_id,
+                text=self._subscriber_card_text(target_id, values),
+                reply_markup={
+                    "inline_keyboard": [
+                        [
+                            {
+                                "text": "🗑 Hapus akses",
+                                "callback_data": f"goldi_sub:prompt_remove:{target_id}",
+                            }
+                        ]
+                    ]
+                },
+            )
+        return f"{len(subscribers)} subscriber GOLD.i ditampilkan."
+
+    def _worker_panel_markup(self) -> dict[str, Any]:
+        desired = dict(self._state.get("desired") or {})
+        goldi_on = bool(desired.get("goldi", False))
+        goldm_on = bool(desired.get("goldm", False))
+        rows = [
+            [
+                {
+                    "text": (
+                        "⏹ Matikan GOLD.i DEMO"
+                        if goldi_on
+                        else "▶️ Hidupkan GOLD.i DEMO"
+                    ),
+                    "callback_data": (
+                        "worker:prompt:goldi_off"
+                        if goldi_on
+                        else "worker:prompt:goldi_on"
+                    ),
+                }
+            ],
+            [
+                {
+                    "text": (
+                        "⏹ Matikan GOLDm REAL"
+                        if goldm_on
+                        else "🔴 Hidupkan GOLDm REAL"
+                    ),
+                    "callback_data": (
+                        "worker:prompt:goldm_off"
+                        if goldm_on
+                        else "worker:prompt:goldm_on"
+                    ),
+                }
+            ],
+        ]
+        if goldi_on or goldm_on:
+            rows.append(
+                [
+                    {
+                        "text": "⏹ Matikan Semua",
+                        "callback_data": "worker:prompt:all_off",
+                    }
+                ]
+            )
+        rows.append(
+            [{"text": "🔄 Refresh", "callback_data": "worker:refresh"}]
+        )
+        return {"inline_keyboard": rows}
+
+    def _worker_panel_text(self) -> str:
+        desired = dict(self._state.get("desired") or {})
+        lines = ["🎛 KONTROL WORKER GOLD", ""]
+        for name, label in (("goldi", "GOLD.i DEMO"), ("goldm", "GOLDm REAL")):
+            spec = self.config.workers[name]
+            process = self._children.get(name)
+            running = process is not None and process.poll() is None
+            enabled = bool(desired.get(name, spec.enabled_on_first_boot))
+            health = self._read_health(spec.health_path)
+            state_icon = "🟢" if enabled and running else "🟡" if enabled else "⚫"
+            lines.append(
+                f"{state_icon} {label}: "
+                f"{'ON' if enabled else 'OFF'} • "
+                f"{'RUNNING' if running else 'STOPPED'}"
+            )
+            if health.get("login"):
+                lines.append(
+                    f"   Akun {health['login']} • saldo "
+                    f"{float(health.get('balance') or 0):.2f} USD"
+                )
+            if health.get("updated_at"):
+                lines.append(
+                    f"   Update: {self._human_time(health['updated_at'])}"
+                )
+        lines.extend(
+            [
+                "",
+                "Tombol selalu menunjukkan aksi berikutnya.",
+                "GOLDm adalah akun REAL.",
+            ]
+        )
+        return "\n".join(lines)
+
+    def _send_worker_panel(self, chat_id: str) -> None:
+        self.telegram.send_message(
+            chat_id=chat_id,
+            text=self._worker_panel_text(),
+            reply_markup=self._worker_panel_markup(),
+        )
+
+    def _handle_worker_callback(self, callback: dict[str, Any]) -> None:
+        callback_id = str(callback.get("id") or "")
+        data = str(callback.get("data") or "")
+        parts = data.split(":")
+        message = callback.get("message") or {}
+        chat = message.get("chat") or {}
+        chat_id = str(chat.get("id") or "")
+        message_id = int(message.get("message_id") or 0)
+        result = "Status diperbarui."
+        if parts == ["worker", "refresh"]:
+            text = self._worker_panel_text()
+            markup = self._worker_panel_markup()
+        elif len(parts) == 3 and parts[0] == "worker" and parts[1] == "prompt":
+            action = parts[2]
+            label = self._worker_action_label(action)
+            text = f"⚠️ KONFIRMASI\n\n{label}\n\nYakin menjalankan tindakan ini?"
+            markup = {
+                "inline_keyboard": [
+                    [
+                        {
+                            "text": "✅ Yakin",
+                            "callback_data": f"worker:confirm:{action}",
+                        },
+                        {
+                            "text": "↩️ Batal",
+                            "callback_data": f"worker:cancel:{action}",
+                        },
+                    ]
+                ]
+            }
+            result = "Pilih Yakin atau Batal."
+        elif len(parts) == 3 and parts[0] == "worker" and parts[1] == "cancel":
+            text = self._worker_panel_text()
+            markup = self._worker_panel_markup()
+            result = "Tindakan dibatalkan."
+        elif len(parts) == 3 and parts[0] == "worker" and parts[1] == "confirm":
+            result = self._execute_worker_action(parts[2])
+            text = f"✅ STATUS DIPERBARUI\n{result}\n\n{self._worker_panel_text()}"
+            markup = self._worker_panel_markup()
+        else:
+            text = self._worker_panel_text()
+            markup = self._worker_panel_markup()
+            result = "Aksi worker tidak dikenal."
+        if chat_id and message_id:
+            self.telegram.edit_message_text(
+                chat_id=chat_id,
+                message_id=message_id,
+                text=text,
+                reply_markup=markup,
+            )
+        if callback_id:
+            self.telegram.answer_callback_query(
+                callback_query_id=callback_id,
+                text=result.splitlines()[0][:180],
+            )
+
+    @staticmethod
+    def _worker_action_label(action: str) -> str:
+        labels = {
+            "goldi_on": "Hidupkan worker GOLD.i DEMO",
+            "goldi_off": "Matikan worker GOLD.i DEMO",
+            "goldm_on": "Hidupkan worker GOLDm REAL",
+            "goldm_off": "Matikan worker GOLDm REAL",
+            "all_off": "Matikan semua worker",
+        }
+        return labels.get(action, "Tindakan worker tidak dikenal")
+
+    def _execute_worker_action(self, action: str) -> str:
+        if action == "goldi_on":
+            return self.set_desired("goldi", True, notify_worker=False)
+        if action == "goldi_off":
+            return self.set_desired("goldi", False, notify_worker=False)
+        if action == "goldm_on":
+            return self.set_desired("goldm", True, notify_worker=False)
+        if action == "goldm_off":
+            return self.set_desired("goldm", False, notify_worker=False)
+        if action == "all_off":
+            return "\n".join(
+                self.set_desired(name, False, notify_worker=False)
+                for name in ("goldi", "goldm")
+            )
+        return "Aksi worker tidak dikenal."
+
+    def set_desired(
+        self,
+        name: str,
+        enabled: bool,
+        *,
+        notify_worker: bool = True,
+    ) -> str:
         self._require_worker(name)
         desired = dict(self._state.get("desired") or {})
         desired[name] = enabled
         self._state["desired"] = desired
         self._save_state()
         if enabled:
-            result = self.start_worker(name)
+            result = self.start_worker(name, notify=notify_worker)
         else:
             result = self.stop_worker(name, notify=False)
         self._audit("DESIRED_CHANGED", {"worker": name, "enabled": enabled})
@@ -399,12 +963,12 @@ class GlobalOrchestrator:
         return (
             "GOLD worker control (admin only)\n"
             "/workers atau /status - status lengkap\n"
-            "/goldi_on /goldi_off - sinyal GOLD.i\n"
+            "/goldi_on /goldi_off - entry demo GOLD.i\n"
             "/goldm_on /goldm_off - trading GOLDm real\n"
             "/all_on /all_off - kedua worker\n"
             "/pending /subscribers - audience GOLD.i\n"
             "/approve ID /deny ID /remove ID - kelola GOLD.i\n"
-            "/heartbeat - status segera"
+            "/heartbeat - buka panel kontrol worker"
         )
 
     def send_shutdown_notice(self, detail: str = "Windows shutdown event received") -> None:
@@ -424,11 +988,15 @@ class GlobalOrchestrator:
             if isinstance(payload, dict):
                 payload.setdefault("goldi_pending", {})
                 payload.setdefault("goldi_subscribers", [])
+                payload.setdefault("goldi_subscriber_details", {})
+                payload.setdefault("goldi_approval_messages", {})
                 return payload
         return {
             "telegram_offset": 0,
             "goldi_pending": {},
             "goldi_subscribers": [],
+            "goldi_subscriber_details": {},
+            "goldi_approval_messages": {},
             "desired": {
                 name: spec.enabled_on_first_boot
                 for name, spec in self.config.workers.items()

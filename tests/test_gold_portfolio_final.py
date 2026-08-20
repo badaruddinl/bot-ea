@@ -304,7 +304,7 @@ def test_goldi_subscribers_receive_entries_but_goldm_remains_admin_only(
 
     subscriber_state = tmp_path / "orchestrator-state.json"
     subscriber_state.write_text(
-        json.dumps({"goldi_subscribers": ["999"]}),
+        json.dumps({"goldi_subscribers": ["-999"]}),
         encoding="utf-8",
     )
     goldi = load_worker_config(ROOT / "config/final/goldi/worker.json")
@@ -318,7 +318,7 @@ def test_goldi_subscribers_receive_entries_but_goldm_remains_admin_only(
     goldi_client = CaptureClient()
     goldi_broadcast.client = goldi_client
     goldi_broadcast.send("entry", include_subscribers=True)
-    assert goldi_client.chat_ids == ["123", "999"]
+    assert goldi_client.chat_ids == ["-999", "123"]
 
     goldi_client.chat_ids.clear()
     goldi_broadcast.send("health", include_subscribers=False)

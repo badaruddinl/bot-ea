@@ -51,6 +51,29 @@ class TelegramBotClientTests(unittest.TestCase):
             self.assertIn("account", commands)
             self.assertIn("pending", commands)
 
+    def test_inline_message_can_be_replaced_and_buttons_removed(self) -> None:
+        client = RecordingTelegramBotClient()
+
+        client.edit_message_text(
+            chat_id="123",
+            message_id=77,
+            text="Status diperbarui",
+            reply_markup={"inline_keyboard": []},
+        )
+        client.edit_message_reply_markup(chat_id="123", message_id=78)
+
+        self.assertEqual(client.calls[0][0], "editMessageText")
+        self.assertEqual(client.calls[0][1]["message_id"], 77)
+        self.assertEqual(
+            client.calls[0][1]["reply_markup"],
+            {"inline_keyboard": []},
+        )
+        self.assertEqual(client.calls[1][0], "editMessageReplyMarkup")
+        self.assertEqual(
+            client.calls[1][1]["reply_markup"],
+            {"inline_keyboard": []},
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

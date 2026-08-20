@@ -21,16 +21,38 @@ class FakeTelegram:
     def __init__(self) -> None:
         self.updates: list[dict] = []
         self.sent: list[tuple[str, str]] = []
+        self.sent_details: list[dict] = []
+        self.edited_markups: list[dict] = []
+        self.edited_texts: list[dict] = []
+        self.callback_answers: list[dict] = []
         self.command_menus: list[tuple[tuple[dict[str, str], ...], set[str]]] = []
+        self.next_message_id = 100
 
     def get_updates(self, *, offset, timeout):
         del offset, timeout
         updates, self.updates = self.updates, []
         return updates
 
-    def send_message(self, *, chat_id, text, **_kwargs):
+    def send_message(self, *, chat_id, text, **kwargs):
         self.sent.append((str(chat_id), text))
-        return {}
+        self.next_message_id += 1
+        detail = {
+            "chat_id": str(chat_id),
+            "text": text,
+            "message_id": self.next_message_id,
+            **kwargs,
+        }
+        self.sent_details.append(detail)
+        return {"message_id": self.next_message_id}
+
+    def answer_callback_query(self, **kwargs):
+        self.callback_answers.append(kwargs)
+
+    def edit_message_reply_markup(self, **kwargs):
+        self.edited_markups.append(kwargs)
+
+    def edit_message_text(self, **kwargs):
+        self.edited_texts.append(kwargs)
 
     def replace_commands(self, *, commands, chat_ids, include_default=True):
         del include_default
@@ -162,7 +184,7 @@ class GlobalOrchestratorTests(unittest.TestCase):
 
     def test_help_distinguishes_signal_and_real_worker(self) -> None:
         help_text = self.runtime.help_text()
-        self.assertIn("sinyal GOLD.i", help_text)
+        self.assertIn("entry demo GOLD.i", help_text)
         self.assertIn("trading GOLDm real", help_text)
 
     def test_config_rejects_shared_mt5_executable(self) -> None:
@@ -193,6 +215,14 @@ class GlobalOrchestratorTests(unittest.TestCase):
         state = json.loads(self.config.state_path.read_text(encoding="utf-8"))
         self.assertEqual(state["desired"], {"goldi": False, "goldm": False})
 
+    def test_online_notice_is_suppressed_during_rapid_restart(self) -> None:
+        self.assertTrue(self.runtime._announce_online())
+        self.assertFalse(self.runtime._announce_online())
+        online_messages = [
+            text for _, text in self.telegram.sent if "ORCHESTRATOR ONLINE" in text
+        ]
+        self.assertEqual(len(online_messages), 1)
+
     def test_command_menu_replaces_old_approval_commands(self) -> None:
         self.runtime.publish_command_menu()
         commands, chat_ids = self.telegram.command_menus[-1]
@@ -211,13 +241,108 @@ class GlobalOrchestratorTests(unittest.TestCase):
         )
 
     def test_approval_is_goldi_subscription_only(self) -> None:
-        self.runtime.handle_command(actor_id="999", text="/start")
-        self.assertIn("999", self.runtime._state["goldi_pending"])
+        self.runtime.handle_command(
+            actor_id="-999",
+            text="/start",
+            chat={"id": -999, "title": "Goldi Viewers", "type": "group"},
+        )
+        self.assertIn("-999", self.runtime._state["goldi_pending"])
         self.assertNotIn("goldm", self.runtime._children)
-        self.runtime.handle_command(actor_id="123", text="/approve 999")
-        self.assertEqual(self.runtime._state["goldi_subscribers"], ["999"])
-        self.assertNotIn("999", self.runtime._state["goldi_pending"])
-        self.assertIn(("999", "Akses notifikasi entry GOLD.i telah disetujui."), self.telegram.sent)
+        request_card = next(
+            item
+            for item in self.telegram.sent_details
+            if item["chat_id"] == "123" and "Permintaan akses" in item["text"]
+        )
+        buttons = request_card["reply_markup"]["inline_keyboard"][0]
+        self.assertEqual(
+            {item["callback_data"] for item in buttons},
+            {
+                "goldi_sub:prompt_approve:-999",
+                "goldi_sub:prompt_deny:-999",
+            },
+        )
+
+        self.runtime.handle_command(actor_id="123", text="/pending")
+        tracked = self.runtime._state["goldi_approval_messages"]["-999"]
+        self.assertEqual(len(tracked), 2)
+
+        self.runtime.handle_callback(
+            {
+                "id": "callback-prompt",
+                "from": {"id": 123},
+                "data": "goldi_sub:prompt_approve:-999",
+                "message": {
+                    "message_id": request_card["message_id"],
+                    "chat": {"id": 123},
+                },
+            }
+        )
+        self.assertNotIn("-999", self.runtime._state["goldi_subscribers"])
+        self.assertIn("KONFIRMASI", self.telegram.edited_texts[-1]["text"])
+
+        self.runtime.handle_callback(
+            {
+                "id": "callback-confirm",
+                "from": {"id": 123},
+                "data": "goldi_sub:confirm_approve:-999",
+                "message": {
+                    "message_id": request_card["message_id"],
+                    "chat": {"id": 123},
+                },
+            }
+        )
+        self.assertEqual(self.runtime._state["goldi_subscribers"], ["-999"])
+        self.assertNotIn("-999", self.runtime._state["goldi_pending"])
+        self.assertIn(
+            ("-999", "Akses notifikasi entry GOLD.i telah disetujui."),
+            self.telegram.sent,
+        )
+        self.assertIn("STATUS PERMINTAAN", self.telegram.edited_texts[-1]["text"])
+        self.assertEqual(
+            self.telegram.edited_texts[-1]["reply_markup"],
+            {"inline_keyboard": []},
+        )
+        self.assertGreaterEqual(len(self.telegram.edited_markups), 2)
+
+    def test_worker_panel_buttons_follow_opposite_state_with_confirmation(self) -> None:
+        self.runtime.handle_command(actor_id="123", text="/status")
+        panel = self.telegram.sent_details[-1]
+        first_button = panel["reply_markup"]["inline_keyboard"][0][0]
+        self.assertEqual(first_button["text"], "▶️ Hidupkan GOLD.i DEMO")
+        self.assertEqual(first_button["callback_data"], "worker:prompt:goldi_on")
+
+        callback_message = {
+            "message_id": panel["message_id"],
+            "chat": {"id": 123},
+        }
+        self.runtime.handle_callback(
+            {
+                "id": "worker-prompt",
+                "from": {"id": 123},
+                "data": "worker:prompt:goldi_on",
+                "message": callback_message,
+            }
+        )
+        self.assertFalse(self.runtime._state["desired"]["goldi"])
+        confirmation = self.telegram.edited_texts[-1]
+        self.assertIn("Yakin", confirmation["text"])
+        confirm_button = confirmation["reply_markup"]["inline_keyboard"][0][0]
+        self.assertEqual(confirm_button["callback_data"], "worker:confirm:goldi_on")
+
+        self.runtime.handle_callback(
+            {
+                "id": "worker-confirm",
+                "from": {"id": 123},
+                "data": "worker:confirm:goldi_on",
+                "message": callback_message,
+            }
+        )
+        self.assertTrue(self.runtime._state["desired"]["goldi"])
+        status = self.telegram.edited_texts[-1]
+        self.assertIn("STATUS DIPERBARUI", status["text"])
+        new_button = status["reply_markup"]["inline_keyboard"][0][0]
+        self.assertEqual(new_button["text"], "⏹ Matikan GOLD.i DEMO")
+        self.assertEqual(new_button["callback_data"], "worker:prompt:goldi_off")
 
     def test_subscriber_cannot_control_goldm(self) -> None:
         self.runtime._state["goldi_subscribers"] = ["999"]

@@ -72,13 +72,13 @@ class TelegramBroadcast:
         except (OSError, ValueError):
             return set()
         values = payload.get("goldi_subscribers") if isinstance(payload, dict) else []
-        return {
-            str(int(item))
-            for item in (values or [])
-            if str(item).isascii()
-            and str(item).isdecimal()
-            and int(str(item)) > 0
-        }
+        normalized: set[str] = set()
+        for item in values or []:
+            text = str(item).strip()
+            digits = text[1:] if text.startswith("-") else text
+            if text.isascii() and digits.isdecimal() and int(text) != 0:
+                normalized.add(str(int(text)))
+        return normalized
 
 
 class CompositePortfolioWorker:

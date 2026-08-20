@@ -27,6 +27,20 @@ GOLD.i signal/entry/close lifecycle notifications. GOLDm notifications and all
 worker health/control messages are always admin-only; the subscriber registry
 is never consulted by GOLDm.
 
+Every GOLD.i request is rendered as an inline **Approve / Reject** card. Signed
+Telegram chat IDs are supported, including negative group IDs. A state-changing
+button first replaces the card with one **Yakin / Batal** confirmation. The
+chosen confirmation then replaces that same message with the final status and
+removes all buttons for every copy of the resolved request. `/pending` recreates
+cards for unresolved requests; `/subscribers` creates removable subscriber
+cards.
+
+`/status`, `/workers`, and `/heartbeat` render one worker-control panel. Each
+worker button always shows the opposite action from its current desired state:
+OFF shows **Hidupkan**, ON shows **Matikan**. After confirmation, the same panel
+is edited with the result and refreshed buttons. GOLDm is explicitly labelled
+REAL.
+
 Every signal, executed entry, and close notification identifies the instrument,
 signal/order/deal/position IDs where applicable, broker-server time, and VM
 local time with its timezone. GOLD.i demo and GOLDm real use separate MT5
