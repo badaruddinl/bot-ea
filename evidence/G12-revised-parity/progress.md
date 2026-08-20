@@ -14,14 +14,16 @@ Completed sub-batch:
 - hard invalidation acceptance;
 - adaptive M1 structural stop selection, fallback risk, target buffering, and
   snapshot causal validation;
+- confirmed M5/H1 supply-demand zones, acceptance, market regime, psychological
+  levels, swing candidates, and M1 pre-trigger obstacle clusters;
+- M5 setup classification, reinforcement, opposite cancellation, expiry,
+  consume semantics, and restart-state snapshot/restore;
 - dual-profile compile: 0 errors, 0 warnings;
 - G11 runtime invariants remain intact;
 - 10 focused tests passed.
 
 Remaining before PASS:
 
-- setup detector and restart state;
-- supply/demand and first obstacle;
 - supply/demand-aware entry decision and complete target selection;
 - complete decision reasons and evidence;
 - Python/MQL5 event-state-reason parity 100%;

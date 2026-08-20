@@ -68,8 +68,10 @@ struct RevisedEngineConfig
    int    fibonacci_lookback_m5;
    int    fibonacci_retest_separation_bars;
    double fibonacci_leave_fraction;
+   double psychological_steps[3];
    int    swing_span;
    int    minimum_m5_votes;
+   string strong_m5_patterns[6];
    double promotion_confidence;
   };
 
@@ -205,6 +207,57 @@ struct RevisedRiskStats
    int    m1_pivot_count;
   };
 
+struct RevisedZone
+  {
+   double   proximal;
+   double   distal;
+   datetime origin_time;
+   double   displacement_atr;
+   string   timeframe;
+   string   kind;
+   double   obstacle;
+   double   distance;
+   bool     inside;
+  };
+
+struct RevisedMarketRegimeStats
+  {
+   double m5_atr;
+   double m5_atr_expansion;
+   double h1_atr;
+   double h1_trend_atr;
+   double h1_efficiency;
+   bool   above_h1_sma20;
+  };
+
+struct RevisedM5Setup
+  {
+   EngineSide side;
+   datetime   trigger_time;
+   string     pattern;
+   int        votes;
+   double     confidence;
+   double     level;
+   double     invalidation;
+  };
+
+struct RevisedDetectorState
+  {
+   bool           buy_active;
+   RevisedM5Setup buy_setup;
+   bool           sell_active;
+   RevisedM5Setup sell_setup;
+   bool           buy_terminated;
+   RevisedM5Setup buy_terminated_setup;
+   string         buy_termination_reason;
+   bool           sell_terminated;
+   RevisedM5Setup sell_terminated_setup;
+   string         sell_termination_reason;
+   datetime       buy_consumed_at;
+   datetime       sell_consumed_at;
+   datetime       last_classified_m5;
+  };
+
 void LoadRevisedConfig(RevisedEngineConfig &config,const string symbol)
   {
    config.symbol=symbol;
@@ -248,8 +301,17 @@ void LoadRevisedConfig(RevisedEngineConfig &config,const string symbol)
    config.fibonacci_lookback_m5=12;
    config.fibonacci_retest_separation_bars=2;
    config.fibonacci_leave_fraction=0.25;
+   config.psychological_steps[0]=10.0;
+   config.psychological_steps[1]=50.0;
+   config.psychological_steps[2]=100.0;
    config.swing_span=2;
    config.minimum_m5_votes=2;
+   config.strong_m5_patterns[0]="BULL_ENGULFING";
+   config.strong_m5_patterns[1]="BEAR_ENGULFING";
+   config.strong_m5_patterns[2]="BULL_MORNING_STAR";
+   config.strong_m5_patterns[3]="BEAR_EVENING_STAR";
+   config.strong_m5_patterns[4]="BULL_REJECTION";
+   config.strong_m5_patterns[5]="BEAR_REJECTION";
    config.promotion_confidence=60.0;
   }
 

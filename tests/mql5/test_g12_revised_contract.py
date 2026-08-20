@@ -15,6 +15,8 @@ CONFIRMATION_PATH = (
     REPOSITORY_ROOT / "mt5" / "Include" / "bot-ea" / "GoldEngineRevisedConfirmation.mqh"
 )
 CONTEXT_PATH = REPOSITORY_ROOT / "mt5" / "Include" / "bot-ea" / "GoldEngineRevisedContext.mqh"
+ZONES_PATH = REPOSITORY_ROOT / "mt5" / "Include" / "bot-ea" / "GoldEngineRevisedZones.mqh"
+SETUP_PATH = REPOSITORY_ROOT / "mt5" / "Include" / "bot-ea" / "GoldEngineRevisedSetup.mqh"
 GEOMETRY_PATH = REPOSITORY_ROOT / "mt5" / "Include" / "bot-ea" / "GoldEngineRevisedGeometry.mqh"
 
 
@@ -113,3 +115,41 @@ def test_adaptive_stop_target_and_snapshot_validation_preserve_reference_rules()
     assert "config.scalper_target_buffer_atr" in value
     assert "config.strict_target_buffer_atr" in value
     assert "snapshot.m1_bars[m1_count-1].open_time>snapshot.current_time" in value
+
+
+def test_zones_regime_and_first_obstacle_preserve_reference_ordering() -> None:
+    value = ZONES_PATH.read_text(encoding="utf-8")
+    types = TYPES_PATH.read_text(encoding="utf-8")
+
+    assert "directional_count>=2" in value
+    assert "displacement>=atr*config.supply_displacement_atr" in value
+    assert "config.zone_acceptance_closes" in value
+    assert 'blocking_only && inside && timeframe=="H1"' in value
+    assert "m5_count-atr_window*2,m5_count-atr_window" in value
+    assert "MathAbs(trend_move)/travelled" in value
+    assert "config.psychological_steps[index]" in value
+    assert 'snapshot.m5_bars,"M5_SWING"' in value
+    assert 'snapshot.h1_bars,"H1_SWING"' in value
+    assert 'snapshot.d1_bars,"D1_SWING"' in value
+    assert "open_time<snapshot.m5_trigger_time" in value
+    assert '"M1_SWING_CLUSTER"' in value
+    for step in ("10.0", "50.0", "100.0"):
+        assert f"={step};" in types
+    for pattern in RevisedEngineConfig().strong_m5_patterns:
+        assert f'="{pattern}";' in types
+
+
+def test_setup_detector_preserves_pattern_priority_and_restart_state() -> None:
+    value = SETUP_PATH.read_text(encoding="utf-8")
+
+    assert 'star ? "BULL_MORNING_STAR"' in value
+    assert 'engulfing ? "BULL_ENGULFING"' in value
+    assert 'star ? "BEAR_EVENING_STAR"' in value
+    assert 'engulfing ? "BEAR_ENGULFING"' in value
+    assert "latest.open_time+PeriodSeconds(PERIOD_M5)" in value
+    assert "candidate_strong || !existing_strong" in value
+    assert '"OPPOSITE_M5_SETUP_ACCEPTED"' in value
+    assert '"WATCH_WINDOW_EXPIRED"' in value
+    assert "RevisedDetectorState Snapshot(void) const" in value
+    assert "void Restore(const RevisedDetectorState &state)" in value
+    assert "trigger_time<=consumed" in value

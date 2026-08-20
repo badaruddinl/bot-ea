@@ -3,6 +3,7 @@
 
 #include "GoldEngineProfile.mqh"
 #include "GoldEngineRevisedGeometry.mqh"
+#include "GoldEngineRevisedSetup.mqh"
 #include "GoldEngineScheduler.mqh"
 
 class CGoldEngineRuntime

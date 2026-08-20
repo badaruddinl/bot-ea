@@ -1,7 +1,7 @@
 #ifndef GOLD_ENGINE_REVISED_GEOMETRY_MQH
 #define GOLD_ENGINE_REVISED_GEOMETRY_MQH
 
-#include "GoldEngineRevisedContext.mqh"
+#include "GoldEngineRevisedZones.mqh"
 
 double RevisedFallbackRisk(const CRevisedSnapshot &snapshot,
                            const RevisedEngineConfig &config,
