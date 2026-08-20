@@ -20,24 +20,26 @@ def write(path: Path, payload: object) -> None:
 
 def probe(profile_id: str) -> dict[str, object]:
     profile = load_named_profile(REPOSITORY_ROOT, profile_id)
+    is_demo = profile_id == "GOLDI"
     return {
         "account_login_sha256": ("1" if profile_id == "GOLDI" else "2") * 64,
         "account_server": f"{profile_id}-DEMO",
-        "account_trade_mode": "demo",
+        "account_trade_mode": "demo" if is_demo else "real",
+        "access_mode": "demo_execution" if is_demo else "read_only",
         "bars": {name: {"count": 3} for name in ("M1", "M5", "M15", "H1")},
         "captured_at": START.isoformat(),
         "latency_ms": 12.5,
         "orders_sent": 0,
+        "order_api_calls": 0,
         "production_real_orders": "DISABLED",
         "profile_fingerprint": profile.fingerprint,
         "profile_id": profile_id,
         "symbol": profile.symbol,
         "terminal_build": 6090,
-        "terminal_executable_sha256": ("a" if profile_id == "GOLDI" else "b") * 64,
+        "terminal_executable_sha256": "a" * 64,
+        "terminal_path_sha256": ("c" if profile_id == "GOLDI" else "d") * 64,
         "tick": {"ask": 4400.2, "bid": 4400.0},
-        "validation_profile_id": (
-            "GOLDI_DEMO_VALIDATION" if profile_id == "GOLDI" else "GOLDM_DEMO_VALIDATION"
-        ),
+        "validation_profile_id": ("GOLDI_DEMO_VALIDATION" if is_demo else "GOLDM_REAL_READ_ONLY"),
     }
 
 
@@ -62,9 +64,38 @@ def lifecycle(profile_id: str) -> dict[str, object]:
         "shadow_started_at": (START + offset).isoformat(),
         "state_bleed_count": 0,
         "symbol": profile.symbol,
-        "validation_profile_id": (
-            "GOLDI_DEMO_VALIDATION" if profile_id == "GOLDI" else "GOLDM_DEMO_VALIDATION"
-        ),
+        "validation_profile_id": "GOLDI_DEMO_VALIDATION",
+    }
+
+
+def goldm_tester_batch() -> dict[str, object]:
+    profile = load_named_profile(REPOSITORY_ROOT, "GOLDM")
+    classifications = ("regression", "historical_holdout", "walk_forward_oos")
+    return {
+        "batch_schema_version": 1,
+        "binary_sha256": "b" * 64,
+        "execution_environment": "strategy_tester",
+        "live_order_api_calls": 0,
+        "modeling": "every_tick_based_on_real_ticks",
+        "production_real_orders": "DISABLED",
+        "profile_fingerprint": profile.fingerprint,
+        "profile_id": "GOLDM",
+        "runs": [
+            {
+                "classification": classification,
+                "duplicate_count": 0,
+                "end": (START + timedelta(days=index + 1)).isoformat(),
+                "event_state_parity_pct": 100,
+                "max_price_error_ticks": 1,
+                "restart_recovery_pass": True,
+                "start": (START + timedelta(days=index)).isoformat(),
+                "window_id": f"window-{index}",
+            }
+            for index, classification in enumerate(classifications)
+        ],
+        "source_commit_sha": "c" * 64,
+        "symbol": profile.symbol,
+        "validation_profile_id": "GOLDM_REAL_READ_ONLY",
     }
 
 
@@ -75,11 +106,17 @@ def valid_evidence(root: Path) -> None:
     )
     for profile_id in ("GOLDI", "GOLDM"):
         write(root / f"{profile_id}-probe.json", probe(profile_id))
-        write(root / f"{profile_id}-lifecycle.json", lifecycle(profile_id))
+    write(root / "GOLDI-lifecycle.json", lifecycle("GOLDI"))
+    write(root / "GOLDM-tester-batch.json", goldm_tester_batch())
     write(
         root / "concurrency.json",
         {
             "profiles": ["GOLDI", "GOLDM"],
+            "access_modes": {
+                "GOLDI": "demo_execution",
+                "GOLDM": "read_only",
+            },
+            "live_order_api_calls": 0,
             "overlap_seconds": 300,
             "privacy_bleed_count": 0,
             "production_real_orders": "DISABLED",
@@ -107,7 +144,7 @@ def test_current_preparation_evidence_cannot_pass_as_actual() -> None:
     assert result.accepted is False
     assert "prerequisites.ready is not true" in result.reasons
     assert any("GOLDI-probe.json" in reason for reason in result.reasons)
-    assert any("GOLDM-lifecycle.json" in reason for reason in result.reasons)
+    assert any("GOLDM-tester-batch.json" in reason for reason in result.reasons)
 
 
 def test_duplicate_account_terminal_and_lifecycle_failures_are_rejected(
@@ -117,39 +154,37 @@ def test_duplicate_account_terminal_and_lifecycle_failures_are_rejected(
     goldi_probe = probe("GOLDI")
     goldm_probe = probe("GOLDM")
     goldm_probe["account_login_sha256"] = goldi_probe["account_login_sha256"]
-    goldm_probe["terminal_executable_sha256"] = goldi_probe["terminal_executable_sha256"]
+    goldm_probe["terminal_path_sha256"] = goldi_probe["terminal_path_sha256"]
     write(tmp_path / "GOLDM-probe.json", goldm_probe)
-    broken = lifecycle("GOLDM")
-    broken.update(
-        entry_count=0,
-        duplicate_count=1,
-        state_bleed_count=1,
-        privacy_bleed_count=1,
-        live_replay_calls=1,
-        production_real_orders="ENABLED",
-    )
-    write(tmp_path / "GOLDM-lifecycle.json", broken)
+    broken = goldm_tester_batch()
+    broken["live_order_api_calls"] = 1
+    broken_runs = list(broken["runs"])
+    broken_runs[0] = {
+        **broken_runs[0],
+        "duplicate_count": 1,
+        "event_state_parity_pct": 99,
+    }
+    broken["runs"] = broken_runs
+    write(tmp_path / "GOLDM-tester-batch.json", broken)
 
     result = verify_g10_evidence(REPOSITORY_ROOT, tmp_path)
 
     assert result.accepted is False
-    assert "DEMO profiles reuse one account login" in result.reasons
-    assert "DEMO profiles do not prove distinct terminal executables" in result.reasons
-    assert "GOLDM lifecycle entry_count below 1" in result.reasons
-    assert "GOLDM lifecycle duplicate_count is not zero" in result.reasons
-    assert "GOLDM lifecycle live_replay_calls is not zero" in result.reasons
+    assert "validation profiles reuse one account login" in result.reasons
+    assert "validation profiles do not prove distinct terminal paths" in result.reasons
+    assert "GOLDM tester batch live_order_api_calls mismatch" in result.reasons
+    assert "GOLDM tester run 0 duplicate count is not zero" in result.reasons
+    assert "GOLDM tester run 0 event/state parity is not 100" in result.reasons
 
 
-def test_concurrency_and_nonoverlap_fail_closed(tmp_path: Path) -> None:
+def test_concurrency_fail_closed(tmp_path: Path) -> None:
     valid_evidence(tmp_path)
-    goldm = lifecycle("GOLDM")
-    goldm["guarded_started_at"] = (START + timedelta(hours=2)).isoformat()
-    goldm["finished_at"] = (START + timedelta(hours=3)).isoformat()
-    write(tmp_path / "GOLDM-lifecycle.json", goldm)
     write(
         tmp_path / "concurrency.json",
         {
             "profiles": ["GOLDM", "GOLDI"],
+            "access_modes": {"GOLDI": "read_only", "GOLDM": "demo_execution"},
+            "live_order_api_calls": 1,
             "overlap_seconds": 0,
             "privacy_bleed_count": 1,
             "production_real_orders": "ENABLED",
@@ -160,9 +195,10 @@ def test_concurrency_and_nonoverlap_fail_closed(tmp_path: Path) -> None:
     result = verify_g10_evidence(REPOSITORY_ROOT, tmp_path)
 
     assert result.accepted is False
-    assert "guarded DEMO lifecycle windows do not overlap" in result.reasons
     assert "concurrency profiles mismatch" in result.reasons
     assert "concurrency overlap is not positive" in result.reasons
+    assert "concurrency access modes mismatch" in result.reasons
+    assert "concurrency live order API count is not zero" in result.reasons
     assert "concurrency bleed count is not zero" in result.reasons
 
 

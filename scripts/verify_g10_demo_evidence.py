@@ -13,7 +13,9 @@ from gold_engine_core import verify_g10_evidence  # noqa: E402
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Verify complete actual G10 DEMO evidence")
+    parser = argparse.ArgumentParser(
+        description="Verify complete G10 DEMO/read-only/tester evidence"
+    )
     parser.add_argument("--evidence-root", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()

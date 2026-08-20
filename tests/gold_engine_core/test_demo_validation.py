@@ -54,6 +54,14 @@ def test_demo_manifest_is_canonical_derived_and_real_authority_disabled(
         assert value.login_env != production.terminal.expected_login_env
 
 
+def test_goldi_demo_may_use_its_canonical_demo_login() -> None:
+    value = manifest("GOLDI")
+    production = load_named_profile(REPOSITORY_ROOT, "GOLDI")
+    demo = binding("GOLDI")
+
+    validate_demo_binding(value, production, demo, production_login=demo.login)
+
+
 def test_goldm_demo_rejects_real_mode_production_login_and_env_reuse() -> None:
     value = manifest("GOLDM")
     production = load_named_profile(REPOSITORY_ROOT, "GOLDM")

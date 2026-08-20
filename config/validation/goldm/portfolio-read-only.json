@@ -1,0 +1,29 @@
+{
+  "portfolio_id": "GOLDM_REFERENCE_REAL_READ_ONLY",
+  "symbol": "GOLDm#",
+  "execution_mode": "signal_only",
+  "revised_config": "config/final/goldm/revised.json",
+  "bear_config": "config/final/goldm/bear.json",
+  "terminal": {
+    "path_env": "GOLDM_REAL_MT5_TERMINAL_PATH",
+    "expected_login_env": "GOLDM_REAL_MT5_LOGIN",
+    "expected_server_env": "GOLDM_REAL_MT5_SERVER",
+    "expected_trade_mode": "real",
+    "require_account_binding": true
+  },
+  "sizing": {
+    "balance_tiers": [
+      {"minimum_balance": 0.0, "lot": 0.1},
+      {"minimum_balance": 10.0, "lot": 0.2},
+      {"minimum_balance": 30.0, "lot": 0.5},
+      {"minimum_balance": 50.0, "lot": 1.0},
+      {"minimum_balance": 100.0, "lot": 2.0}
+    ],
+    "downgrade_enabled": true
+  },
+  "magic": 26081912,
+  "deviation_points": 30,
+  "maximum_positions": 2,
+  "maximum_total_lot": 2.0,
+  "orders_enabled": false
+}

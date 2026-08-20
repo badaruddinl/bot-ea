@@ -15,9 +15,12 @@ sys.path.insert(0, str(REPOSITORY_ROOT / "src"))
 
 from gold_engine_core import (  # noqa: E402
     DemoRuntimeBinding,
+    RuntimeValidationBinding,
     load_demo_validation_manifest,
     load_named_profile,
+    load_runtime_validation_manifest,
     validate_demo_binding,
+    validate_runtime_binding,
 )
 
 
@@ -34,39 +37,64 @@ def _sha256_text(value: str) -> str:
 
 
 def probe(profile_id: str, output: Path) -> dict[str, object]:
-    filename = "GOLDI_DEMO.json" if profile_id == "GOLDI" else "GOLDM_DEMO_VALIDATION.json"
-    manifest = load_demo_validation_manifest(
-        REPOSITORY_ROOT / "config" / "validation_profiles" / filename
-    )
+    is_demo = profile_id == "GOLDI"
+    filename = "GOLDI_DEMO.json" if is_demo else "GOLDM_REAL_READ_ONLY.json"
+    manifest_path = REPOSITORY_ROOT / "config" / "validation_profiles" / filename
+    if is_demo:
+        demo_manifest = load_demo_validation_manifest(manifest_path)
+        manifest = demo_manifest
+    else:
+        read_only_manifest = load_runtime_validation_manifest(manifest_path)
+        manifest = read_only_manifest
     production = load_named_profile(REPOSITORY_ROOT, profile_id)
     terminal_path = os.environ.get(manifest.terminal_path_env, "").strip()
     login_text = os.environ.get(manifest.login_env, "").strip()
     server = os.environ.get(manifest.server_env, "").strip()
     if not terminal_path or not Path(terminal_path).is_file():
-        raise RuntimeError("dedicated DEMO terminal path is missing")
+        raise RuntimeError("dedicated validation terminal path is missing")
     if not login_text.isdecimal() or not server:
-        raise RuntimeError("dedicated DEMO login/server binding is missing")
+        raise RuntimeError("dedicated validation login/server binding is missing")
     login = int(login_text)
-    production_login_text = os.environ.get(production.terminal.expected_login_env, "").strip()
-    production_login = int(production_login_text) if production_login_text.isdecimal() else None
-    binding = DemoRuntimeBinding(
-        manifest.validation_profile_id,
-        terminal_path,
-        login,
-        server,
-        "demo",
-        manifest.symbol,
-    )
-    validate_demo_binding(
-        manifest,
-        production,
-        binding,
-        production_login=production_login,
-    )
+    if is_demo:
+        production_login_text = os.environ.get(production.terminal.expected_login_env, "").strip()
+        production_login = int(production_login_text) if production_login_text.isdecimal() else None
+        validate_demo_binding(
+            demo_manifest,
+            production,
+            DemoRuntimeBinding(
+                manifest.validation_profile_id,
+                terminal_path,
+                login,
+                server,
+                "demo",
+                manifest.symbol,
+            ),
+            production_login=production_login,
+        )
+        access_mode = "demo_execution"
+    else:
+        access_mode = "read_only"
+        validate_runtime_binding(
+            read_only_manifest,
+            production,
+            RuntimeValidationBinding(
+                manifest.validation_profile_id,
+                terminal_path,
+                login,
+                server,
+                "real",
+                manifest.symbol,
+                access_mode,
+            ),
+        )
 
     mt5 = importlib.import_module("MetaTrader5")
     started = perf_counter()
-    initialized = mt5.initialize(terminal_path, login=login, server=server)
+    initialized = (
+        mt5.initialize(terminal_path, login=login, server=server)
+        if is_demo
+        else mt5.initialize(terminal_path)
+    )
     if not initialized:
         raise RuntimeError(f"MT5 initialize failed: {mt5.last_error()}")
     try:
@@ -77,12 +105,17 @@ def probe(profile_id: str, output: Path) -> dict[str, object]:
             raise RuntimeError("terminal/account/symbol metadata unavailable")
         if int(account.login) != login or str(account.server) != server:
             raise RuntimeError("runtime account binding changed after initialize")
-        demo_mode = int(getattr(mt5, "ACCOUNT_TRADE_MODE_DEMO", 0))
-        if int(account.trade_mode) != demo_mode:
-            raise RuntimeError("runtime account is not DEMO")
+        mode_constant = (
+            int(getattr(mt5, "ACCOUNT_TRADE_MODE_DEMO", 0))
+            if is_demo
+            else int(getattr(mt5, "ACCOUNT_TRADE_MODE_REAL", 2))
+        )
+        trade_mode = "demo" if is_demo else "real"
+        if int(account.trade_mode) != mode_constant:
+            raise RuntimeError(f"runtime account is not {trade_mode.upper()}")
         if str(symbol.name) != manifest.symbol:
             raise RuntimeError("runtime symbol is not profile canonical")
-        if not mt5.symbol_select(manifest.symbol, True):
+        if is_demo and not mt5.symbol_select(manifest.symbol, True):
             raise RuntimeError(f"symbol selection failed: {mt5.last_error()}")
         tick = mt5.symbol_info_tick(manifest.symbol)
         if tick is None:
@@ -101,17 +134,20 @@ def probe(profile_id: str, output: Path) -> dict[str, object]:
         evidence = {
             "account_login_sha256": _sha256_text(str(account.login)),
             "account_server": str(account.server),
-            "account_trade_mode": "demo",
+            "account_trade_mode": trade_mode,
+            "access_mode": access_mode,
             "bars": bars,
             "captured_at": datetime.now(UTC).isoformat(),
             "latency_ms": round(elapsed_ms, 3),
             "orders_sent": 0,
+            "order_api_calls": 0,
             "production_real_orders": "DISABLED",
             "profile_fingerprint": production.fingerprint,
             "profile_id": profile_id,
             "symbol": manifest.symbol,
             "terminal_build": int(getattr(terminal, "build", 0)),
             "terminal_executable_sha256": _sha256_file(Path(terminal_path)),
+            "terminal_path_sha256": _sha256_text(str(Path(terminal_path).resolve()).casefold()),
             "tick": {
                 "ask": float(tick.ask),
                 "bid": float(tick.bid),
@@ -133,7 +169,7 @@ def probe(profile_id: str, output: Path) -> dict[str, object]:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Read-only G10 dedicated DEMO probe")
+    parser = argparse.ArgumentParser(description="G10 DEMO/read-only broker profile probe")
     parser.add_argument("--profile", required=True, choices=("GOLDI", "GOLDM"))
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()

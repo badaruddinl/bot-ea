@@ -1,57 +1,74 @@
-# G10 Reference Live DEMO Validation
+# G10 Reference Market-Data and Execution Validation
 
-Status: **BLOCKED — ACTUAL DEMO PREREQUISITES MISSING**
+Status: **IN_PROGRESS — G11 UNBLOCKED, FINAL EXECUTION EVIDENCE DEFERRED**
 
-Scope: SHARED, GOLDI, GOLDM, CROSS_PROFILE. REAL authority remains disabled.
+Scope: SHARED, GOLDI, GOLDM, CROSS_PROFILE. REAL order authority remains
+disabled.
 
-## Prepared safety contracts
+## Amended validation contract
 
-- Canonical `GOLDI_DEMO_VALIDATION` manifest derived from the GOLDI fingerprint.
-- Canonical `GOLDM_DEMO_VALIDATION` manifest derived from the unchanged GOLDM production fingerprint.
-- GOLDM validation uses only `GOLDM_DEMO_*`; REAL env names/login cannot be reused.
-- Both validation manifests require DEMO mode and set `production_real_authority=false`.
-- GOLDM validation evidence is admin-only.
-- Separate shadow and guarded-DEMO worker configs, state, audit, terminal, and account bindings exist per profile.
-- Read-only terminal probe contains no order/check/send/position mutation API.
-- Runbook defines shadow → guarded DEMO → position lifecycle → restart acceptance.
+- \`GOLDI_DEMO_VALIDATION\` remains the guarded live-DEMO validation profile.
+- \`GOLDM_REAL_READ_ONLY\` derives from the unchanged GOLDM production
+  fingerprint and permits only account/terminal/symbol metadata, tick, spread,
+  and closed-bar reads.
+- The GOLDm probe contains no order/check/send/position mutation API and records
+  \`order_api_calls=0\`, \`orders_sent=0\`, and
+  \`production_real_orders=DISABLED\`.
+- GOLDm execution evidence is isolated Strategy Tester evidence after the
+  profile-locked MQL5 binary exists; it is never reported as live broker E2E.
+- GOLD.i and GOLDm retain distinct state, audit, audience, profile, symbol, and
+  terminal-path requirements.
 
-## Current prerequisite evidence
+## Actual local evidence
 
-The sanitized preflight was executed on 2026-08-21 and returned `ready=false` with SHA-256:
+The sanitized preflight was executed on 2026-08-21 and returned \`ready=false\`
+only because both profiles currently resolve to the same terminal path:
 
-`b0493d614333994cf0671cc70ea25f53f76916450b3230bd7c43b17c830e7e93`
+\`prerequisites_sha256=70e499537d90bdbb2ad372e6420742c828922eca70cf12e3a9b8657fffe799d2\`
 
-Missing facts:
+Both account bindings are otherwise valid and the isolated validation
+interpreter contains \`MetaTrader5==5.0.6090\`.
 
-- GOLDI dedicated terminal path/login/server env;
-- GOLDM safe-DEMO terminal path/login/server env;
-- both dedicated terminal executables at those paths;
-- MetaTrader5 Python module in the validation interpreter;
-- therefore no actual terminal/account/symbol/tick/bar/latency evidence yet.
+The GOLDm REAL read-only probe succeeded against terminal build 6090:
 
-No credential value is present in the report. The standard MT5/MetaEditor build 6090 installation alone cannot substitute for two bound DEMO terminals.
+\`\`\`text
+profile=GOLDM
+validation=GOLDM_REAL_READ_ONLY
+symbol=GOLDm#
+account_trade_mode=real
+access_mode=read_only
+orders_sent=0
+order_api_calls=0
+latency_ms=377.474
+\`\`\`
 
-The strict acceptance verifier currently returns `accepted=false` (SHA-256 `0b955ffdfa0627a019e8e955a0b7a1ada7fce4dd17ba115227945eef3f9bb58d`) because both probe/lifecycle files and concurrency evidence are absent and preflight is not ready.
+The probe contains only a hash of the login and terminal path. Its artifact
+checksum is stored beside \`GOLDM-probe.json\`.
 
-## Prepared verification
+## Verification
 
-```text
-DEMO manifest/config/probe tests: 9 passed
-new-core suite: 93 passed
-new-core branch coverage: 91.27%
-demo_validation.py coverage: 83%
-core_coverage_xml_sha256=de20995062eda69b09866294e1ec17ba8572800391aa392a46345b1a53b273ef
-quality_gate=PASS (7 changed Python files)
-full_regression=822 passed, 1 skipped, 2 warnings, 141 subtests passed
-full_junit_sha256=ee6d3e63e080a4b744b69bc491abf4b570643c8175f0e48a312dec885681399e
-acceptance_verifier_tests=5 passed
+\`\`\`text
+focused_g10a_tests=21 passed
+qt_environment_regression=1 passed
+full_regression=829 passed, 1 skipped, 2 warnings, 141 subtests passed
+full_junit_sha256=2b7fa162f37756d88b803662f8e18dc2624d65a1005fcbdca90bc38094df9592
+acceptance_verifier_sha256=86a68537b7ce6c04527969d5aeec0df8b3617c1a46ac936b1d6e36bea1d6d0a9
 production_real_orders=DISABLED
-```
+\`\`\`
 
-## Remaining PASS evidence
+The verifier correctly remains \`accepted=false\`; missing actual artifacts
+cannot be replaced by prepared or synthetic evidence.
 
-G10 cannot become PASS until actual evidence proves both profiles concurrently on separate DEMO terminals, shadow health, guarded DEMO entry, position/close lifecycle, restart recovery, no duplicate/state/privacy bleed, no live replay, measured latency, and continued GOLDM REAL disablement.
+## Remaining G10 conditions
 
-G11 and later gates must not begin before these prerequisites and G10 PASS are available.
+- a second isolated terminal/data path for GOLD.i DEMO;
+- actual GOLD.i read-only probe and guarded DEMO lifecycle;
+- simultaneous GOLD.i DEMO and GOLDm read-only capture with no state/privacy
+  bleed;
+- GOLDm batched Strategy Tester evidence after G15, including regression and
+  historical holdout/walk-forward classification, 100% event/state parity,
+  price error no greater than one tick, restart recovery, and zero duplicate;
+- final verifier \`accepted=true\`.
 
-The same external blocker was reconfirmed for three consecutive goal turns: the scoped IDCloudHost console remains on its login page, and neither GOLDI nor GOLDM safe-DEMO terminal/account bindings can be inspected. Per goal governance, G10 is now explicitly BLOCKED rather than left indefinitely IN_PROGRESS.
+The fail-closed G10A contract and tooling allow G11--G15 to proceed. G10B and
+G10C remain required before release acceptance.
