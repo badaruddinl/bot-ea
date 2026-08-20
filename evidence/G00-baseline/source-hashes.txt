@@ -1,0 +1,24 @@
+# Git blob fingerprints at b042d51cfc3b2ea1f9aa048054af03d79d79726e
+
+e28e61875f89817541947ba41d459ab460d79904  .github/workflows/goldm-core-v2.yml
+8ea41243b684dd887b6309f30d52be433a44df37  config/final/goldi/bear.json
+1fc3189b1fa3237b49525e52204cbb800729fdb2  config/final/goldi/portfolio.json
+52b03b79fac6dcfabb5e4c24062b2fed9e18c853  config/final/goldi/revised.json
+1d382c33c08591b59d232c307faec2ca10a18bf4  config/final/goldi/worker.json
+c37badc899f485b2a7b47828e6c9adbe2b9680f0  config/final/goldm/bear.json
+1e16e298648b2f235eae9c80f8aa0f9f70acae88  config/final/goldm/portfolio.json
+b1ee19b2249512fd7af9826c08ab7c12d5b9bc2e  config/final/goldm/revised.json
+072d989d386fe26c4e8428a6b1af3ffd9bbcd33e  config/final/goldm/worker.json
+da5d1098d39322e831371e359463c96cd93ba298  config/final/orchestrator.json
+3786c163ebcd8c20582e2ea5cf30bfe083fbdfdc  src/gold_orchestrator/runtime.py
+c3149569ed81fe39dedf5f2b24532611394ef400  src/gold_portfolio/mt5_session.py
+6b22a6ddfbacedaae4ce6938b1bf0cc0cb8c61fa  src/gold_portfolio/worker.py
+9a50aebe4149e7628534218dc2cb12e5b4f39504  src/goldm_bear/multitimeframe.py
+1d80dc70fad5cb8146a7ce6beec54a1299a0b39f  src/goldm_revised/engine.py
+b11d51b7a26bd5c36535ecacb46e7f051e301d4b  src/goldm_revised/setup.py
+e7268df18ab978730fd8c7866eb1f5a28411c00c  tests/test_gold_orchestrator.py
+c5d5f8982cb56460b85a8d8e620b538f4a3cd333  tests/test_gold_portfolio_final.py
+
+# External complete SHA-256 manifest
+
+8103bf8efe822b007db0c667456f247c390fe817820aef86c6985d6d65d71710  source-hashes.csv (108 tracked files)
