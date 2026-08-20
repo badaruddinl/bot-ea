@@ -2,6 +2,8 @@
 
 Scope: SHARED tooling only. No strategy, risk, execution, profile, or runtime semantics are changed.
 
+Status: **PASS**
+
 ## Pinned tools
 
 - Ruff `0.16.3`
@@ -41,4 +43,21 @@ python -m pip install --disable-pip-version-check --dry-run -e ".[dev]"
 exit=0
 ```
 
-End-to-end changed-file execution and the full regression suite are recorded before this batch is marked PASS.
+## Final verification
+
+```text
+python scripts/quality_gate.py --base 1cd5df979230e5fe4e737fe470cf278ece3951af --head HEAD
+exit=0
+quality_python_files=3
+ruff_format=PASS
+ruff_lint=PASS
+mypy_source_files=0
+core_coverage=NOT_APPLICABLE_PRE_G03
+
+python -m pytest -q --basetemp=<external>/quality-tooling/full-pytest-temp-run2 --junitxml=<external>/quality-tooling/full-pytest-junit-run2.xml
+exit=0
+result=719 passed, 2 skipped, 2 warnings, 141 subtests passed
+junit_sha256=b3f70c5959b3f93ad6bc3cf0cc6a0c28fb942b0b6b528736ace1866defb7cf16
+```
+
+The first full run correctly failed because the legacy CI contract still required `unittest discover`; its JUnit SHA-256 is `e90d75fba249e58d514577910472e0b4149e646fb046348708959be54bc11f9d`. The contract was updated to require full pytest, isolated basetemp, JUnit evidence, and the incremental quality command. The authoritative rerun passed.

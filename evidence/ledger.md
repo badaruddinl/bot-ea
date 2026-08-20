@@ -9,7 +9,7 @@ REAL order authority: **DISABLED**
 | Gate | Status | Scope | Evidence | Notes |
 |---|---|---|---|---|
 | G00 | PASS | SHARED, GOLDI, GOLDM, CROSS_PROFILE | `evidence/G00-baseline/` | Exact baseline is reproducible; fresh suite passed. Missing external prerequisites remain explicit and block only dependent later gates. |
-| G00-Q | IN_PROGRESS | SHARED | `evidence/G00-quality-tooling/` | Pinned tools and incremental CI ratchet implemented; end-to-end gate and full regression pending. |
+| G00-Q | PASS | SHARED | `evidence/G00-quality-tooling/` | Pinned incremental quality ratchet and full regression passed; core coverage activates fail-closed at G03. |
 | G01-G21 | NOT_STARTED | — | — | No engine implementation starts before G00 review. |
 
 Raw or large evidence is stored outside Git under:
