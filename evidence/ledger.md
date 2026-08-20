@@ -17,6 +17,7 @@ REAL order authority: **DISABLED**
 | G05 | PASS | SHARED, GOLDI, GOLDM | `evidence/G05-bear-incremental-state/` | Bar-by-bar/replay parity, bounded recovery, live-worker migration, quality gate, and full regression passed. |
 | G06 | PASS | SHARED, GOLDI, GOLDM | `evidence/G06-revised-restart-parity/` | Full restart matrix, stale-resurrection guards, dual-profile worker recovery, quality gate, and regression passed. |
 | G07 | PASS | SHARED, GOLDI, GOLDM, CROSS_PROFILE | `evidence/G07-event-driven-reference-runtime/` | Fast/bar/slow lanes, deterministic sequence, outbox isolation, stall containment, quality gate, and regression passed. |
+| G08 | PASS | SHARED, GOLDI, GOLDM, CROSS_PROFILE | `evidence/G08-execution-validity/` | Immutable plan/policy, all pre-send guards, no quote chasing, integration, quality gate, and regression passed. |
 | G01-G21 | NOT_STARTED | — | — | No engine implementation starts before G00 review. |
 
 Raw or large evidence is stored outside Git under:

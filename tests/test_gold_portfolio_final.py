@@ -3,19 +3,21 @@ from __future__ import annotations
 import json
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from hashlib import sha256
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
+from gold_engine_core import Side
 from gold_portfolio.config import load_worker_config
 from gold_portfolio.models import SignalPlan, WatchEvent
 from gold_portfolio.mt5_session import BoundMt5Session
 from gold_portfolio.worker import CompositePortfolioWorker, TelegramBroadcast
 
-
 ROOT = Path(__file__).resolve().parents[1]
+FAKE_SERVER_TIME = datetime(2026, 8, 19, 19, 0, tzinfo=timezone(timedelta(hours=3)))
 
 
 def test_pinned_hash_accepts_crlf_only_as_transport_normalization(
@@ -75,6 +77,54 @@ def _bind_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("GOLDM_REAL_MT5_SERVER", "XMGlobal-MT5 14")
 
 
+def executable_signal(
+    session: BoundMt5Session,
+    *,
+    event_id: str,
+    component: str,
+    symbol: str,
+    side: str,
+    time: datetime,
+    entry: float,
+    stop: float,
+    target: float,
+    reason: str,
+) -> SignalPlan:
+    profile = session.profile
+    account = session.account_info()
+    side_value = Side(side)
+    return SignalPlan(
+        profile_id=profile.profile_id,
+        profile_version=profile.profile_version,
+        profile_fingerprint=profile.manifest_fingerprint,
+        strategy_id="GOLDM_REVISED" if component == "revised" else "GOLDM_BEAR",
+        strategy_version="1.0.0",
+        component=component,
+        reason=reason,
+        setup_id=f"{profile.profile_id}:setup:{event_id}",
+        signal_id=event_id,
+        side=side_value,
+        symbol=symbol,
+        setup_created_at=time - timedelta(minutes=1),
+        entry_ready_at=time,
+        valid_until=time + timedelta(seconds=60),
+        planned_entry=Decimal(str(entry)),
+        stop=Decimal(str(stop)),
+        target=Decimal(str(target)),
+        planned_risk=abs(Decimal(str(entry)) - Decimal(str(stop))),
+        invalidation=Decimal(str(stop)),
+        maximum_spread=session.execution_policy.maximum_spread,
+        maximum_drift_r=session.execution_policy.maximum_drift_r,
+        tick_size=profile.tick_size,
+        volume=Decimal(str(session.select_lot())),
+        account_login=int(account.login),
+        account_server=str(account.server),
+        trade_mode="real" if session.config.execution_mode == "real" else "demo",
+        terminal_identity=profile.terminal_identity,
+        magic=profile.magic,
+    )
+
+
 def test_final_goldi_is_tag_pinned_demo_execution(monkeypatch: pytest.MonkeyPatch) -> None:
     _bind_env(monkeypatch)
     config = load_worker_config(ROOT / "config/final/goldi/worker.json")
@@ -126,12 +176,17 @@ class FakeMt5:
     TRADE_RETCODE_DONE_PARTIAL = 10010
     DEAL_ENTRY_OUT = 1
     DEAL_ENTRY_OUT_BY = 3
+    SYMBOL_TRADE_MODE_DISABLED = 0
 
     def __init__(self) -> None:
         self.sent = []
+        self.checks = []
         self.balance = 60.0
         self.open_positions = ()
         self.deals = ()
+        self.bid = 4399.9
+        self.ask = 4400.2
+        self.check_retcode = 0
 
     def initialize(self, path, **kwargs):
         return True
@@ -151,6 +206,7 @@ class FakeMt5:
             trade_expert=True,
             balance=self.balance,
             equity=self.balance,
+            margin_free=self.balance,
         )
 
     def terminal_info(self):
@@ -165,21 +221,31 @@ class FakeMt5:
             trade_contract_size=1.0,
             digits=2,
             filling_mode=1,
+            point=0.01,
+            trade_tick_size=0.01,
+            trade_stops_level=0,
+            trade_freeze_level=0,
+            trade_mode=1,
         )
 
     def symbol_info_tick(self, symbol):
         return SimpleNamespace(
-            ask=4400.2,
-            bid=4399.9,
+            ask=self.ask,
+            bid=self.bid,
             time=1787155200,
             time_msc=1787155200123,
+            volume=1.0,
         )
 
     def positions_get(self, **kwargs):
         return self.open_positions
 
     def order_check(self, request):
-        return SimpleNamespace(retcode=0, comment="ok")
+        self.checks.append(request)
+        return SimpleNamespace(retcode=self.check_retcode, comment="ok")
+
+    def order_calc_margin(self, order_type, symbol, volume, price):
+        return 1.0
 
     def order_send(self, request):
         self.sent.append(request)
@@ -213,6 +279,7 @@ class DemoFakeMt5(FakeMt5):
             trade_expert=True,
             balance=self.balance,
             equity=self.balance,
+            margin_free=self.balance,
         )
 
     def symbol_info(self, symbol):
@@ -224,6 +291,11 @@ class DemoFakeMt5(FakeMt5):
             trade_contract_size=100.0,
             digits=2,
             filling_mode=1,
+            point=0.01,
+            trade_tick_size=0.01,
+            trade_stops_level=0,
+            trade_freeze_level=0,
+            trade_mode=1,
         )
 
 
@@ -234,12 +306,13 @@ def test_real_executor_reads_shared_balance_and_sends_one_checked_order(
     config = load_worker_config(ROOT / "config/final/goldm/worker.json")
     module = FakeMt5()
     session = BoundMt5Session(config, mt5_module=module)
-    signal = SignalPlan(
+    signal = executable_signal(
+        session,
         event_id="revised:1",
         component="revised",
         symbol="GOLDm#",
         side="BUY",
-        time=datetime.now(timezone.utc),
+        time=FAKE_SERVER_TIME,
         entry=4400.0,
         stop=4390.0,
         target=4420.0,
@@ -252,8 +325,8 @@ def test_real_executor_reads_shared_balance_and_sends_one_checked_order(
     assert result["volume"] == 1.0
     assert len(module.sent) == 1
     assert module.sent[0]["magic"] == config.magic
-    assert module.sent[0]["sl"] == 4390.2
-    assert module.sent[0]["tp"] == 4420.2
+    assert module.sent[0]["sl"] == 4390.0
+    assert module.sent[0]["tp"] == 4420.0
     assert result["signal_id"] == "revised:1"
     assert result["request_id"] == 779
     assert result["server_time"].endswith("+03:00")
@@ -267,12 +340,13 @@ def test_goldi_demo_executor_places_order_at_locked_adaptive_lot(
     config = load_worker_config(ROOT / "config/final/goldi/worker.json")
     module = DemoFakeMt5()
     session = BoundMt5Session(config, mt5_module=module)
-    signal = SignalPlan(
+    signal = executable_signal(
+        session,
         event_id="goldi-demo:1",
         component="bear",
         symbol="GOLD.i#",
         side="SELL",
-        time=datetime.now(timezone.utc),
+        time=FAKE_SERVER_TIME,
         entry=4400.0,
         stop=4410.0,
         target=4380.0,
@@ -286,6 +360,102 @@ def test_goldi_demo_executor_places_order_at_locked_adaptive_lot(
     assert len(module.sent) == 1
     assert module.sent[0]["symbol"] == "GOLD.i#"
     assert module.sent[0]["magic"] == 26081911
+
+
+def test_executor_rejects_stale_drift_broker_check_and_duplicate_without_send(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _bind_env(monkeypatch)
+    config = load_worker_config(ROOT / "config/final/goldi/worker.json")
+    module = DemoFakeMt5()
+    session = BoundMt5Session(config, mt5_module=module)
+    signal = executable_signal(
+        session,
+        event_id="goldi-validity:1",
+        component="revised",
+        symbol="GOLD.i#",
+        side="BUY",
+        time=FAKE_SERVER_TIME,
+        entry=4400.0,
+        stop=4390.0,
+        target=4420.0,
+        reason="test validity",
+    )
+
+    stale = replace(
+        signal,
+        setup_created_at=FAKE_SERVER_TIME - timedelta(minutes=3),
+        entry_ready_at=FAKE_SERVER_TIME - timedelta(minutes=2),
+        valid_until=FAKE_SERVER_TIME - timedelta(minutes=1),
+    )
+    stale_result = session.execute(stale)
+    assert stale_result["status"] == "BLOCKED_VALIDITY"
+    assert "SIGNAL_AGE_INVALID" in stale_result["reasons"]
+    assert module.sent == []
+
+    module.ask = 4402.0
+    module.bid = 4401.9
+    drift_result = session.execute(signal)
+    assert "ENTRY_DRIFT_EXCEEDED" in drift_result["reasons"]
+    assert module.sent == []
+
+    module.ask = 4400.2
+    module.bid = 4399.9
+    module.check_retcode = 10030
+    check_result = session.execute(signal)
+    assert "BROKER_CHECK_REJECTED" in check_result["reasons"]
+    assert module.sent == []
+
+    module.check_retcode = 0
+    assert session.execute(signal)["status"] == "EXECUTED"
+    assert len(module.sent) == 1
+    duplicate = session.execute(signal)
+    assert duplicate["status"] == "BLOCKED_VALIDITY"
+    assert "DUPLICATE_SIGNAL" in duplicate["reasons"]
+    assert len(module.sent) == 1
+
+
+@pytest.mark.parametrize(
+    ("group", "module", "side", "volume"),
+    [
+        ("goldi", DemoFakeMt5, Side.BUY, Decimal("0.02")),
+        ("goldm", FakeMt5, Side.SELL, Decimal("1.0")),
+    ],
+)
+def test_worker_builds_profile_owned_versioned_execution_plan(
+    monkeypatch: pytest.MonkeyPatch,
+    group: str,
+    module,
+    side: Side,
+    volume: Decimal,
+) -> None:
+    _bind_env(monkeypatch)
+    config = load_worker_config(ROOT / "config" / "final" / group / "worker.json")
+    worker = CompositePortfolioWorker(config, mt5_module=module())
+    stop = 4390.0 if side is Side.BUY else 4410.0
+    target = 4420.0 if side is Side.BUY else 4380.0
+    value = worker._create_signal_plan(
+        component="revised" if side is Side.BUY else "bear",
+        strategy_id="GOLDM_REVISED" if side is Side.BUY else "GOLDM_BEAR",
+        strategy_version="1.0.0",
+        setup_id=f"{worker.profile.profile_id}:setup:owned",
+        setup_created_at=FAKE_SERVER_TIME - timedelta(minutes=1),
+        signal_id=f"{worker.profile.profile_id}:signal:owned",
+        side=side,
+        entry_ready_at=FAKE_SERVER_TIME,
+        entry=4400.0,
+        stop=stop,
+        target=target,
+        reason="owned plan",
+    )
+
+    assert value.profile_id == worker.profile.profile_id
+    assert value.profile_fingerprint == worker.profile.manifest_fingerprint
+    assert value.maximum_drift_r == worker.execution_policy.maximum_drift_r
+    assert value.maximum_spread == worker.execution_policy.maximum_spread
+    assert value.volume == volume
+    assert value.magic == worker.profile.magic
+    assert value.valid_until - value.entry_ready_at == timedelta(seconds=60)
 
 
 def test_goldi_subscribers_receive_entries_but_goldm_remains_admin_only(
@@ -464,8 +634,7 @@ def test_bear_watch_reports_m5_preparation_without_entry(
     worker.bear_replay = FakeBearReplay()
     latest = datetime(2026, 8, 20, 9, 50, tzinfo=server_tz)
     m5_bars = tuple(
-        SimpleNamespace(time=setup_time + timedelta(minutes=5 * index))
-        for index in range(4)
+        SimpleNamespace(time=setup_time + timedelta(minutes=5 * index)) for index in range(4)
     )
     h1_bars = tuple(
         SimpleNamespace(time=setup_time - timedelta(hours=index + 1))
@@ -516,7 +685,8 @@ def test_final_entry_sends_one_human_readable_message(
     telegram = CaptureTelegram()
     worker = CompositePortfolioWorker(config, mt5_module=module, telegram=telegram)
     signal_time = datetime(2026, 8, 20, 2, 30, tzinfo=timezone(timedelta(hours=3)))
-    signal = SignalPlan(
+    signal = executable_signal(
+        worker.session,
         event_id="revised:BUY:ready-1",
         component="revised",
         symbol="GOLDm#",

@@ -133,6 +133,7 @@ def _run_core_coverage() -> None:
                 "--cov=gold_engine_core.contracts",
                 "--cov=gold_engine_core.corpus",
                 "--cov=gold_engine_core.current_behavior",
+                "--cov=gold_engine_core.execution",
                 "--cov=gold_engine_core.profile",
                 "--cov=gold_engine_core.reference_runtime",
                 "--cov-branch",

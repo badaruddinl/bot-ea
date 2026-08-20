@@ -4,18 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-
-@dataclass(frozen=True, slots=True)
-class SignalPlan:
-    event_id: str
-    component: str
-    symbol: str
-    side: str
-    time: datetime
-    entry: float
-    stop: float
-    target: float
-    reason: str
+from gold_engine_core import SignalPlan as SignalPlan
 
 
 @dataclass(frozen=True, slots=True)

@@ -7,11 +7,18 @@ from bisect import bisect_left, bisect_right
 from collections.abc import Sequence
 from dataclasses import asdict, replace
 from datetime import datetime, timedelta
-from decimal import Decimal
+from decimal import ROUND_CEILING, ROUND_FLOOR, ROUND_HALF_UP, Decimal
 from pathlib import Path
 from typing import Any
 
-from gold_engine_core import ProfileConfig, load_named_profile
+from gold_engine_core import (
+    ProfileConfig,
+    Side,
+    SignalPlan,
+    load_execution_policy,
+    load_named_profile,
+)
+from gold_engine_core.profile import TradeMode
 from gold_engine_core.rules.bear_incremental import (
     BearIncrementalMachine,
     BearIncrementalOutput,
@@ -30,7 +37,7 @@ from goldm_revised.setup import RevisedDetectorState, RevisedSetupDetector
 from goldm_signal.notify.telegram import TelegramBotClient
 
 from .config import PortfolioWorkerConfig, TelegramConfig
-from .models import SignalPlan, WatchEvent
+from .models import WatchEvent
 from .mt5_session import BoundMt5Session
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -114,11 +121,16 @@ class CompositePortfolioWorker:
         profile_id = {"goldi": "GOLDI", "goldm": "GOLDM"}.get(config.group)
         if profile_id is None:
             raise ValueError(f"unsupported final worker group: {config.group!r}")
-        profile = ProfileConfig.from_manifest(
+        self.profile = ProfileConfig.from_manifest(
             load_named_profile(ROOT, profile_id),
             tick_size=Decimal(str(self.bear_replay.config.price_tick)),
         )
-        self.bear_incremental = BearIncrementalMachine(profile, self.bear_replay)
+        self.execution_policy = load_execution_policy(
+            ROOT / "config" / "execution_profiles" / f"{profile_id}.json"
+        )
+        if self.execution_policy.profile_fingerprint != self.profile.manifest_fingerprint:
+            raise ValueError("execution policy does not match worker profile manifest")
+        self.bear_incremental = BearIncrementalMachine(self.profile, self.bear_replay)
         self.bear_incremental_state = self.bear_incremental.initial_state(
             datetime(1970, 1, 1, tzinfo=self.session.server_timezone)
         )
@@ -363,15 +375,18 @@ class CompositePortfolioWorker:
         target_multiplier = float(self.config.revised.get("target_multiplier") or 1.0)
         stop = decision.entry - risk * stop_multiplier
         target = decision.entry + reward * target_multiplier
-        return SignalPlan(
-            event_id=f"revised:{decision.time.isoformat()}:{decision.entry:.2f}",
+        return self._create_signal_plan(
             component="revised",
-            symbol=self.config.symbol,
-            side="BUY",
-            time=decision.time,
+            strategy_id="GOLDM_REVISED",
+            strategy_version="0.6.0",
+            setup_id=self._revised_watch_id(setup.trigger_time),
+            setup_created_at=setup.trigger_time,
+            signal_id=f"revised:{decision.time.isoformat()}:{decision.entry:.2f}",
+            side=Side.BUY,
+            entry_ready_at=decision.time,
             entry=decision.entry,
-            stop=round(stop, 2),
-            target=round(target, 2),
+            stop=stop,
+            target=target,
             reason=decision.reason,
         ), watch
 
@@ -420,12 +435,15 @@ class CompositePortfolioWorker:
         signal = None
         if output.signal is not None:
             candidate = output.signal
-            signal = SignalPlan(
-                event_id=candidate.signal_id,
+            signal = self._create_signal_plan(
                 component="bear",
-                symbol=self.config.symbol,
-                side="SELL",
-                time=candidate.opened_at,
+                strategy_id="GOLDM_BEAR",
+                strategy_version="4.0.0",
+                setup_id=candidate.setup_id,
+                setup_created_at=candidate.setup_time,
+                signal_id=candidate.signal_id,
+                side=Side.SELL,
+                entry_ready_at=candidate.opened_at,
                 entry=candidate.entry,
                 stop=candidate.stop,
                 target=candidate.target,
@@ -433,6 +451,69 @@ class CompositePortfolioWorker:
             )
         watch = self._bear_incremental_watch(latest_m1, output)
         return signal, watch
+
+    def _create_signal_plan(
+        self,
+        *,
+        component: str,
+        strategy_id: str,
+        strategy_version: str,
+        setup_id: str,
+        setup_created_at: datetime,
+        signal_id: str,
+        side: Side,
+        entry_ready_at: datetime,
+        entry: float,
+        stop: float,
+        target: float,
+        reason: str,
+    ) -> SignalPlan:
+        tick = self.profile.tick_size
+        planned_entry = self._round_price(Decimal(str(entry)), tick, ROUND_HALF_UP)
+        if side is Side.BUY:
+            planned_stop = self._round_price(Decimal(str(stop)), tick, ROUND_FLOOR)
+            planned_target = self._round_price(Decimal(str(target)), tick, ROUND_FLOOR)
+        else:
+            planned_stop = self._round_price(Decimal(str(stop)), tick, ROUND_CEILING)
+            planned_target = self._round_price(Decimal(str(target)), tick, ROUND_CEILING)
+        account = self.session.account_info()
+        volume = Decimal(str(self.session.select_lot()))
+        trade_mode: TradeMode = "real" if self.config.execution_mode == "real" else "demo"
+        return SignalPlan(
+            profile_id=self.profile.profile_id,
+            profile_version=self.profile.profile_version,
+            profile_fingerprint=self.profile.manifest_fingerprint,
+            strategy_id=strategy_id,
+            strategy_version=strategy_version,
+            component=component,
+            reason=reason,
+            setup_id=setup_id,
+            signal_id=signal_id,
+            side=side,
+            symbol=self.profile.symbol,
+            setup_created_at=setup_created_at,
+            entry_ready_at=entry_ready_at,
+            valid_until=entry_ready_at
+            + timedelta(seconds=self.execution_policy.maximum_signal_age_seconds),
+            planned_entry=planned_entry,
+            stop=planned_stop,
+            target=planned_target,
+            planned_risk=abs(planned_entry - planned_stop),
+            invalidation=planned_stop,
+            maximum_spread=self.execution_policy.maximum_spread,
+            maximum_drift_r=self.execution_policy.maximum_drift_r,
+            tick_size=tick,
+            volume=volume,
+            account_login=int(account.login),
+            account_server=str(account.server),
+            trade_mode=trade_mode,
+            terminal_identity=self.profile.terminal_identity,
+            magic=self.profile.magic,
+        )
+
+    @staticmethod
+    def _round_price(value: Decimal, tick: Decimal, rounding: str) -> Decimal:
+        return (value / tick).to_integral_value(rounding=rounding) * tick
 
     def _bear_incremental_watch(
         self,
@@ -548,10 +629,10 @@ class CompositePortfolioWorker:
                     trigger_time=setup_available,
                     reason=signal.reason,
                     level=setup.resistance,
-                    invalidation=signal.stop,
-                    entry=signal.entry,
-                    stop=signal.stop,
-                    target=signal.target,
+                    invalidation=float(signal.stop),
+                    entry=float(signal.entry),
+                    stop=float(signal.stop),
+                    target=float(signal.target),
                 )
             return None
         h1_close_times = [bar.time + timedelta(hours=1) for bar in h1_bars]
