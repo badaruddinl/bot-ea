@@ -39,6 +39,9 @@ new-core suite: 93 passed
 new-core branch coverage: 91.27%
 demo_validation.py coverage: 83%
 core_coverage_xml_sha256=de20995062eda69b09866294e1ec17ba8572800391aa392a46345b1a53b273ef
+quality_gate=PASS (7 changed Python files)
+full_regression=817 passed, 1 skipped, 2 warnings, 141 subtests passed
+full_junit_sha256=945d437bdb52f61faa7e64bada942766a336398c7f13acdbdd52cc29d3ad120f
 production_real_orders=DISABLED
 ```
 
