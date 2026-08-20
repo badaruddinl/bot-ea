@@ -4,12 +4,21 @@ import json
 import os
 import time
 from bisect import bisect_left, bisect_right
+from collections.abc import Sequence
 from dataclasses import asdict, replace
 from datetime import datetime, timedelta
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
-from goldm_bear.multitimeframe import BearMultiTimeframeReplay, BearV4Config
+from gold_engine_core import ProfileConfig, load_named_profile
+from gold_engine_core.rules.bear_incremental import (
+    BearIncrementalMachine,
+    BearIncrementalOutput,
+    BearIncrementalPhase,
+)
+from goldm_bear.engine import BearBar
+from goldm_bear.multitimeframe import BearMultiTimeframeReplay, BearV4Config, BearV4Report
 from goldm_revised.engine import (
     RevisedEngine,
     RevisedEngineConfig,
@@ -20,10 +29,9 @@ from goldm_revised.engine import (
 from goldm_revised.setup import RevisedSetupDetector
 from goldm_signal.notify.telegram import TelegramBotClient
 
-from .config import PortfolioWorkerConfig
+from .config import PortfolioWorkerConfig, TelegramConfig
 from .models import SignalPlan, WatchEvent
 from .mt5_session import BoundMt5Session
-
 
 ROOT = Path(__file__).resolve().parents[2]
 AUDIT_MAX_BYTES = 5 * 1024 * 1024
@@ -41,7 +49,7 @@ def _json(path: str | Path) -> dict[str, Any]:
 
 
 class TelegramBroadcast:
-    def __init__(self, config) -> None:
+    def __init__(self, config: TelegramConfig) -> None:
         self.config = config
         self.chat_ids = config.chat_ids
         self.client = (
@@ -86,7 +94,7 @@ class CompositePortfolioWorker:
         self,
         config: PortfolioWorkerConfig,
         *,
-        mt5_module=None,
+        mt5_module: Any | None = None,
         telegram: TelegramBroadcast | None = None,
     ) -> None:
         self.config = config
@@ -103,6 +111,17 @@ class CompositePortfolioWorker:
             target_multiplier=float(config.bear.get("target_multiplier") or 1.0),
         )
         self.bear_replay = BearMultiTimeframeReplay(BearV4Config(**bear_values))
+        profile_id = {"goldi": "GOLDI", "goldm": "GOLDM"}.get(config.group)
+        if profile_id is None:
+            raise ValueError(f"unsupported final worker group: {config.group!r}")
+        profile = ProfileConfig.from_manifest(
+            load_named_profile(ROOT, profile_id),
+            tick_size=Decimal(str(self.bear_replay.config.price_tick)),
+        )
+        self.bear_incremental = BearIncrementalMachine(profile, self.bear_replay)
+        self.bear_incremental_state = self.bear_incremental.initial_state(
+            datetime(1970, 1, 1, tzinfo=self.session.server_timezone)
+        )
         self.state = self._load_state()
         self.health_path = self.config.state_path.with_name("health.json")
         self._last_error_key = ""
@@ -150,9 +169,7 @@ class CompositePortfolioWorker:
         if bear_watch is not None:
             watches.append(bear_watch)
         watch_events = [
-            event
-            for watch in watches
-            if (event := self._process_watch(watch)) is not None
+            event for watch in watches if (event := self._process_watch(watch)) is not None
         ]
         events = []
         for signal in signals:
@@ -377,53 +394,113 @@ class CompositePortfolioWorker:
         self,
         latest_m1: datetime,
     ) -> tuple[SignalPlan | None, WatchEvent | None]:
-        lookback_days = int(self.config.bear.get("lookback_days") or 30)
         end = latest_m1 + timedelta(minutes=1)
-        start = end - timedelta(days=lookback_days)
+        start = end - self.bear_incremental.maximum_warmup_span
         m1_bars = self.session.bear_bars_range("TIMEFRAME_M1", start, end)
         m5_bars = self.session.bear_bars_range("TIMEFRAME_M5", start, end)
         m15_bars = self.session.bear_bars_range("TIMEFRAME_M15", start, end)
         h1_bars = self.session.bear_bars_range("TIMEFRAME_H1", start, end)
-        report = self.bear_replay.run(
-            m1_bars=m1_bars,
-            m5_bars=m5_bars,
-            m15_bars=m15_bars,
-            h1_bars=h1_bars,
-            from_time=start,
-            to_time=end,
+        output = self.bear_incremental.feed_closed_batches(
+            self.bear_incremental_state,
+            m1_bars=tuple(m1_bars),
+            m5_bars=tuple(m5_bars),
+            m15_bars=tuple(m15_bars),
+            h1_bars=tuple(h1_bars),
+            available_at=end,
+            emit_after=latest_m1,
         )
-        candidates = [
-            outcome
-            for outcome in report.outcomes
-            if outcome.opened_at >= latest_m1
-            and outcome.result == "END_OF_TEST"
-        ]
+        self.bear_incremental_state = output.next_state
         signal = None
-        if candidates:
-            outcome = max(candidates, key=lambda item: item.opened_at)
+        if output.signal is not None:
+            candidate = output.signal
             signal = SignalPlan(
-                event_id=f"bear:{outcome.opened_at.isoformat()}:{outcome.entry:.2f}",
+                event_id=candidate.signal_id,
                 component="bear",
                 symbol=self.config.symbol,
                 side="SELL",
-                time=outcome.opened_at,
-                entry=outcome.entry,
-                stop=outcome.stop,
-                target=outcome.target,
-                reason=outcome.setup_reason,
+                time=candidate.opened_at,
+                entry=candidate.entry,
+                stop=candidate.stop,
+                target=candidate.target,
+                reason=candidate.reason,
             )
-        watch = self._bear_watch_event(
-            latest_m1=latest_m1,
-            end=end,
-            start=start,
-            m1_bars=m1_bars,
-            m5_bars=m5_bars,
-            m15_bars=m15_bars,
-            h1_bars=h1_bars,
-            report=report,
-            signal=signal,
-        )
+        watch = self._bear_incremental_watch(latest_m1, output)
         return signal, watch
+
+    def _bear_incremental_watch(
+        self,
+        latest_m1: datetime,
+        output: BearIncrementalOutput,
+    ) -> WatchEvent | None:
+        state = output.next_state
+        candidate = output.signal or state.signal
+        if candidate is not None:
+            return WatchEvent(
+                watch_id=candidate.setup_id,
+                component="bear",
+                symbol=self.config.symbol,
+                side="SELL",
+                state="ENTRY_READY",
+                stage="M1_CONFIRMATION",
+                time=candidate.opened_at,
+                trigger_time=candidate.setup_time + timedelta(minutes=15),
+                reason=candidate.reason,
+                level=state.level,
+                invalidation=candidate.stop,
+                entry=candidate.entry,
+                stop=candidate.stop,
+                target=candidate.target,
+                mode="RANGE",
+                touch_count=candidate.m5_touches,
+                rejection_count=candidate.m5_rejections,
+                evidence={"m1_touches": candidate.m1_touches},
+            )
+        if state.phase is BearIncrementalPhase.IDLE or state.setup_id is None:
+            return None
+        stage, default_reason = {
+            BearIncrementalPhase.WATCH_H1: (
+                "H1_CONTEXT",
+                "H1_BEARISH_CONTEXT_PENDING",
+            ),
+            BearIncrementalPhase.WATCH_M5: (
+                "M5_VALIDATION",
+                "M5_RETEST_CONFIRMATION_PENDING",
+            ),
+            BearIncrementalPhase.WATCH_M1: (
+                "M1_CONFIRMATION",
+                "M1_RETEST_CONFIRMATION_PENDING",
+            ),
+            BearIncrementalPhase.CANCELLED: (
+                "TERMINAL",
+                "BEAR_INCREMENTAL_CANCELLED",
+            ),
+            BearIncrementalPhase.ENTRY_READY: (
+                "M1_CONFIRMATION",
+                "M1_ENTRY_CONFIRMATION_READY",
+            ),
+        }[state.phase]
+        reason = output.events[-1].reason if output.events else default_reason
+        evidence = {item.name: item.value for item in state.evidence}
+        return WatchEvent(
+            watch_id=state.setup_id,
+            component="bear",
+            symbol=self.config.symbol,
+            side="SELL",
+            state=("CANCELLED" if state.phase is BearIncrementalPhase.CANCELLED else "WATCH"),
+            stage=stage,
+            time=latest_m1,
+            trigger_time=(state.setup_time or latest_m1) + timedelta(minutes=15),
+            reason=reason,
+            level=state.level,
+            invalidation=state.invalidation,
+            entry=(state.entry_zone[0] if state.entry_zone is not None else None),
+            stop=state.invalidation,
+            target=(state.setup.take_profit if state.setup is not None else None),
+            mode="RANGE",
+            touch_count=state.touches,
+            rejection_count=state.rejections,
+            evidence={**evidence, "acceptance": state.acceptance},
+        )
 
     def _bear_watch_event(
         self,
@@ -431,11 +508,11 @@ class CompositePortfolioWorker:
         latest_m1: datetime,
         end: datetime,
         start: datetime,
-        m1_bars,
-        m5_bars,
-        m15_bars,
-        h1_bars,
-        report,
+        m1_bars: Sequence[BearBar],
+        m5_bars: Sequence[BearBar],
+        m15_bars: Sequence[BearBar],
+        h1_bars: Sequence[BearBar],
+        report: BearV4Report,
         signal: SignalPlan | None,
     ) -> WatchEvent | None:
         setups = [
@@ -545,9 +622,7 @@ class CompositePortfolioWorker:
         armed_at = m5_result["armed_at"]
         m1_times = [bar.time for bar in m1_bars]
         m1_index = bisect_left(m1_times, armed_at)
-        m1_candidates = m1_bars[
-            m1_index : m1_index + self.bear_replay.config.m1_entry_bars
-        ]
+        m1_candidates = m1_bars[m1_index : m1_index + self.bear_replay.config.m1_entry_bars]
         entry_plan = self.bear_replay._entry_on_m1(
             setup,
             m5_result,
@@ -672,9 +747,10 @@ class CompositePortfolioWorker:
         if ticket <= 0:
             return
         positions = dict(self.state.get("open_positions") or {})
-        opened_at = execution.get("server_time") or datetime.now(
-            tz=self.session.server_timezone
-        ).isoformat()
+        opened_at = (
+            execution.get("server_time")
+            or datetime.now(tz=self.session.server_timezone).isoformat()
+        )
         positions[str(ticket)] = {
             "signal": asdict(signal),
             "opened_at": opened_at,
@@ -709,9 +785,7 @@ class CompositePortfolioWorker:
             reward_price = abs(tp - fill)
             planned_rr = reward_price / risk_price if risk_price > 0 else 0.0
             risk_cash = risk_price * float(info.trade_contract_size) * volume
-            realized_r = (
-                float(result["profit_loss"]) / risk_cash if risk_cash > 0 else 0.0
-            )
+            realized_r = float(result["profit_loss"]) / risk_cash if risk_cash > 0 else 0.0
             signal = dict(tracked.get("signal") or {})
             close_event = {
                 **result,
@@ -817,10 +891,7 @@ class CompositePortfolioWorker:
             zone = f"GMT{sign}{absolute // 60}"
             if absolute % 60:
                 zone += f":{absolute % 60:02d}"
-        return (
-            f"{parsed.day:02d} {months[parsed.month - 1]} {parsed.year} "
-            f"{parsed:%H:%M:%S} {zone}"
-        )
+        return f"{parsed.day:02d} {months[parsed.month - 1]} {parsed.year} {parsed:%H:%M:%S} {zone}"
 
     def _load_state(self) -> dict[str, Any]:
         if not self.config.state_path.exists():
@@ -894,9 +965,7 @@ class CompositePortfolioWorker:
                     "status": status,
                     "detail": detail,
                     **account_fields,
-                    "updated_at": datetime.now(
-                        tz=self.session.server_timezone
-                    ).isoformat(),
+                    "updated_at": datetime.now(tz=self.session.server_timezone).isoformat(),
                 },
                 indent=2,
                 sort_keys=True,

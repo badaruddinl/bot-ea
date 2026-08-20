@@ -14,6 +14,7 @@ REAL order authority: **DISABLED**
 | G02 | PASS | GOLDI, GOLDM | `evidence/G02-current-behavior-corpus/` | Deterministic causal profile-isolated corpus, current wrong behavior, restart records, quality gate, and full regression passed. |
 | G03 | PASS | SHARED, CROSS_PROFILE | `evidence/G03-common-strategy-contract/` | Pure state-explicit contracts, causal/ownership guards, quality gate, and full regression passed. |
 | G04 | PASS | SHARED, GOLDI, GOLDM | `evidence/G04-pure-rule-extraction/` | Revised/Bear pure rules, legacy identity, corpus stability, type/lint ratchets, quality gate, and full regression passed. |
+| G05 | IN_PROGRESS | SHARED, GOLDI, GOLDM | `evidence/G05-bear-incremental-state/` | Bear bar-by-bar state machine and bounded live-worker integration are under implementation. |
 | G01-G21 | NOT_STARTED | — | — | No engine implementation starts before G00 review. |
 
 Raw or large evidence is stored outside Git under:
