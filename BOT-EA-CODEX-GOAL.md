@@ -590,7 +590,7 @@ Goal hanya selesai bila seluruh required cell PASS.
 | G05 Bear incremental parity | PASS | PASS | PASS | N/A | `evidence/G05-bear-incremental-state/` |
 | G06 Revised restart parity | PASS | PASS | PASS | N/A | `evidence/G06-revised-restart-parity/` |
 | G07 Event-driven reference runtime | PASS | PASS | PASS | PASS | `evidence/G07-event-driven-reference-runtime/` |
-| G08 Execution validity | NOT_STARTED | NOT_STARTED | NOT_STARTED | NOT_STARTED | |
+| G08 Execution validity | IN_PROGRESS | IN_PROGRESS | IN_PROGRESS | IN_PROGRESS | `evidence/G08-execution-validity/` |
 | G09 Causal/tick-aware backtest | NOT_STARTED | NOT_STARTED | NOT_STARTED | N/A | |
 | G10 Reference live validation | NOT_STARTED | NOT_STARTED | NOT_STARTED | NOT_STARTED | |
 | G11 MQL5 runtime skeleton | NOT_STARTED | NOT_STARTED | NOT_STARTED | NOT_STARTED | |

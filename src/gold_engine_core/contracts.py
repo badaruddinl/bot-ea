@@ -340,8 +340,11 @@ class StrategyState:
 class SignalPlan:
     profile_id: str
     profile_version: str
+    profile_fingerprint: str
     strategy_id: str
     strategy_version: str
+    component: str
+    reason: str
     setup_id: str
     signal_id: str
     side: Side
@@ -357,6 +360,7 @@ class SignalPlan:
     maximum_spread: Decimal
     maximum_drift_r: Decimal
     tick_size: Decimal
+    volume: Decimal
     account_login: int
     account_server: str
     trade_mode: TradeMode
@@ -374,8 +378,11 @@ class SignalPlan:
             (
                 self.profile_id,
                 self.profile_version,
+                self.profile_fingerprint,
                 self.strategy_id,
                 self.strategy_version,
+                self.component,
+                self.reason,
                 self.setup_id,
                 self.signal_id,
                 self.symbol,
@@ -393,6 +400,7 @@ class SignalPlan:
             ("planned_risk", self.planned_risk),
             ("invalidation", self.invalidation),
             ("tick_size", self.tick_size),
+            ("volume", self.volume),
         ):
             _positive_decimal(amount, f"signal.{name}")
         _positive_decimal(self.maximum_spread, "signal.maximum_spread", allow_zero=True)
@@ -410,6 +418,26 @@ class SignalPlan:
             raise ContractError("signal geometry must align to tick_size")
         if self.account_login <= 0 or self.magic <= 0:
             raise ContractError("signal account ownership is invalid")
+
+    @property
+    def planned_stop(self) -> Decimal:
+        return self.stop
+
+    @property
+    def planned_target(self) -> Decimal:
+        return self.target
+
+    @property
+    def event_id(self) -> str:
+        return self.signal_id
+
+    @property
+    def time(self) -> datetime:
+        return self.entry_ready_at
+
+    @property
+    def entry(self) -> Decimal:
+        return self.planned_entry
 
 
 @dataclass(frozen=True, slots=True)

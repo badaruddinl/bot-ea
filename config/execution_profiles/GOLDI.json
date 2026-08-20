@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "profile_id": "GOLDI",
+  "profile_fingerprint": "23598f01c472aebafd36cb15358178d40b76fab382cd0487ba3158c8421ead64",
+  "policy_version": "1.0.0",
+  "maximum_drift_r": "0.15",
+  "maximum_spread": "0.60",
+  "maximum_signal_age_seconds": 60
+}
