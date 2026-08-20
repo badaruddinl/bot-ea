@@ -266,7 +266,15 @@ Revised side          = BUY
 Bear side             = SELL
 ```
 
-Agent tidak boleh menyalakan REAL. Untuk live integration validation, buat atau gunakan **GOLDm safe DEMO mirror** yang terpisah dari production profile, tanpa mengubah production magic/config fingerprint secara diam-diam.
+Agent tidak boleh menyalakan REAL. Jika broker menyediakan kontrak yang setara,
+live integration validation menggunakan **GOLDm safe DEMO mirror** yang terpisah
+dari production profile. Broker yang digunakan tidak menyediakan GOLDm DEMO
+yang semantik kontraknya setara. Karena itu jalur validasi GOLDm yang dikunci
+adalah akun production REAL **read-only** untuk metadata/tick/spread/closed-bar
+capture, ditambah isolated Strategy Tester untuk execution evidence. Jalur ini
+tidak boleh mengimpor, memanggil, atau mengekspos order mutation API dan harus
+membuktikan `orders_sent=0`; production magic/config fingerprint tetap tidak
+boleh diubah diam-diam.
 
 ## 4.4 Profile isolation invariants
 
@@ -592,7 +600,9 @@ Goal hanya selesai bila seluruh required cell PASS.
 | G07 Event-driven reference runtime | PASS | PASS | PASS | PASS | `evidence/G07-event-driven-reference-runtime/` |
 | G08 Execution validity | PASS | PASS | PASS | PASS | `evidence/G08-execution-validity/` |
 | G09 Causal/tick-aware backtest | PASS | PASS | PASS | N/A | `evidence/G09-causal-tick-replay/` |
-| G10 Reference live validation | NOT_STARTED | NOT_STARTED | NOT_STARTED | NOT_STARTED | |
+| G10A Reference market-data validation | PASS | IN_PROGRESS | IN_PROGRESS | IN_PROGRESS | `evidence/G10-reference-live-validation/` |
+| G10B GOLD.i DEMO execution validation | PASS | IN_PROGRESS | N/A | N/A | `evidence/G10-reference-live-validation/` |
+| G10C GOLDm tester execution validation | PASS | N/A | DEFERRED_TO_G15 | N/A | `evidence/G10-reference-live-validation/` |
 | G11 MQL5 runtime skeleton | NOT_STARTED | NOT_STARTED | NOT_STARTED | NOT_STARTED | |
 | G12 Revised MQL5 parity | NOT_STARTED | NOT_STARTED | NOT_STARTED | N/A | |
 | G13 Bear MQL5 parity | NOT_STARTED | NOT_STARTED | NOT_STARTED | N/A | |
@@ -1068,7 +1078,7 @@ Backtest menjadi regression source tanpa lookahead.
 
 ---
 
-# 20. Batch/Gate G10 — Reference Live Validation
+# 20. Batch/Gate G10 — Reference Market-Data and Execution Validation
 
 ## GOLD.i
 
@@ -1083,29 +1093,44 @@ shadow
 
 ## GOLDm
 
-Gunakan safe DEMO mirror yang explicit:
+Broker tidak menyediakan akun DEMO dengan kontrak `GOLDm#` yang setara.
+Gunakan profile read-only yang explicit:
 
 ```text
-profile_id = GOLDM_DEMO_VALIDATION
+profile_id = GOLDM_REAL_READ_ONLY
 derived_from = GOLDM_PRODUCTION_FINGERPRINT
-orders cannot target production account
+account_mode = REAL
+access_mode = READ_ONLY
+orders_sent = 0
+execution_evidence = ISOLATED_STRATEGY_TESTER
 ```
 
-Jangan mengubah GOLDm production manifest untuk DEMO.
+Probe REAL hanya boleh membaca account/terminal/symbol metadata, tick, spread,
+dan closed bars. Order/deal/position mutation API dilarang. Strategy Tester
+batch menggunakan binary profile-locked dan real ticks; tidak ada live REAL
+order lifecycle pada gate engineering. Jangan mengubah GOLDm production
+manifest untuk validasi.
 
 ## Cross-profile
 
-Jalankan keduanya bersamaan dengan terminal terpisah.
+Jalankan GOLD.i DEMO dan GOLDm read-only capture bersamaan dengan terminal/data
+directory terpisah. Tidak ada GOLDm live execution lane.
 
 ## PASS
 
-- Actual live DEMO evidence.
+- Actual GOLD.i live DEMO evidence.
+- Actual GOLDm read-only broker-data evidence dengan `orders_sent=0`.
+- GOLDm isolated Strategy Tester batch evidence setelah G15.
 - No duplicate.
 - No state bleed.
 - No privacy bleed.
 - No live replay.
 - Latency recorded.
-- Production GOLDm remains disabled.
+- Production GOLDm order authority remains disabled.
+
+Kontrak dan tooling fail-closed G10A membuka G11--G15. G10B dan G10C boleh
+diselesaikan setelah binary MQL5 tersedia; keduanya tetap required sebelum
+release acceptance.
 
 ---
 
@@ -1600,7 +1625,7 @@ CI harus gagal bila:
 |---|---|---|---|
 | Setup → watch → entry | Required PASS | Required PASS | No contamination |
 | Setup → cancel | Required PASS | Required PASS | No contamination |
-| Fresh guarded order | Required PASS | Required PASS via safe validation | Correct profile |
+| Fresh guarded order | Required PASS | Required PASS via isolated Strategy Tester; no live REAL claim | Correct profile |
 | Stale reject | Required PASS | Required PASS | Correct profile |
 | Drift reject | Required PASS | Required PASS | Correct profile |
 | Spread reject | Required PASS | Required PASS | Correct profile |
@@ -1640,7 +1665,8 @@ Goal **DONE** hanya jika:
 - [ ] Invalidation-before-send PASS.
 - [ ] Causal/tick-aware backtest PASS.
 - [ ] GOLD.i live DEMO validation PASS.
-- [ ] GOLDm safe DEMO validation PASS.
+- [ ] GOLDm REAL read-only market-data validation PASS dengan `orders_sent=0`.
+- [ ] GOLDm isolated Strategy Tester execution validation PASS.
 - [ ] MQL5 native scheduler PASS.
 - [ ] Revised MQL5 parity 100% untuk kedua profile.
 - [ ] Bear MQL5 parity 100% untuk kedua profile.

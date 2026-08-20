@@ -42,6 +42,13 @@ from .corpus import (
     load_corpus,
     write_corpus,
 )
+from .demo_validation import (
+    DemoRuntimeBinding,
+    DemoValidationError,
+    DemoValidationManifest,
+    load_demo_validation_manifest,
+    validate_demo_binding,
+)
 from .execution import (
     BrokerCheck,
     ExecutionAccount,
@@ -56,6 +63,7 @@ from .execution import (
     load_execution_policy,
     validate_execution,
 )
+from .g10_evidence import G10Acceptance, verify_g10_evidence
 from .profile import (
     ComponentFingerprint,
     ManifestError,
@@ -84,6 +92,13 @@ from .reference_runtime import (
     SlowLaneOutput,
     run_isolated_profile_steps,
 )
+from .runtime_validation import (
+    RuntimeValidationBinding,
+    RuntimeValidationError,
+    RuntimeValidationManifest,
+    load_runtime_validation_manifest,
+    validate_runtime_binding,
+)
 
 __all__ = [
     "Bar",
@@ -98,6 +113,9 @@ __all__ = [
     "ContractError",
     "CorpusError",
     "DecisionAction",
+    "DemoRuntimeBinding",
+    "DemoValidationError",
+    "DemoValidationManifest",
     "EngineEvent",
     "EngineEventType",
     "EngineOutput",
@@ -111,6 +129,7 @@ __all__ = [
     "ExecutionSymbol",
     "ExecutionValidation",
     "FastLaneOutput",
+    "G10Acceptance",
     "GuardResult",
     "IsolatedProfileStep",
     "IsolatedStepsOutput",
@@ -133,6 +152,9 @@ __all__ = [
     "ReplayTradeOutcome",
     "ReplayTradeResult",
     "RuntimeIdentity",
+    "RuntimeValidationBinding",
+    "RuntimeValidationError",
+    "RuntimeValidationManifest",
     "SetupState",
     "Side",
     "SignalPlan",
@@ -152,12 +174,17 @@ __all__ = [
     "canonical_json",
     "canonical_sha256",
     "load_corpus",
+    "load_demo_validation_manifest",
     "load_execution_policy",
     "load_named_profile",
     "load_profile_manifest",
+    "load_runtime_validation_manifest",
     "resolve_signal_path",
     "run_isolated_profile_steps",
+    "validate_demo_binding",
     "validate_execution",
     "validate_profile_pair",
+    "validate_runtime_binding",
+    "verify_g10_evidence",
     "write_corpus",
 ]

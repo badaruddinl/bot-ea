@@ -1,0 +1,1 @@
+{"accepted":false,"evidence_fingerprint":null,"production_real_orders":"DISABLED","reasons":["missing/invalid GOLDI-lifecycle.json: FileNotFoundError","missing/invalid GOLDI-probe.json: FileNotFoundError","missing/invalid GOLDM-tester-batch.json: FileNotFoundError","missing/invalid concurrency.json: FileNotFoundError","prerequisites.ready is not true"]}

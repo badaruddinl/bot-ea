@@ -30,8 +30,13 @@ request a decision. Do not silently choose the less safe interpretation.
 - REAL order activation is human-only and must never be inferred.
 - Keep GOLDm production REAL orders disabled during preparation, engineering,
   tests, migration, parity work, and DEMO validation.
-- Do not use a production account for engineering E2E. Use an explicitly
-  isolated GOLDm DEMO mirror.
+- Do not use a production account for engineering order E2E. Prefer an
+  explicitly isolated GOLDm DEMO mirror. If the broker does not offer a
+  semantically equivalent GOLDm DEMO contract and the user explicitly accepts
+  the alternate path, the production account may be used only for read-only
+  broker metadata, tick, spread, and closed-bar capture. That exception must
+  expose no order API, must record `orders_sent=0`, and must pair with isolated
+  Strategy Tester execution evidence. It never grants REAL order authority.
 - Never log, print, commit, screenshot, or paste passwords, bot tokens, account
   secrets, OTPs, or full private environment files.
 - Fail closed on symbol, account, server, trade mode, profile, magic, sizing,

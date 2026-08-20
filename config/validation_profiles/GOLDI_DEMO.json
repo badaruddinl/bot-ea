@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "validation_profile_id": "GOLDI_DEMO_VALIDATION",
+  "derived_profile_id": "GOLDI",
+  "derived_profile_fingerprint": "23598f01c472aebafd36cb15358178d40b76fab382cd0487ba3158c8421ead64",
+  "symbol": "GOLD.i#",
+  "required_trade_mode": "demo",
+  "terminal_path_env": "GOLDI_MT5_TERMINAL_PATH",
+  "login_env": "GOLDI_MT5_LOGIN",
+  "server_env": "GOLDI_MT5_SERVER",
+  "state_namespace": "runtime_data/validation/goldi/state.json",
+  "evidence_namespace": "runtime_data/validation/goldi/evidence.jsonl",
+  "audience": "goldi_test_approved",
+  "production_real_authority": false
+}
