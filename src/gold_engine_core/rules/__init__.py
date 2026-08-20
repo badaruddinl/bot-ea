@@ -11,6 +11,18 @@ from .bear import (
     ShortPosition,
 )
 from .bear_candidate import confluence_v1_config, confluence_v2_config, confluence_v3_config
+from .bear_incremental import (
+    BearArmState,
+    BearEvidence,
+    BearIncrementalError,
+    BearIncrementalEvent,
+    BearIncrementalMachine,
+    BearIncrementalOutput,
+    BearIncrementalPhase,
+    BearIncrementalSignal,
+    BearIncrementalState,
+    BearProcessedBar,
+)
 from .bear_multitimeframe import (
     BearMultiTimeframeReplay,
     BearV4Config,
@@ -32,13 +44,23 @@ from .revised_setup import RevisedM5Setup, RevisedSetupDetector, classify_m5_set
 
 __all__ = [
     "BearAction",
+    "BearArmState",
     "BearBar",
     "BearDecision",
     "BearEngine",
     "BearEngineConfig",
+    "BearEvidence",
     "BearExitAction",
     "BearExitDecision",
+    "BearIncrementalError",
+    "BearIncrementalEvent",
+    "BearIncrementalMachine",
+    "BearIncrementalOutput",
+    "BearIncrementalPhase",
+    "BearIncrementalSignal",
+    "BearIncrementalState",
     "BearMultiTimeframeReplay",
+    "BearProcessedBar",
     "BearV4Config",
     "BearV4Outcome",
     "BearV4Report",
