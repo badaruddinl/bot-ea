@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from dataclasses import replace
 from pathlib import Path
 
@@ -95,3 +96,76 @@ def test_read_only_probe_source_contains_no_order_mutation_api() -> None:
         "PositionOpen",
     )
     assert not [name for name in forbidden if name in source]
+
+
+@pytest.mark.parametrize(
+    ("mutation", "message"),
+    [
+        ({"schema_version": 2}, "schema_version"),
+        ({"validation_profile_id": ""}, "validation_profile_id"),
+        ({"derived_profile_fingerprint": "short"}, "fingerprint"),
+        ({"required_trade_mode": "contest"}, "trade mode"),
+        ({"access_mode": "write"}, "access mode"),
+        (
+            {"required_trade_mode": "demo", "access_mode": "read_only"},
+            "read-only broker",
+        ),
+        (
+            {"required_trade_mode": "real", "access_mode": "demo_execution"},
+            "DEMO execution",
+        ),
+        ({"terminal_path_env": "GOLDM_REAL_MT5_LOGIN"}, "environment names"),
+        (
+            {"state_namespace": "runtime_data/validation/goldm_read_only/evidence.jsonl"},
+            "namespaces",
+        ),
+    ],
+)
+def test_manifest_boundary_mutations_fail_closed(
+    mutation: dict[str, object],
+    message: str,
+) -> None:
+    with pytest.raises(RuntimeValidationError, match=message):
+        replace(manifest(), **mutation)
+
+
+def test_manifest_loader_rejects_invalid_json_and_checksum(tmp_path: Path) -> None:
+    invalid = tmp_path / "invalid.json"
+    invalid.write_text("{", encoding="utf-8")
+    with pytest.raises(RuntimeValidationError, match="cannot read"):
+        load_runtime_validation_manifest(invalid)
+
+    value = manifest()
+    copied = tmp_path / "GOLDM_REAL_READ_ONLY.json"
+    copied.write_text(json.dumps(value.to_payload()), encoding="utf-8")
+    copied.with_suffix(".sha256").write_text(
+        f"{'0' * 64}  {copied.name}\n",
+        encoding="ascii",
+    )
+    with pytest.raises(RuntimeValidationError, match="checksum"):
+        load_runtime_validation_manifest(copied)
+
+
+def test_runtime_binding_and_derivation_boundaries_fail_closed() -> None:
+    value = manifest()
+    production = load_named_profile(REPOSITORY_ROOT, "GOLDM")
+
+    with pytest.raises(RuntimeValidationError, match="incomplete"):
+        replace(binding(), terminal_path="")
+    with pytest.raises(RuntimeValidationError, match="derive"):
+        validate_runtime_binding(
+            replace(value, derived_profile_fingerprint="0" * 64),
+            production,
+            binding(),
+        )
+
+    goldi = load_named_profile(REPOSITORY_ROOT, "GOLDI")
+    goldi_read_only = replace(
+        value,
+        derived_profile_id=goldi.profile_id,
+        derived_profile_fingerprint=goldi.fingerprint,
+        symbol=goldi.symbol,
+    )
+    goldi_binding = replace(binding(), symbol=goldi.symbol)
+    with pytest.raises(RuntimeValidationError, match="GOLDM-only"):
+        validate_runtime_binding(goldi_read_only, goldi, goldi_binding)
