@@ -8,13 +8,9 @@ version = "0.1.0"
 description = "Research-first MT5 trading bot scaffold with risk-first design."
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = [
-  "websockets>=12",
-]
+dependencies = []
 
 [project.scripts]
-bot-ea-qt = "bot_ea.entrypoints:qt_main"
-bot-ea-websocket = "bot_ea.entrypoints:websocket_main"
 goldm-bear-scan = "goldm_bear.cli:main"
 goldm-bear-mt5-scan = "goldm_bear.mt5_cli:main"
 goldm-revised-shadow = "goldm_revised.cli:main"
@@ -26,9 +22,6 @@ gold-global-orchestrator = "gold_orchestrator.cli:main"
 [project.optional-dependencies]
 live = [
   "MetaTrader5==5.0.6090",
-]
-desktop = [
-  "PySide6>=6.7",
 ]
 research = [
   "matplotlib>=3.10",
@@ -45,6 +38,10 @@ dev = [
 [tool.pytest.ini_options]
 pythonpath = [
   "src",
+]
+addopts = "-m 'not slow'"
+markers = [
+  "slow: historical research, deployment sealing, and matrix validation for full gates",
 ]
 
 [tool.ruff]

@@ -35,7 +35,7 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
           python -m pip install --disable-pip-version-check --upgrade pip
-          python -m pip install --disable-pip-version-check -e ".[desktop,live,dev]"
+          python -m pip install --disable-pip-version-check -e ".[live,dev]"
       - name: Run incremental format, lint, type, and core coverage gates
         shell: pwsh
         run: |
@@ -61,7 +61,7 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
           New-Item -ItemType Directory -Path .ci-evidence -Force | Out-Null
-          python -m pytest -q `
+          python -m pytest -q -m "slow or not slow" `
             --basetemp=.ci-pytest-temp `
             --junitxml=.ci-evidence\pytest-junit.xml 2>&1 |
               Tee-Object -FilePath .ci-evidence\full-pytest.txt

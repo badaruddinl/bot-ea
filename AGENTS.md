@@ -4,6 +4,12 @@
 
 These instructions apply to the entire `bot-ea` repository.
 
+The repository product is an MT5 trading engine/EA and its validation,
+orchestration, audit, and Telegram bridge tooling. Do not add a desktop GUI,
+Qt/Tk application, WebSocket service, or application packaging surface. The
+MetaTrader terminal itself is an external broker terminal, not this product's
+UI.
+
 `BOT-EA-CODEX-GOAL.md` is the authoritative target contract only after the
 user explicitly activates that goal. Until then, this repository is in
 **PRE-GOAL PREPARATION**. Preparation may inventory, document, create clean

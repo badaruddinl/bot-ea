@@ -60,6 +60,10 @@ menjadi reference/backtest implementation sampai parity MQL5
 tersertifikasi. Production trading decision, order execution, dan
 position management akhirnya harus berjalan langsung di EA/MT5.
 
+Repository tidak memiliki product UI desktop, Qt/Tk app, atau WebSocket
+service. Operational control tetap melalui MT5, worker/orchestrator, audit, dan
+Telegram bridge yang non-critical.
+
 Agent tidak boleh mengaktifkan REAL order tanpa otorisasi eksplisit
 manusia. Semua engineering gate harus diselesaikan melalui unit,
 historical replay, deterministic parity, MT5 Strategy Tester, shadow,
