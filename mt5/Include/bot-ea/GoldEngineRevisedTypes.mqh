@@ -196,6 +196,15 @@ struct RevisedFibonacciStats
    bool   current_rejection;
   };
 
+struct RevisedRiskStats
+  {
+   string source;
+   double original_stop;
+   double selected_stop;
+   double risk;
+   int    m1_pivot_count;
+  };
+
 void LoadRevisedConfig(RevisedEngineConfig &config,const string symbol)
   {
    config.symbol=symbol;

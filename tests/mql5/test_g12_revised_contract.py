@@ -15,6 +15,7 @@ CONFIRMATION_PATH = (
     REPOSITORY_ROOT / "mt5" / "Include" / "bot-ea" / "GoldEngineRevisedConfirmation.mqh"
 )
 CONTEXT_PATH = REPOSITORY_ROOT / "mt5" / "Include" / "bot-ea" / "GoldEngineRevisedContext.mqh"
+GEOMETRY_PATH = REPOSITORY_ROOT / "mt5" / "Include" / "bot-ea" / "GoldEngineRevisedGeometry.mqh"
 
 
 def assignment(source: str, name: str) -> str:
@@ -98,3 +99,17 @@ def test_momentum_fibonacci_and_hard_invalidation_preserve_reference_rules() -> 
     assert "count-start<config.acceptance_close_count" in value
     assert "outside>=3" in value
     assert "displacement>=atr_m1*config.acceptance_displacement_atr" in value
+
+
+def test_adaptive_stop_target_and_snapshot_validation_preserve_reference_rules() -> None:
+    value = GEOMETRY_PATH.read_text(encoding="utf-8")
+
+    assert "atr*config.stop_buffer_atr" in value
+    assert "config.spread_floor*2.0" in value
+    assert "atr_m1*config.adaptive_stop_buffer_atr" in value
+    assert "atr_m1*config.adaptive_stop_min_risk_atr" in value
+    assert "structural_distance<fallback_distance" in value
+    assert 'source="M1_CONFIRMED_STRUCTURE"' in value
+    assert "config.scalper_target_buffer_atr" in value
+    assert "config.strict_target_buffer_atr" in value
+    assert "snapshot.m1_bars[m1_count-1].open_time>snapshot.current_time" in value
