@@ -629,10 +629,10 @@ class CompositePortfolioWorker:
                     trigger_time=setup_available,
                     reason=signal.reason,
                     level=setup.resistance,
-                    invalidation=signal.stop,
-                    entry=signal.entry,
-                    stop=signal.stop,
-                    target=signal.target,
+                    invalidation=float(signal.stop),
+                    entry=float(signal.entry),
+                    stop=float(signal.stop),
+                    target=float(signal.target),
                 )
             return None
         h1_close_times = [bar.time + timedelta(hours=1) for bar in h1_bars]
