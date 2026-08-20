@@ -1,23 +1,30 @@
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 import sys
 import tempfile
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 QUALITY_ROOTS = frozenset({"scripts", "src", "tests"})
 
 
-def _run(command: Sequence[str], *, capture: bool = False) -> subprocess.CompletedProcess[str]:
+def _run(
+    command: Sequence[str],
+    *,
+    capture: bool = False,
+    environment: Mapping[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         command,
         cwd=REPOSITORY_ROOT,
         check=True,
         text=True,
         capture_output=capture,
+        env=environment,
     )
 
 
@@ -100,6 +107,8 @@ def _run_core_coverage() -> None:
         raise RuntimeError("gold_engine_core exists without tests/gold_engine_core")
     with tempfile.TemporaryDirectory(prefix="bot-ea-quality-") as temporary_root:
         pytest_temp = Path(temporary_root) / "pytest"
+        environment = os.environ.copy()
+        environment["COVERAGE_FILE"] = str(Path(temporary_root) / ".coverage")
         _run(
             [
                 sys.executable,
@@ -112,7 +121,8 @@ def _run_core_coverage() -> None:
                 "--cov-report=term-missing",
                 "--cov-fail-under=90",
                 tests.as_posix(),
-            ]
+            ],
+            environment=environment,
         )
 
 
