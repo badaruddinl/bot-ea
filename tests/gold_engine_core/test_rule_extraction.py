@@ -5,10 +5,10 @@ from pathlib import Path
 
 import goldm_bear.replay as legacy_bear_replay
 import goldm_revised.replay as legacy_revised_replay
-from gold_portfolio import worker as legacy_portfolio_worker
 from gold_engine_core.rules.bear import BearEngine, _ceil_to_tick
 from gold_engine_core.rules.bear_multitimeframe import BearMultiTimeframeReplay
 from gold_engine_core.rules.revised import RevisedEngine, _normalize
+from gold_portfolio import worker as legacy_portfolio_worker
 from goldm_bear.engine import BearEngine as LegacyBearEngine
 from goldm_bear.multitimeframe import BearMultiTimeframeReplay as LegacyBearMultiTimeframeReplay
 from goldm_revised.engine import RevisedEngine as LegacyRevisedEngine
