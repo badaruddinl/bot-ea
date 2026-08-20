@@ -21,6 +21,7 @@ void InitializeRevisedDecision(const CRevisedSnapshot &snapshot,
                                const double confidence,
                                RevisedDecision &decision)
   {
+   ZeroMemory(decision);
    decision.strategy_id="GOLDM_REVISED";
    decision.strategy_version="0.6.0";
    decision.symbol=snapshot.symbol;
@@ -57,7 +58,8 @@ void InitializeRevisedDecision(const CRevisedSnapshot &snapshot,
 void SetRevisedDecisionEvidence(const RevisedRangeStats &range_stats,
                                 const RevisedM1Confirmation &m1,
                                 const RevisedFibonacciStats &fibonacci,
-                                const bool exhausted,
+                                const RevisedMomentumStats &momentum,
+                                const RevisedRiskStats &risk,
                                 const double entry,
                                 const double stop,
                                 const bool has_obstacle,
@@ -68,7 +70,7 @@ void SetRevisedDecisionEvidence(const RevisedRangeStats &range_stats,
                                 RevisedDecision &decision)
   {
    decision.retest_count=fibonacci.retests;
-   decision.exhausted=exhausted;
+   decision.exhausted=momentum.exhausted;
    decision.has_entry=true;
    decision.entry=entry;
    decision.has_stop=true;
@@ -82,6 +84,11 @@ void SetRevisedDecisionEvidence(const RevisedRangeStats &range_stats,
    decision.rejection_count=range_stats.rejections;
    decision.acceptance_count=range_stats.acceptance;
    decision.m1_votes=m1.votes;
+   decision.range_evidence=range_stats;
+   decision.m1_evidence=m1;
+   decision.momentum_evidence=momentum;
+   decision.risk_evidence=risk;
+   decision.fibonacci_evidence=fibonacci;
   }
 
 class CRevisedEngine
@@ -254,7 +261,7 @@ public:
             decision);
          decision.validation_status="HARD_INVALID";
          SetRevisedDecisionEvidence(
-            range_stats,m1,fibonacci,momentum_stats.exhausted,
+            range_stats,m1,fibonacci,momentum_stats,risk_stats,
             entry,stop,has_obstacle,obstacle,obstacle_kind,
             has_obstacle_r,obstacle_r,decision);
          error="OK";
@@ -282,7 +289,7 @@ public:
                decision.has_target=true;
                decision.target=target;
                SetRevisedDecisionEvidence(
-                  range_stats,m1,fibonacci,momentum_stats.exhausted,
+                  range_stats,m1,fibonacci,momentum_stats,risk_stats,
                   entry,stop,has_obstacle,obstacle,obstacle_kind,
                   has_obstacle_r,obstacle_r,decision);
                error="OK";
@@ -297,7 +304,7 @@ public:
          decision.validation_status=(fibonacci.retests>0 ?
                                      "SOFT_FAIL" : "WATCH_ONLY");
          SetRevisedDecisionEvidence(
-            range_stats,m1,fibonacci,momentum_stats.exhausted,
+            range_stats,m1,fibonacci,momentum_stats,risk_stats,
             entry,stop,has_obstacle,obstacle,obstacle_kind,
             has_obstacle_r,obstacle_r,decision);
          error="OK";
@@ -332,7 +339,7 @@ public:
          decision.validation_status=(fibonacci.retests>0 ?
                                      "SOFT_FAIL" : "WATCH_ONLY");
          SetRevisedDecisionEvidence(
-            range_stats,m1,fibonacci,momentum_stats.exhausted,
+            range_stats,m1,fibonacci,momentum_stats,risk_stats,
             entry,stop,has_obstacle,obstacle,obstacle_kind,
             has_obstacle_r,obstacle_r,decision);
          error="OK";
@@ -371,7 +378,7 @@ public:
       decision.has_target=has_target;
       decision.target=(has_target ? target : 0.0);
       SetRevisedDecisionEvidence(
-         range_stats,m1,fibonacci,momentum_stats.exhausted,
+         range_stats,m1,fibonacci,momentum_stats,risk_stats,
          entry,stop,has_obstacle,obstacle,obstacle_kind,
          has_obstacle_r,obstacle_r,decision);
       error="OK";

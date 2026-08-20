@@ -71,6 +71,10 @@ void BuildRangeVector(CRevisedSnapshot &snapshot)
    snapshot.m5_pattern="BULL_ENGULFING";
    snapshot.m5_votes=3;
    snapshot.confidence=92.0;
+   snapshot.has_entry=false;
+   snapshot.has_stop=false;
+   snapshot.has_level=false;
+   snapshot.has_invalidation=false;
   }
 
 bool CloseEnough(const double actual,const double expected,const double tolerance)
@@ -78,46 +82,116 @@ bool CloseEnough(const double actual,const double expected,const double toleranc
    return MathAbs(actual-expected)<=tolerance;
   }
 
-int OnInit(void)
+bool EvaluateRangeCase(CRevisedEngine &engine)
   {
    CRevisedSnapshot snapshot;
    BuildRangeVector(snapshot);
-   CRevisedEngine engine;
-   engine.Initialize(_Symbol);
    RevisedDecision decision;
    string error="";
-   const bool evaluated=engine.Evaluate(snapshot,decision,error);
-   HarnessPassed=
-      evaluated &&
-      error=="OK" &&
-      decision.state==REVISED_STATE_ENTRY_READY &&
-      decision.action==REVISED_ACTION_ENTER &&
-      decision.reason=="STRONG_FIRST_CONFIRMATION" &&
-      decision.mode==REVISED_MODE_RANGE &&
-      decision.entry_profile=="CORE" &&
-      !decision.observation_only &&
-      decision.touch_count==4 &&
-      decision.rejection_count==4 &&
-      decision.m1_votes==3 &&
-      CloseEnough(decision.entry,4394.6,0.01) &&
-      CloseEnough(decision.stop,4394.2,0.01) &&
-      CloseEnough(decision.target,4399.76,0.01) &&
-      CloseEnough(decision.first_obstacle,4400.0,0.01) &&
-      decision.first_obstacle_kind=="PSYCH_10" &&
-      CloseEnough(decision.confidence,80.0,1.0e-9);
+   return engine.Evaluate(snapshot,decision,error) &&
+          error=="OK" &&
+          decision.state==REVISED_STATE_ENTRY_READY &&
+          decision.action==REVISED_ACTION_ENTER &&
+          decision.reason=="STRONG_FIRST_CONFIRMATION" &&
+          decision.mode==REVISED_MODE_RANGE &&
+          decision.entry_profile=="CORE" &&
+          !decision.observation_only &&
+          decision.touch_count==4 &&
+          decision.rejection_count==4 &&
+          decision.m1_votes==3 &&
+          CloseEnough(decision.entry,4394.6,0.01) &&
+          CloseEnough(decision.stop,4394.2,0.01) &&
+          CloseEnough(decision.target,4399.76,0.01) &&
+          CloseEnough(decision.first_obstacle,4400.0,0.01) &&
+          decision.first_obstacle_kind=="PSYCH_10" &&
+          CloseEnough(decision.confidence,80.0,1.0e-9);
+  }
 
+bool EvaluateNoSetupCase(CRevisedEngine &engine)
+  {
+   CRevisedSnapshot snapshot;
+   BuildRangeVector(snapshot);
+   snapshot.m5_trigger_time=0;
+   snapshot.m5_pattern="NONE";
+   RevisedDecision decision;
+   string error="";
+   return engine.Evaluate(snapshot,decision,error) &&
+          error=="OK" &&
+          decision.state==REVISED_STATE_WAIT &&
+          decision.action==REVISED_ACTION_OBSERVE &&
+          decision.reason=="M5_SETUP_UNAVAILABLE" &&
+          CloseEnough(decision.confidence,59.99,1.0e-9);
+  }
+
+bool EvaluateObstacleCase(CRevisedEngine &engine)
+  {
+   CRevisedSnapshot snapshot;
+   BuildRangeVector(snapshot);
+   snapshot.has_entry=true;
+   snapshot.entry=4399.7;
+   snapshot.has_stop=true;
+   snapshot.stop=4398.7;
+   RevisedDecision decision;
+   string error="";
+   return engine.Evaluate(snapshot,decision,error) &&
+          error=="OK" &&
+          decision.state==REVISED_STATE_WATCH &&
+          decision.action==REVISED_ACTION_OBSERVE &&
+          decision.reason=="SOFT_FAIL_FIRST_OBSTACLE_ROOM" &&
+          decision.first_obstacle_kind=="PSYCH_10" &&
+          CloseEnough(decision.first_obstacle,4400.0,0.01) &&
+          CloseEnough(decision.first_obstacle_r,0.3,1.0e-9);
+  }
+
+bool EvaluateMomentumCase(CRevisedEngine &engine)
+  {
+   CRevisedSnapshot snapshot;
+   BuildRangeVector(snapshot);
+   const datetime base=D'2026.08.18 12:00:00';
+   for(int index=0;index<20;index++)
+     {
+      const double open=4390.0+index*2.0;
+      const double close=4392.0+index*2.0;
+      SetHarnessBar(
+         snapshot.m5_bars[index],PERIOD_M5,base+index*300,
+         open,close,4389.0+index*2.0,close,index);
+     }
+   snapshot.has_entry=true;
+   snapshot.entry=4394.0;
+   snapshot.has_stop=true;
+   snapshot.stop=4390.0;
+   RevisedDecision decision;
+   string error="";
+   return engine.Evaluate(snapshot,decision,error) &&
+          error=="OK" &&
+          decision.state==REVISED_STATE_ENTRY_READY &&
+          decision.action==REVISED_ACTION_ENTER &&
+          decision.reason=="MOMENTUM_ENTRY" &&
+          decision.mode==REVISED_MODE_MOMENTUM &&
+          CloseEnough(decision.entry,4394.0,0.01) &&
+          CloseEnough(decision.stop,4390.0,0.01) &&
+          CloseEnough(decision.target,4399.64,0.01) &&
+          CloseEnough(decision.first_obstacle_r,1.5,1.0e-9);
+  }
+
+int OnInit(void)
+  {
+   CRevisedEngine engine;
+   engine.Initialize(_Symbol);
+   const bool range_passed=EvaluateRangeCase(engine);
+   const bool no_setup_passed=EvaluateNoSetupCase(engine);
+   const bool obstacle_passed=EvaluateObstacleCase(engine);
+   const bool momentum_passed=EvaluateMomentumCase(engine);
+   HarnessPassed=range_passed &&
+                 no_setup_passed &&
+                 obstacle_passed &&
+                 momentum_passed;
    Print("G12_REVISED_PARITY profile=",_Symbol,
          " passed=",(HarnessPassed ? "true" : "false"),
-         " error=",error,
-         " state=",IntegerToString((long)decision.state),
-         " reason=",decision.reason,
-         " entry=",DoubleToString(decision.entry,2),
-         " stop=",DoubleToString(decision.stop,2),
-         " target=",DoubleToString(decision.target,2),
-         " obstacle=",DoubleToString(decision.first_obstacle,2),
-         " touches=",IntegerToString(decision.touch_count),
-         " rejections=",IntegerToString(decision.rejection_count),
-         " votes=",IntegerToString(decision.m1_votes));
+         " range=",(range_passed ? "true" : "false"),
+         " no_setup=",(no_setup_passed ? "true" : "false"),
+         " obstacle=",(obstacle_passed ? "true" : "false"),
+         " momentum=",(momentum_passed ? "true" : "false"));
    return HarnessPassed ? INIT_SUCCEEDED : INIT_FAILED;
   }
 

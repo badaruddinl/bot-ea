@@ -118,41 +118,6 @@ public:
      }
   };
 
-struct RevisedDecision
-  {
-   string                  strategy_id;
-   string                  strategy_version;
-   string                  symbol;
-   EngineSide              side;
-   RevisedState            state;
-   RevisedAction           action;
-   string                  entry_profile;
-   bool                    observation_only;
-   datetime                setup_trigger_time;
-   datetime                time;
-   string                  reason;
-   string                  validation_status;
-   int                     retest_count;
-   double                  confidence;
-   RevisedConfirmationMode mode;
-   bool                    exhausted;
-   bool                    has_entry;
-   double                  entry;
-   bool                    has_stop;
-   double                  stop;
-   bool                    has_target;
-   double                  target;
-   bool                    has_first_obstacle;
-   double                  first_obstacle;
-   string                  first_obstacle_kind;
-   bool                    has_first_obstacle_r;
-   double                  first_obstacle_r;
-   int                     touch_count;
-   int                     rejection_count;
-   int                     acceptance_count;
-   int                     m1_votes;
-  };
-
 struct RevisedRangeStats
   {
    int    bars;
@@ -256,6 +221,46 @@ struct RevisedDetectorState
    datetime       buy_consumed_at;
    datetime       sell_consumed_at;
    datetime       last_classified_m5;
+  };
+
+struct RevisedDecision
+  {
+   string                  strategy_id;
+   string                  strategy_version;
+   string                  symbol;
+   EngineSide              side;
+   RevisedState            state;
+   RevisedAction           action;
+   string                  entry_profile;
+   bool                    observation_only;
+   datetime                setup_trigger_time;
+   datetime                time;
+   string                  reason;
+   string                  validation_status;
+   int                     retest_count;
+   double                  confidence;
+   RevisedConfirmationMode mode;
+   bool                    exhausted;
+   bool                    has_entry;
+   double                  entry;
+   bool                    has_stop;
+   double                  stop;
+   bool                    has_target;
+   double                  target;
+   bool                    has_first_obstacle;
+   double                  first_obstacle;
+   string                  first_obstacle_kind;
+   bool                    has_first_obstacle_r;
+   double                  first_obstacle_r;
+   int                     touch_count;
+   int                     rejection_count;
+   int                     acceptance_count;
+   int                     m1_votes;
+   RevisedRangeStats       range_evidence;
+   RevisedM1Confirmation   m1_evidence;
+   RevisedMomentumStats    momentum_evidence;
+   RevisedRiskStats        risk_evidence;
+   RevisedFibonacciStats   fibonacci_evidence;
   };
 
 void LoadRevisedConfig(RevisedEngineConfig &config,const string symbol)

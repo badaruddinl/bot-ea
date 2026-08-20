@@ -183,6 +183,11 @@ def test_complete_decision_tree_preserves_gate_order_and_reasons() -> None:
     assert "side==ENGINE_SIDE_SELL || local_retest_scalper" in value
     assert "confidence=MathMin(confidence,m_config.promotion_confidence+20.0)" in value
     assert "strict_room && !strict_ok" in value
+    assert "decision.range_evidence=range_stats" in value
+    assert "decision.m1_evidence=m1" in value
+    assert "decision.momentum_evidence=momentum" in value
+    assert "decision.risk_evidence=risk" in value
+    assert "decision.fibonacci_evidence=fibonacci" in value
 
 
 def test_native_parity_harness_locks_python_range_vector() -> None:
@@ -199,6 +204,13 @@ def test_native_parity_harness_locks_python_range_vector() -> None:
     assert 'decision.first_obstacle_kind=="PSYCH_10"' in value
     assert "return HarnessPassed ? INIT_SUCCEEDED : INIT_FAILED" in value
     assert "OrderSend" not in value
+    assert "EvaluateNoSetupCase" in value
+    assert '"M5_SETUP_UNAVAILABLE"' in value
+    assert "EvaluateObstacleCase" in value
+    assert '"SOFT_FAIL_FIRST_OBSTACLE_ROOM"' in value
+    assert "EvaluateMomentumCase" in value
+    assert '"MOMENTUM_ENTRY"' in value
+    assert "CloseEnough(decision.target,4399.64,0.01)" in value
 
 
 def test_runtime_wires_bounded_revised_state_without_historical_promotion() -> None:
