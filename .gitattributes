@@ -1,2 +1,4 @@
 corpus/current_behavior/*.jsonl text eol=lf
 corpus/current_behavior/*.sha256 text eol=lf
+evidence/G09-causal-tick-replay/*-report.json text eol=lf
+evidence/G09-causal-tick-replay/*-report.sha256 text eol=lf

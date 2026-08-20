@@ -591,7 +591,7 @@ Goal hanya selesai bila seluruh required cell PASS.
 | G06 Revised restart parity | PASS | PASS | PASS | N/A | `evidence/G06-revised-restart-parity/` |
 | G07 Event-driven reference runtime | PASS | PASS | PASS | PASS | `evidence/G07-event-driven-reference-runtime/` |
 | G08 Execution validity | PASS | PASS | PASS | PASS | `evidence/G08-execution-validity/` |
-| G09 Causal/tick-aware backtest | NOT_STARTED | NOT_STARTED | NOT_STARTED | N/A | |
+| G09 Causal/tick-aware backtest | PASS | PASS | PASS | N/A | `evidence/G09-causal-tick-replay/` |
 | G10 Reference live validation | NOT_STARTED | NOT_STARTED | NOT_STARTED | NOT_STARTED | |
 | G11 MQL5 runtime skeleton | NOT_STARTED | NOT_STARTED | NOT_STARTED | NOT_STARTED | |
 | G12 Revised MQL5 parity | NOT_STARTED | NOT_STARTED | NOT_STARTED | N/A | |

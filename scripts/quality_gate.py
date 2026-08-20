@@ -131,6 +131,7 @@ def _run_core_coverage() -> None:
                 "-q",
                 f"--basetemp={pytest_temp.as_posix()}",
                 "--cov=gold_engine_core.contracts",
+                "--cov=gold_engine_core.causal_replay",
                 "--cov=gold_engine_core.corpus",
                 "--cov=gold_engine_core.current_behavior",
                 "--cov=gold_engine_core.execution",
