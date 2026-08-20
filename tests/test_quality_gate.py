@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import subprocess
 from pathlib import Path
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "quality_gate.py"
@@ -57,3 +58,24 @@ def test_parser_requires_base_and_defaults_head() -> None:
 
     assert args.base == "baseline-sha"
     assert args.head == "HEAD"
+
+
+def test_git_uses_repository_local_safe_directory(monkeypatch, tmp_path: Path) -> None:
+    observed: list[str] = []
+
+    def fake_run(command, *, capture=False):
+        observed.extend(command)
+        return subprocess.CompletedProcess(command, 0, stdout="")
+
+    monkeypatch.setattr(quality_gate, "REPOSITORY_ROOT", tmp_path)
+    monkeypatch.setattr(quality_gate, "_run", fake_run)
+
+    quality_gate._git("status", "--short")
+
+    assert observed == [
+        "git",
+        "-c",
+        f"safe.directory={tmp_path.as_posix()}",
+        "status",
+        "--short",
+    ]

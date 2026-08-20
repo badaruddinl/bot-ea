@@ -20,22 +20,27 @@ def _run(command: Sequence[str], *, capture: bool = False) -> subprocess.Complet
     )
 
 
+def _git(*arguments: str, capture: bool = False) -> subprocess.CompletedProcess[str]:
+    safe_directory = REPOSITORY_ROOT.as_posix()
+    return _run(
+        ["git", "-c", f"safe.directory={safe_directory}", *arguments],
+        capture=capture,
+    )
+
+
 def _tracked_changed_paths(base: str, head: str) -> tuple[Path, ...]:
-    _run(["git", "cat-file", "-e", f"{base}^{{commit}}"])
-    _run(["git", "cat-file", "-e", f"{head}^{{commit}}"])
-    merge_base = _run(["git", "merge-base", base, head], capture=True).stdout.strip()
+    _git("cat-file", "-e", f"{base}^{{commit}}")
+    _git("cat-file", "-e", f"{head}^{{commit}}")
+    merge_base = _git("merge-base", base, head, capture=True).stdout.strip()
     if not merge_base:
         raise RuntimeError(f"no merge base between {base!r} and {head!r}")
 
-    output = _run(
-        [
-            "git",
-            "diff",
-            "--name-only",
-            "--diff-filter=ACMR",
-            "-z",
-            f"{merge_base}...{head}",
-        ],
+    output = _git(
+        "diff",
+        "--name-only",
+        "--diff-filter=ACMR",
+        "-z",
+        f"{merge_base}...{head}",
         capture=True,
     ).stdout
     return tuple(Path(value) for value in output.split("\0") if value)
