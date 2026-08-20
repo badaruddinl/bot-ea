@@ -1,6 +1,6 @@
 # G04 Pure Rule Extraction
 
-Status: **IN_PROGRESS**
+Status: **PASS**
 
 Scope: SHARED, GOLDI, GOLDM. No strategy parameter or signal threshold is tuned. REAL authority remains disabled.
 
@@ -54,4 +54,30 @@ rule_coverage_xml_sha256=843fb9a0c45df34fe3fda30b49bccde30dbb632d83f503061d9adbc
 
 New contracts remain gated at 90%. Extracted legacy rules start with a fail-closed 75% branch-coverage ratchet; G12/G13 parity work must raise it rather than lower it.
 
-Quality-gate E2E, corpus regeneration after commit, and full regression remain required before PASS.
+## Final verification
+
+```text
+python scripts/quality_gate.py --base a5cdf1b6e2fa6a63f63b1e015508332fc72bf617 --head HEAD
+exit=0
+quality_python_files=16
+ruff_format=PASS
+ruff_lint=PASS
+mypy=PASS (13 changed source files)
+new_core=41 passed, 91.77%
+extracted_rules=91 passed, 77.22%
+
+python scripts/build-current-behavior-corpus.py
+exit=0
+GOLDI=73df973f03258b3f96c52a22103bf1c5a98467ee9416a4a786cc789bf01f4106
+GOLDM=bc4450049bc8d1d370a229dd9509220ee8adf46ea822c343e0868b377b63da70
+
+python -m pytest -q --basetemp=<external>/G04-pure-rule-extraction/full-pytest-temp --junitxml=<external>/G04-pure-rule-extraction/full-pytest-junit.xml
+exit=0
+result=761 passed, 2 skipped, 2 warnings, 141 subtests passed
+junit_tests=904
+junit_failures=0
+junit_errors=0
+junit_sha256=37f9d0d7082c9e2191dc1b179e75d0dbc5fb83310e433d87679e61d8dec67a5c
+```
+
+No strategy threshold/config, runtime authority, terminal, account, or order executor was changed or started. REAL authority remained disabled throughout G04.
