@@ -13,7 +13,7 @@ Scope: GOLDI and GOLDM current Python semantics. REAL order authority remains di
 
 Each record contains profile and input fingerprints, a fixed offset-aware semantic `available_at`, profile-namespaced setup ID, causal state transitions, decision, planned geometry, reason, execution outcome, source reference, and source SHA-256. Strategy records require closed bars.
 
-The generator binds every scenario to an existing source assertion or current implementation symbol. Rebuilding into a second directory must produce byte-identical JSONL and sidecars. GOLDI and GOLDM can never share a corpus file.
+The generator captures every scenario's source assertion/implementation SHA in the immutable corpus. Later refactors reuse that captured oracle SHA when rebuilding the same scenario, so moving an implementation cannot silently redefine baseline input identity. A new or renamed scenario must resolve and hash a live source oracle. Rebuilding into a second directory must produce byte-identical JSONL and sidecars. GOLDI and GOLDM can never share a corpus file.
 
 ## Scenario coverage per profile
 

@@ -249,7 +249,7 @@ def write_corpus(path: Path, records: tuple[BehaviorRecord, ...]) -> str:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(payload)
     digest = hashlib.sha256(payload).hexdigest()
-    path.with_suffix(".sha256").write_text(f"{digest}  {path.name}\n", encoding="ascii")
+    path.with_suffix(".sha256").write_bytes(f"{digest}  {path.name}\n".encode("ascii"))
     return digest
 
 
