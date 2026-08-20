@@ -19,8 +19,11 @@ REAL order authority: **DISABLED**
 | G07 | PASS | SHARED, GOLDI, GOLDM, CROSS_PROFILE | `evidence/G07-event-driven-reference-runtime/` | Fast/bar/slow lanes, deterministic sequence, outbox isolation, stall containment, quality gate, and regression passed. |
 | G08 | PASS | SHARED, GOLDI, GOLDM, CROSS_PROFILE | `evidence/G08-execution-validity/` | Immutable plan/policy, all pre-send guards, no quote chasing, integration, quality gate, and regression passed. |
 | G09 | PASS | SHARED, GOLDI, GOLDM | `evidence/G09-causal-tick-replay/` | Common-runtime replay, forming-bar exclusion, tick/same-bar policy, profile reports, quality gate, and regression passed. |
-| G10 | BLOCKED | GOLDI, GOLDM, CROSS_PROFILE | `evidence/G10-reference-live-validation/` | Shared harness/preparation passed; actual dual-terminal DEMO evidence is unavailable because IDCloudHost remains unauthenticated and no safe-DEMO bindings are accessible. |
-| G01-G21 | NOT_STARTED | — | — | No engine implementation starts before G00 review. |
+| G10A | IN_PROGRESS | GOLDI, GOLDM, CROSS_PROFILE | `evidence/G10-reference-live-validation/` | GOLDm REAL read-only probe passed with zero order calls; GOLD.i dedicated terminal path and concurrent isolation evidence remain. |
+| G10B | IN_PROGRESS | GOLDI | `evidence/G10-reference-live-validation/` | GOLD.i guarded DEMO lifecycle remains required after the second terminal is isolated. |
+| G10C | DEFERRED_TO_G15 | GOLDM | `evidence/G10-reference-live-validation/` | GOLDm execution evidence uses the profile-locked binary in isolated Strategy Tester, never live REAL engineering orders. |
+| G10D | PASS | SHARED | `evidence/G10D-remove-app-surfaces/` | Desktop UI, application runtime, WebSocket service, dependencies, launchers, tests, and stale docs were removed; fast and release suites passed. |
+| G11 | PASS | SHARED, GOLDI, GOLDM, CROSS_PROFILE | `evidence/G11-mql5-runtime-skeleton/` | Profile-locked strict binaries compile with zero errors/warnings; scheduler, warm-up, identity failure, bounded tick path, and no-order invariants passed. |
 
 Raw or large evidence is stored outside Git under:
 

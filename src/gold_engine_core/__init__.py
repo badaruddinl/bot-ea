@@ -64,6 +64,11 @@ from .execution import (
     validate_execution,
 )
 from .g10_evidence import G10Acceptance, verify_g10_evidence
+from .mql5_build import (
+    Mql5BuildError,
+    Mql5CompileArtifact,
+    verify_g11_compile_artifacts,
+)
 from .profile import (
     ComponentFingerprint,
     ManifestError,
@@ -135,6 +140,8 @@ __all__ = [
     "IsolatedStepsOutput",
     "ManifestError",
     "MarketSnapshot",
+    "Mql5BuildError",
+    "Mql5CompileArtifact",
     "PlannedGeometry",
     "PositionState",
     "PositionStatus",
@@ -186,5 +193,6 @@ __all__ = [
     "validate_profile_pair",
     "validate_runtime_binding",
     "verify_g10_evidence",
+    "verify_g11_compile_artifacts",
     "write_corpus",
 ]
