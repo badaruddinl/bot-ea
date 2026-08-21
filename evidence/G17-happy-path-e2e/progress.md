@@ -38,8 +38,9 @@ Current sub-batch:
   it was removed, all positions were verified closed, then the current `0.1`
   correlated chain was run. No REAL account was touched.
 - actual native spools were ingested into a fresh SQLite DB: 12 unique rows,
-  13 recipient deliveries, two internal setup events suppressed, zero GOLDM
-  delivery to the GOLDI-approved audience, and both offsets fully ACKed.
+  nine recipient deliveries for ready/open/close, six diagnostic events
+  suppressed from Telegram, zero GOLDM delivery to the GOLDI-approved
+  audience, and both offsets fully ACKed.
 - the isolated clone was returned to Algo Trading OFF and closed cleanly;
   the main terminal setting was never changed.
 

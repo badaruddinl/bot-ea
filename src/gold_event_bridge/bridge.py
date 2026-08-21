@@ -16,7 +16,19 @@ class RecipientPolicy:
     goldi_approved_chat_ids: tuple[str, ...]
 
     def recipients(self, event: EngineEventEnvelope) -> tuple[str, ...]:
-        if event.event_type in {"WATCH_UPDATED", "SETUP_CREATED"} or event.audience == "internal":
+        if (
+            event.event_type
+            not in {
+                "ENGINE_STARTED",
+                "PROFILE_VALIDATED",
+                "ENTRY_READY",
+                "POSITION_OPENED",
+                "POSITION_CLOSED",
+                "ENGINE_ERROR",
+                "RECOVERY_COMPLETED",
+            }
+            or event.audience == "internal"
+        ):
             return ()
         if event.profile_id == "GOLDM":
             return tuple(dict.fromkeys(self.admin_chat_ids))
