@@ -12,6 +12,7 @@ evidence/G14-execution-lifecycle/*.json text eol=lf
 evidence/G14-execution-lifecycle/*.sha256 text eol=lf
 evidence/G14-execution-lifecycle/native/*.json text eol=lf
 evidence/G14-execution-lifecycle/native/*.sha256 text eol=lf
+mt5/Experts/bot-ea/fixtures/G13BearM15Oracle.mqh text eol=lf
 evidence/G09-causal-tick-replay/*-report.json text eol=lf
 evidence/G09-causal-tick-replay/*-report.sha256 text eol=lf
 evidence/G10-reference-live-validation/prerequisites.json text eol=lf

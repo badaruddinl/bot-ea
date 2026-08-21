@@ -1,6 +1,6 @@
 # G14 EA Execution and Position Lifecycle
 
-Status: **IN_PROGRESS**
+Status: **PASS**
 
 Locked scope:
 
@@ -97,12 +97,29 @@ Current sub-batch:
   GOLDI `fe8771d2fa79650e9ef35abdc78ff71674749b95e50f3e5d8c73f5e047533826`,
   GOLDM `be5920069b719728c9faaaa91e049f8d5ff13f5b67df7256b1ae9f808210df92`;
 - focused runtime/Revised/Bear/G11 regression: 35 passed.
+- Python order mutation was removed from the production portfolio adapter;
+  final/validation profiles explicitly delegate authority to MQL5 or disable
+  it, and configuration rejects Python ownership.
+- profile-bound expected position state is persisted in two alternating,
+  checksummed slots; restart fallback, missing/corrupt state, multiple owned
+  positions, and manual volume/entry/SL/TP changes fail closed.
+- native persistence tester PASS: save/load, geometry match, manual SL change,
+  corrupt-newest-slot fallback, clear, `OnTester result 1`, unchanged 100.00
+  USD balance, and disabled order authority; raw log SHA-256
+  `036b94866b39419c58d4d0d3ee8775679951ff2e08e9dc6fd1c28f0e789c7382`.
+- final MetaEditor 6090 compile: GOLDI, GOLDM, and persistence harness all 0
+  errors and 0 warnings.
+- full regression PASS: 795 fast and 218 slow tests.
+- incremental quality gate PASS: Ruff, mypy, 90.12% safety-core coverage, and
+  82.66% changed-rule coverage.
 
-Next sub-batch:
+Final certification:
 
-- `CTrade` request/retcode/filling execution behind disabled-by-default
-  authority;
-- owned-position discovery, modify/close, manual intervention, and restart
-  recovery.
+- guard, broker preflight, disabled authority, lifecycle, and persistent
+  ownership native proofs all PASS;
+- raw evidence/binaries are externally checksummed; Git stores their manifests,
+  checksums, progress, and summary;
+- GOLDM REAL mutation was not attempted because no safe broker DEMO mirror is
+  available.
 
 REAL orders: **DISABLED**
