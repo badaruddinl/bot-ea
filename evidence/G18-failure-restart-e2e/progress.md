@@ -35,6 +35,11 @@ Current sub-batch:
   GOLDI restarted while GOLDm generation advanced with stable identity, then
   both terminals restarted and produced new identities. Both probes contain no
   order API and reported authority DISABLED.
+- strict two-phase Windows reboot probe is prepared. `Prepare` locks the actual
+  OS boot ID and both profile heartbeats; `Complete` requires a changed boot ID,
+  post-boot heartbeat timestamps, unchanged fingerprint/account/server, and
+  changed process identities. It contains no reboot command and correctly
+  rejects completion on the current unchanged boot.
 - broker ambiguous-result handling now performs no blind retry. Only timeout,
   connection, or generic ambiguous retcodes enter exact symbol+magic+signal
   comment reconciliation, and exactly one matching position is required.
