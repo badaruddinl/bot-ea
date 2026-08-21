@@ -87,9 +87,21 @@ Current sub-batch:
   GOLDM
   `fa6dd2422a8ee6b65335af6b2ed82a319d57aea8351ad4f5bbe9856f3dce4866`;
 - focused runtime/Revised/G11 regression: 26 passed.
+- GOLDm Strategy Tester capture PASS on `GOLDm#`, M15, server
+  `XMGlobal-MT5 14`; full native marker includes H1/M5/M1, incremental M15,
+  rejection, acceptance, restart/expiry, and persistence parity;
+- compile evidence PASS for both profile binaries and the Bear harness on
+  MetaEditor 6090 with 0 errors and 0 warnings;
+- full regression PASS: 685 fast tests and 154 slow tests;
+- incremental quality gate PASS: Ruff, mypy, 90.12% safety-core coverage,
+  82.66% changed-rule coverage, and 238 focused tests;
+- legacy G12 corpus sidecars were corrected to the exact already-committed
+  bytes and all deterministic vector tests pass; no strategy value changed.
 
 Remaining before PASS:
 
-- dual-profile Strategy Tester, compile, regression, and final verifier.
+- GOLD.i Strategy Tester capture on `GOLD.i#` / `XMGlobal-MT5 5`, followed by
+  the dual-profile final verifier. The saved-credential login dialog is open
+  and requires the human operator to click `OK`.
 
 REAL orders: **DISABLED**
