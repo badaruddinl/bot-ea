@@ -1,6 +1,6 @@
 # G17 Full Happy-Path E2E
 
-Status: **IN_PROGRESS**
+Status: **PASS**
 
 Locked scope:
 
@@ -44,10 +44,23 @@ Current sub-batch:
 - the isolated clone was returned to Algo Trading OFF and closed cleanly;
   the main terminal setting was never changed.
 
-Remaining before G17 PASS:
+- actual dev Telegram Bot API delivery PASS: six final messages, zero failures,
+  hashed recipient identity, persisted message IDs, and no raw token/chat ID in
+  evidence. The available chat overlapped admin and approved roles; the
+  distinct-recipient capture matrix separately proves subscriber isolation.
+- exact GOLDM refusal harness PASS for wrong account, wrong server, and DEMO
+  mode with magic `26081912`, disabled authority, unchanged tester balance, and
+  no mutation.
+- final compile: two profile EAs and three harnesses 0 errors/0 warnings.
+- full regression PASS: 834 fast and 218 slow tests.
+- quality gate PASS: Ruff/mypy, 90.12% safety-core coverage, and 82.66%
+  changed-rule coverage.
 
-- actual Telegram delivery evidence. `TELEGRAM_BOT_TOKEN` and administrator
-  chat IDs are not present in this local environment, so current delivery proof
-  uses the deterministic capture sender and is not claimed as Telegram E2E.
+Final certification:
+
+- strict verifier PASS with native lifecycle, refusal, SQLite correlation, and
+  actual Telegram receipt inputs;
+- both complete E2E chains and cross-profile routing are proven;
+- production REAL authority stayed disabled.
 
 REAL orders: **DISABLED**
