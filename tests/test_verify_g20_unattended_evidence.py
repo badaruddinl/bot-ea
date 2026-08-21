@@ -132,6 +132,13 @@ def test_strict_unattended_cold_boot_evidence_passes() -> None:
     assert report["bridge_recovered"] is True
 
 
+def test_single_python_role_object_is_normalized() -> None:
+    config, preboot, postboot = copy.deepcopy(_evidence())
+    postboot["python_roles"] = postboot["python_roles"][0]
+
+    assert MODULE.verify(config, preboot, postboot)["status"] == "PASS"
+
+
 @pytest.mark.parametrize(
     "mutation",
     ["missing_heartbeat", "authority_enabled", "after_login", "forbidden_python", "legacy_task"],

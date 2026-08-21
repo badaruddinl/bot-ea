@@ -232,9 +232,9 @@ $result = [ordered]@{
         }
         Get-Content -LiteralPath $bridgeHealthPath -Raw | ConvertFrom-Json
     } else { $null }
-    terminal_processes = Get-TerminalProcesses -Terminals $config.terminals
-    python_roles = Get-PythonRoles
-    legacy_tasks = Get-LegacyTaskEvidence -Names $config.forbidden_task_names
+    terminal_processes = @(Get-TerminalProcesses -Terminals $config.terminals)
+    python_roles = @(Get-PythonRoles)
+    legacy_tasks = @(Get-LegacyTaskEvidence -Names $config.forbidden_task_names)
     spools = $spools
     new_events = $newEvents
 }

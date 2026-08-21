@@ -23,6 +23,16 @@ def _time(value: object, label: str) -> datetime:
     return parsed.astimezone(UTC)
 
 
+def _items(value: object) -> list[dict[str, Any]]:
+    if value is None:
+        return []
+    if isinstance(value, dict):
+        return [value]
+    if isinstance(value, list) and all(isinstance(item, dict) for item in value):
+        return value
+    raise ValueError("evidence collection must be an object, array of objects, or null")
+
+
 def verify(
     config: dict[str, Any], preboot: dict[str, Any], postboot: dict[str, Any]
 ) -> dict[str, Any]:
@@ -136,7 +146,7 @@ def verify(
     bridge_required = bool((config.get("bridge") or {}).get("enabled"))
     if bridge_required and (bridge.get("state") != "RUNNING" or not bridge.get("pid")):
         violations.append("optional delivery bridge was enabled but did not recover")
-    roles = postboot.get("python_roles") or []
+    roles = _items(postboot.get("python_roles"))
     if any(item.get("role") == "FORBIDDEN_PYTHON_STRATEGY" for item in roles):
         violations.append("a forbidden Python strategy/orchestrator process is running")
     if bridge_required and sum(item.get("role") == "EVENT_BRIDGE" for item in roles) != 1:
@@ -173,7 +183,7 @@ def verify(
                         f"bridge state mismatch for postboot event {event.get('event_id')}"
                     )
 
-    for task_evidence in postboot.get("legacy_tasks") or []:
+    for task_evidence in _items(postboot.get("legacy_tasks")):
         if task_evidence.get("enabled") or task_evidence.get("state") == "Running":
             violations.append(f"legacy task remains active: {task_evidence.get('task_name')}")
 
