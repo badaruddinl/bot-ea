@@ -13,6 +13,7 @@ GOLDI_PRESET = ROOT / "config/mql5/presets/G20-GOLDI.set"
 GOLDM_PRESET = ROOT / "config/mql5/presets/G20-GOLDM.set"
 PREPARE = ROOT / "scripts/prepare-g20-vm.ps1"
 BRIDGE_RUNNER = ROOT / "scripts/run-gold-event-bridge.py"
+SECRET_INSTALLER = ROOT / "scripts/set-g20-telegram-secret.ps1"
 RUNTIME = ROOT / "mt5/Include/bot-ea/GoldEngineRuntime.mqh"
 EVENTS = ROOT / "src/gold_event_bridge/events.py"
 
@@ -100,9 +101,26 @@ def test_vm_preparer_installs_only_native_engines_and_optional_bridge() -> None:
     assert "GoldEngine-GOLDm.ex5" in value
     assert 'order_authority = "ENABLED"' in value
     assert 'order_authority = "DISABLED"' in value
-    assert "TELEGRAM_BOT_TOKEN" in value
+    assert "TelegramSecretPath" in value
+    assert "TelegramAdminChatIds" in value
     assert "run-gold-event-bridge.py" in value
     assert "gold_orchestrator" not in value
     assert "goldm_revised" not in value
     assert "goldm_bear" not in value
     assert "from gold_event_bridge.cli import main" in runner
+
+
+def test_bridge_token_uses_current_user_dpapi_and_never_enters_process_arguments() -> None:
+    supervisor = SUPERVISOR.read_text(encoding="utf-8")
+    secret_installer = SECRET_INSTALLER.read_text(encoding="utf-8")
+
+    assert "SecureStringToBSTR" in supervisor
+    assert "ZeroFreeBSTR" in supervisor
+    assert ").Trim()" in supervisor
+    assert "token_secret_path" in supervisor
+    assert "TELEGRAM_BOT_TOKEN" in supervisor
+    assert "Read-Host" in secret_installer
+    assert "-AsSecureString" in secret_installer
+    assert "ConvertFrom-SecureString" in secret_installer
+    assert "SetAccessRuleProtection" in secret_installer
+    assert "Token=" not in secret_installer

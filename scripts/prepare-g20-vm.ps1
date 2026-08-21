@@ -5,7 +5,9 @@ param(
     [string]$GoldmDataPath,
     [string]$OutputRoot = "C:\bot-ea-g20",
     [bool]$BridgeEnabled = $true,
-    [string]$PythonwPath = ""
+    [string]$PythonwPath = "",
+    [string]$TelegramSecretPath = "$env:ProgramData\bot-ea\g20\telegram-token.dpapi",
+    [string[]]$TelegramAdminChatIds = @()
 )
 
 $ErrorActionPreference = "Stop"
@@ -107,10 +109,12 @@ if ($BridgeEnabled) {
     if (-not (Test-Path -LiteralPath $PythonwPath -PathType Leaf)) {
         throw "Bridge pythonw executable is missing: $PythonwPath"
     }
-    if ([string]::IsNullOrWhiteSpace($env:TELEGRAM_BOT_TOKEN) -or
-        ([string]::IsNullOrWhiteSpace($env:TELEGRAM_ADMIN_CHAT_IDS) -and
-         [string]::IsNullOrWhiteSpace($env:TELEGRAM_CHAT_ID))) {
-        throw "Bridge environment requires TELEGRAM_BOT_TOKEN and an administrator chat ID"
+    if (-not (Test-Path -LiteralPath $TelegramSecretPath -PathType Leaf)) {
+        throw "Bridge DPAPI token secret is missing: $TelegramSecretPath"
+    }
+    if ($TelegramAdminChatIds.Count -eq 0 -or
+        @($TelegramAdminChatIds | Where-Object { $_ -notmatch '^-?[1-9][0-9]*$' }).Count -gt 0) {
+        throw "Bridge requires valid administrator chat IDs"
     }
 }
 
@@ -140,6 +144,8 @@ $config = [ordered]@{
         enabled = $BridgeEnabled
         executable_path = $PythonwPath
         arguments = $bridgeArguments
+        token_secret_path = $TelegramSecretPath
+        admin_chat_ids = $TelegramAdminChatIds
     }
 }
 $configPath = Join-Path $OutputRoot "g20-unattended.json"

@@ -129,7 +129,44 @@ function Read-G20Config {
             throw "$($terminal.profile_id) arguments may not contain credentials"
         }
     }
+    if ([bool]$value.bridge.enabled) {
+        $secretPath = Resolve-ConfiguredPath ([string]$value.bridge.token_secret_path)
+        if (-not (Test-Path -LiteralPath $secretPath -PathType Leaf)) {
+            throw "Bridge DPAPI token secret is missing: $secretPath"
+        }
+        $adminIds = @($value.bridge.admin_chat_ids)
+        if ($adminIds.Count -eq 0 -or
+            @($adminIds | Where-Object { [string]$_ -notmatch '^-?[1-9][0-9]*$' }).Count -gt 0) {
+            throw "Bridge administrator chat IDs are invalid"
+        }
+    }
     return $value
+}
+
+function Start-BridgeProcess {
+    param(
+        [Parameter(Mandatory = $true)]$Bridge,
+        [Parameter(Mandatory = $true)][string]$ExecutablePath,
+        [Parameter(Mandatory = $true)][string]$Arguments
+    )
+    $secretPath = Resolve-ConfiguredPath ([string]$Bridge.token_secret_path)
+    $encrypted = (Get-Content -LiteralPath $secretPath -Raw).Trim()
+    $secure = $encrypted | ConvertTo-SecureString
+    $pointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
+    $previousToken = $env:TELEGRAM_BOT_TOKEN
+    $previousAdmins = $env:TELEGRAM_ADMIN_CHAT_IDS
+    try {
+        $env:TELEGRAM_BOT_TOKEN = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($pointer)
+        $env:TELEGRAM_ADMIN_CHAT_IDS = @($Bridge.admin_chat_ids) -join ','
+        return Start-Process -FilePath $ExecutablePath -ArgumentList $Arguments `
+            -WindowStyle Hidden -PassThru
+    }
+    finally {
+        [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($pointer)
+        $secure.Dispose()
+        $env:TELEGRAM_BOT_TOKEN = $previousToken
+        $env:TELEGRAM_ADMIN_CHAT_IDS = $previousAdmins
+    }
 }
 
 function Write-AtomicJson {
@@ -241,8 +278,8 @@ while ($true) {
                 if ($bridgeArguments -match '(?i)(bot[_-]?token|password|AA[A-Za-z0-9_-]{20,})') {
                     throw "Bridge arguments may not contain credentials"
                 }
-                $bridgeProcess = Start-Process -FilePath $bridgeExe `
-                    -ArgumentList $bridgeArguments -WindowStyle Hidden -PassThru
+                $bridgeProcess = Start-BridgeProcess -Bridge $config.bridge `
+                    -ExecutablePath $bridgeExe -Arguments $bridgeArguments
                 $restartCounts.BRIDGE = [int]$restartCounts.BRIDGE + 1
             }
             $bridgeHealth.state = "RUNNING"
