@@ -1,0 +1,10 @@
+{
+  "captured_at_utc": "2026-08-21T07:34:34.504245+00:00",
+  "captured_log": "algo-off.log",
+  "captured_log_sha256": "0225ee769065e8e4301a682656237a20c026f974e368e2292ad8ace5e2c7837d",
+  "order_authority": "DISABLED_BY_CLIENT",
+  "production_real_orders": "DISABLED",
+  "proof": "algo_off",
+  "result": "EXPECTED_REJECTION_PASS",
+  "retcode": 10027
+}

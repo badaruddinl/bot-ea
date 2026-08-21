@@ -10,7 +10,8 @@ enum ExecutionSubmitState
    EXECUTION_SUBMIT_DISABLED=1,
    EXECUTION_SUBMIT_REJECTED=2,
    EXECUTION_SUBMIT_SENT=3,
-   EXECUTION_SUBMIT_FAILED=4
+   EXECUTION_SUBMIT_FAILED=4,
+   EXECUTION_SUBMIT_RECONCILED=5
   };
 
 struct ExecutionReceipt
@@ -36,6 +37,29 @@ enum PositionActionState
    POSITION_ACTION_DONE=3,
    POSITION_ACTION_FAILED=4
   };
+
+enum PositionOwnershipClass
+  {
+   POSITION_IDENTITY_OTHER_SYMBOL=0,
+   POSITION_IDENTITY_FOREIGN_MAGIC=1,
+   POSITION_IDENTITY_MANUAL_COMMENT=2,
+   POSITION_IDENTITY_OWNED=3
+  };
+
+PositionOwnershipClass ClassifyPositionIdentity(const ProfileConfig &profile,
+                                                const string symbol,
+                                                const long magic,
+                                                const string comment)
+  {
+   if(symbol!=profile.symbol)
+      return POSITION_IDENTITY_OTHER_SYMBOL;
+   if(magic!=profile.magic)
+      return POSITION_IDENTITY_FOREIGN_MAGIC;
+   const string prefix="GE|"+profile.profile_id+"|";
+   if(StringFind(comment,prefix)!=0)
+      return POSITION_IDENTITY_MANUAL_COMMENT;
+   return POSITION_IDENTITY_OWNED;
+  }
 
 struct PositionActionReceipt
   {
@@ -68,6 +92,14 @@ bool ExecutionRetcodeSuccess(const uint retcode)
           retcode==TRADE_RETCODE_DONE_PARTIAL;
   }
 
+bool ExecutionRetcodeAmbiguous(const uint retcode)
+  {
+   return retcode==0 ||
+          retcode==TRADE_RETCODE_ERROR ||
+          retcode==TRADE_RETCODE_TIMEOUT ||
+          retcode==TRADE_RETCODE_CONNECTION;
+  }
+
 void ExecutionResetPositionReceipt(PositionActionReceipt &receipt)
   {
    receipt.state=POSITION_ACTION_NONE;
@@ -84,6 +116,47 @@ private:
    CTrade        m_trade;
    bool          m_initialized;
    bool          m_authority_enabled;
+
+   bool ReconcileSignalPosition(const SignalPlan &plan,
+                                ExecutionReceipt &receipt,
+                                string &reason)
+     {
+      const string expected_comment=ExecutionSignalComment(
+         plan.profile_id,plan.signal_id);
+      int matches=0;
+      ulong matched_ticket=0;
+      double matched_price=0.0;
+      double matched_volume=0.0;
+      const int total=PositionsTotal();
+      for(int index=0;index<total;index++)
+        {
+         const ulong ticket=PositionGetTicket(index);
+         if(ticket==0 || !PositionSelectByTicket(ticket))
+            continue;
+         if(PositionGetString(POSITION_SYMBOL)!=m_profile.symbol ||
+            PositionGetInteger(POSITION_MAGIC)!=m_profile.magic ||
+            PositionGetString(POSITION_COMMENT)!=expected_comment)
+            continue;
+         matches++;
+         matched_ticket=ticket;
+         matched_price=PositionGetDouble(POSITION_PRICE_OPEN);
+         matched_volume=PositionGetDouble(POSITION_VOLUME);
+        }
+      if(matches!=1)
+        {
+         reason=(matches==0 ? "AMBIGUOUS_RESULT_NO_POSITION" :
+                 "AMBIGUOUS_RESULT_MULTIPLE_POSITIONS");
+         return false;
+        }
+      receipt.state=EXECUTION_SUBMIT_RECONCILED;
+      receipt.sent=true;
+      receipt.order_ticket=matched_ticket;
+      receipt.executed_price=matched_price;
+      receipt.executed_volume=matched_volume;
+      receipt.reason="ORDER_RECONCILED_AFTER_AMBIGUOUS_RESULT";
+      reason=receipt.reason;
+      return true;
+     }
 
    bool SelectOwnedPosition(const ulong ticket,string &reason)
      {
@@ -224,6 +297,9 @@ public:
          reason=receipt.reason;
          return true;
         }
+      if(ExecutionRetcodeAmbiguous(receipt.retcode) &&
+         ReconcileSignalPosition(plan,receipt,reason))
+         return true;
       receipt.state=EXECUTION_SUBMIT_FAILED;
       receipt.reason="ORDER_SEND_FAILED:"+m_trade.ResultRetcodeDescription();
       reason=receipt.reason;
@@ -243,7 +319,6 @@ public:
          reason="EXECUTION_BROKER_NOT_INITIALIZED";
          return false;
         }
-      const string prefix="GE|"+m_profile.profile_id+"|";
       const int total=PositionsTotal();
       if(total<0)
         {
@@ -258,9 +333,12 @@ public:
             reason="POSITION_DISCOVERY_FAILED";
             return false;
            }
-         if(PositionGetString(POSITION_SYMBOL)!=m_profile.symbol)
+         const PositionOwnershipClass identity=ClassifyPositionIdentity(
+            m_profile,PositionGetString(POSITION_SYMBOL),
+            PositionGetInteger(POSITION_MAGIC),PositionGetString(POSITION_COMMENT));
+         if(identity==POSITION_IDENTITY_OTHER_SYMBOL)
             continue;
-         if(PositionGetInteger(POSITION_MAGIC)!=m_profile.magic)
+         if(identity==POSITION_IDENTITY_FOREIGN_MAGIC)
            {
             foreign_symbol_position=true;
             continue;
@@ -278,7 +356,7 @@ public:
          positions[count].stop_loss=PositionGetDouble(POSITION_SL);
          positions[count].take_profit=PositionGetDouble(POSITION_TP);
          positions[count].comment=PositionGetString(POSITION_COMMENT);
-         positions[count].owned=StringFind(positions[count].comment,prefix)==0;
+         positions[count].owned=identity==POSITION_IDENTITY_OWNED;
          if(!positions[count].owned)
             manual_intervention=true;
         }

@@ -13,6 +13,8 @@ def test_position_state_store_is_profile_bound_dual_slot_and_checked() -> None:
     assert "SlotPath(0" in source
     assert "SlotPath(1" in source
     assert "PositionStateChecksum" in source
+    assert "field_count<11" in source
+    assert 'state.signal_id+="|"+fields[index]' in source
     assert "POSITION_STATE_INVALID" in source
     assert "PositionStateMatches" in source
     assert "POSITION_STOP_CHANGED" in source

@@ -118,7 +118,8 @@ private:
       if((uint)StringToInteger(checksum_text)!=PositionStateChecksum(payload))
          return POSITION_STATE_INVALID;
       string fields[];
-      if(StringSplit(payload,'|',fields)!=11)
+      const int field_count=StringSplit(payload,'|',fields);
+      if(field_count<11)
          return POSITION_STATE_INVALID;
       if(fields[0]!="1" || fields[1]!=m_profile_id ||
          fields[2]!=m_profile_fingerprint)
@@ -127,10 +128,12 @@ private:
       state.active=StringToInteger(fields[4])==1;
       state.ticket=(ulong)StringToInteger(fields[5]);
       state.signal_id=fields[6];
-      state.volume=StringToDouble(fields[7]);
-      state.entry_price=StringToDouble(fields[8]);
-      state.stop_loss=StringToDouble(fields[9]);
-      state.take_profit=StringToDouble(fields[10]);
+      for(int index=7;index<=field_count-5;index++)
+         state.signal_id+="|"+fields[index];
+      state.volume=StringToDouble(fields[field_count-4]);
+      state.entry_price=StringToDouble(fields[field_count-3]);
+      state.stop_loss=StringToDouble(fields[field_count-2]);
+      state.take_profit=StringToDouble(fields[field_count-1]);
       if(state.generation==0 ||
          (state.active && (state.ticket==0 || state.signal_id=="" ||
                            state.volume<=0.0)))

@@ -9,6 +9,7 @@
 #include "GoldEngineExecutionBroker.mqh"
 #include "GoldEnginePositionPersistence.mqh"
 #include "GoldEngineOutbox.mqh"
+#include "GoldEngineInstanceLease.mqh"
 #include "GoldEngineScheduler.mqh"
 
 class CGoldEngineRuntime
@@ -44,6 +45,7 @@ private:
    PositionStateLoadStatus m_position_state_status;
    CEngineOutbox       m_outbox;
    bool                m_outbox_initialized;
+   CEngineInstanceLease m_instance_lease;
 
    void EmitTransition(const string event_type,
                        const string setup_id="",
@@ -557,6 +559,13 @@ public:
                " reason=",reason);
          return INIT_FAILED;
         }
+      if(!m_instance_lease.Acquire(
+            m_profile,AccountInfoInteger(ACCOUNT_LOGIN),reason))
+        {
+         Print("GOLD_ENGINE_INIT_REJECT profile=",m_profile.profile_id,
+               " reason=",reason);
+         return INIT_FAILED;
+        }
       if(!Warmup())
         {
          Print("GOLD_ENGINE_INIT_REJECT profile=",m_profile.profile_id,
@@ -674,6 +683,7 @@ public:
       if(m_initialized)
          m_bear_store.Save(
             m_profile.profile_id,m_profile.profile_fingerprint,m_bear_machine);
+      m_instance_lease.Release();
       m_initialized=false;
       m_data_healthy=false;
       Print("GOLD_ENGINE_STOP profile=",m_profile.profile_id,

@@ -19,7 +19,7 @@ bool RunHarness(void)
    PositionStateReset(state);
    state.active=true;
    state.ticket=77123;
-   state.signal_id="GOLDI:REVISED:BUY:77123";
+   state.signal_id="GOLDI|REVISED|BUY|77123";
    state.volume=0.02;
    state.entry_price=4400.10;
    state.stop_loss=4390.10;
