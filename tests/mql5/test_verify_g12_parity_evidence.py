@@ -10,6 +10,8 @@ def test_g12_parity_verifier_requires_dual_native_full_state_evidence() -> None:
     assert 'profile_id="GOLDM"' in value
     assert 'symbol="GOLD.i#"' in value
     assert 'symbol="GOLDm#"' in value
+    assert 'server="XMGlobal-MT5 5"' in value
+    assert 'server="XMGlobal-MT5 14"' in value
     assert '"vectors.json": 10' in value
     assert '"setup_vectors.json": 12' in value
     assert "validate_block" in value

@@ -26,6 +26,8 @@ def _tester_log(*, passed: bool = True, complete: bool = True) -> str:
     )
     return (
         "old unrelated run\n"
+        "AA\t0\t07:54:14.559\tTester\tGOLDm#,M15 (XMGlobal-MT5 14): testing of "
+        "Experts\\bot-ea\\GoldEngineRevisedParityHarness.ex5 from x\n"
         "AA\t0\t07:54:16.511\tCore 1\tGOLDm#,M15: testing of "
         "Experts\\bot-ea\\GoldEngineRevisedParityHarness.ex5 from x started\n"
         "AA\t0\t07:54:16.511\tCore 1\tG12_REVISED_PARITY profile=GOLDm# "
@@ -48,6 +50,7 @@ def test_capture_writes_bounded_hashed_proof(tmp_path: Path) -> None:
         profile_id="GOLDM",
         symbol="GOLDm#",
         timeframe="M15",
+        server="XMGlobal-MT5 14",
     )
 
     raw = (output / "goldm-strategy-tester.log").read_bytes()
@@ -72,5 +75,15 @@ def test_capture_rejects_incomplete_or_failed_native_run(
     message: str,
 ) -> None:
     with pytest.raises(MODULE.EvidenceError, match=message):
-        block = MODULE.capture_block(text, symbol="GOLDm#", timeframe="M15")
-        MODULE.validate_block(block, symbol="GOLDm#", timeframe="M15")
+        block = MODULE.capture_block(
+            text,
+            symbol="GOLDm#",
+            timeframe="M15",
+            server="XMGlobal-MT5 14",
+        )
+        MODULE.validate_block(
+            block,
+            symbol="GOLDm#",
+            timeframe="M15",
+            server="XMGlobal-MT5 14",
+        )

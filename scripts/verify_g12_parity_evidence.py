@@ -87,6 +87,7 @@ def verify_native_capture(
     profile_id: str,
     symbol: str,
     timeframe: str,
+    server: str,
 ) -> dict[str, object]:
     stem = profile_id.lower()
     native = evidence_root / "native"
@@ -101,6 +102,7 @@ def verify_native_capture(
         "symbol": symbol,
         "timeframe": timeframe,
         "real_order_authority": "DISABLED",
+        "server": server,
         "captured_log": log_path.name,
         "captured_log_sha256": log_digest,
     }
@@ -111,12 +113,18 @@ def verify_native_capture(
     }
     if mismatches:
         raise G12EvidenceError(f"native metadata mismatch for {profile_id}: {mismatches}")
-    validate_block(log_path.read_text(encoding="utf-8"), symbol=symbol, timeframe=timeframe)
+    validate_block(
+        log_path.read_text(encoding="utf-8"),
+        symbol=symbol,
+        timeframe=timeframe,
+        server=server,
+    )
     return {
         "captured_log_sha256": log_digest,
         "profile_id": profile_id,
         "symbol": symbol,
         "timeframe": timeframe,
+        "server": server,
     }
 
 
@@ -131,12 +139,14 @@ def main() -> int:
             profile_id="GOLDI",
             symbol="GOLD.i#",
             timeframe="M15",
+            server="XMGlobal-MT5 5",
         ),
         verify_native_capture(
             args.evidence_root,
             profile_id="GOLDM",
             symbol="GOLDm#",
             timeframe="M15",
+            server="XMGlobal-MT5 14",
         ),
     ]
     payload = {

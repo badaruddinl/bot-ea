@@ -32,7 +32,7 @@ def _sha256(raw: bytes) -> str:
     return hashlib.sha256(raw).hexdigest()
 
 
-def capture_block(text: str, *, symbol: str, timeframe: str) -> str:
+def capture_block(text: str, *, symbol: str, timeframe: str, server: str) -> str:
     start_marker = (
         f"{symbol},{timeframe}: testing of Experts\\bot-ea\\GoldEngineRevisedParityHarness.ex5"
     )
@@ -42,7 +42,16 @@ def capture_block(text: str, *, symbol: str, timeframe: str) -> str:
     ]
     if not starts:
         raise EvidenceError(f"native tester start marker not found for {symbol},{timeframe}")
-    start = starts[-1]
+    core_start = starts[-1]
+    server_marker = f"{symbol},{timeframe} ({server}): testing of "
+    server_starts = [
+        index
+        for index, line in enumerate(lines[: core_start + 1])
+        if server_marker in line and "Experts\\bot-ea\\GoldEngineRevisedParityHarness.ex5" in line
+    ]
+    if not server_starts:
+        raise EvidenceError(f"native tester server marker not found for {server}")
+    start = server_starts[-1]
     end = next(
         (index for index in range(start, len(lines)) if "connection closed" in lines[index]),
         None,
@@ -52,7 +61,7 @@ def capture_block(text: str, *, symbol: str, timeframe: str) -> str:
     return "\n".join(lines[start : end + 1]) + "\n"
 
 
-def validate_block(block: str, *, symbol: str, timeframe: str) -> None:
+def validate_block(block: str, *, symbol: str, timeframe: str, server: str) -> None:
     parity = (
         f"G12_REVISED_PARITY profile={symbol} passed=true "
         "range=true sell_range=true no_setup=true obstacle=true momentum=true "
@@ -60,6 +69,7 @@ def validate_block(block: str, *, symbol: str, timeframe: str) -> None:
         "expiry_restart=true opposite_restart=true"
     )
     required = (
+        f"{symbol},{timeframe} ({server}): testing of ",
         parity,
         "final balance 100.00 USD",
         "OnTester result 1",
@@ -87,10 +97,16 @@ def write_evidence(
     profile_id: str,
     symbol: str,
     timeframe: str,
+    server: str,
 ) -> dict[str, object]:
     source_raw = source.read_bytes()
-    block = capture_block(_decode_log(source), symbol=symbol, timeframe=timeframe)
-    validate_block(block, symbol=symbol, timeframe=timeframe)
+    block = capture_block(
+        _decode_log(source),
+        symbol=symbol,
+        timeframe=timeframe,
+        server=server,
+    )
+    validate_block(block, symbol=symbol, timeframe=timeframe, server=server)
     output_directory.mkdir(parents=True, exist_ok=True)
     stem = profile_id.lower()
     log_path = output_directory / f"{stem}-strategy-tester.log"
@@ -107,6 +123,7 @@ def write_evidence(
         "captured_log_sha256": log_digest,
         "profile_id": profile_id,
         "real_order_authority": "DISABLED",
+        "server": server,
         "source_log": str(source.resolve()),
         "source_log_sha256": _sha256(source_raw),
         "symbol": symbol,
@@ -126,6 +143,7 @@ def main() -> int:
     parser.add_argument("--output-directory", type=Path, required=True)
     parser.add_argument("--profile-id", choices=("GOLDI", "GOLDM"), required=True)
     parser.add_argument("--symbol", required=True)
+    parser.add_argument("--server", required=True)
     parser.add_argument("--timeframe", default="M15")
     args = parser.parse_args()
     metadata = write_evidence(
@@ -134,6 +152,7 @@ def main() -> int:
         profile_id=args.profile_id,
         symbol=args.symbol,
         timeframe=args.timeframe,
+        server=args.server,
     )
     print(json.dumps(metadata, separators=(",", ":"), sort_keys=True))
     return 0
