@@ -76,6 +76,19 @@ PROOFS: dict[str, ProofSpecification] = {
         "balance": "final balance ",
         "allow_mutation": True,
     },
+    "position": {
+        "expert": "GoldEnginePositionPersistenceHarness.ex5",
+        "stem": "goldi-position-persistence-tester",
+        "required": (
+            "G14_POSITION_PERSISTENCE passed=true missing=true saved=true ",
+            "loaded=true geometry=true manual=true restart_fallback=true cleared=true",
+            "reason=POSITION_STOP_CHANGED order_authority=DISABLED",
+        ),
+        "authority": "DISABLED",
+        "profiles": ["GOLDI", "GOLDM"],
+        "balance": "final balance 100.00 USD",
+        "allow_mutation": False,
+    },
 }
 
 

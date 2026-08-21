@@ -17,7 +17,14 @@ SPEC.loader.exec_module(MODULE)
 
 def log(*, passed: bool = True, proof: str = "guard") -> str:
     status = "true" if passed else "false"
-    if proof == "lifecycle":
+    if proof == "position":
+        expert = "GoldEnginePositionPersistenceHarness.ex5"
+        marker = (
+            f"G14_POSITION_PERSISTENCE passed={status} missing=true saved=true "
+            "loaded=true geometry=true manual=true restart_fallback=true cleared=true "
+            "reason=POSITION_STOP_CHANGED order_authority=DISABLED"
+        )
+    elif proof == "lifecycle":
         expert = "GoldEngineExecutionLifecycleHarness.ex5"
         marker = (
             f"G14_EXECUTION_LIFECYCLE passed={status} initialized=true opened=true "
@@ -124,6 +131,23 @@ def test_capture_supports_tester_only_lifecycle_mutations(tmp_path: Path) -> Non
     assert metadata["proof"] == "lifecycle"
     assert metadata["order_authority"] == "TESTER_ONLY"
     assert metadata["profile_matrix"] == ["GOLDI"]
+
+
+def test_capture_supports_position_restart_proof(tmp_path: Path) -> None:
+    source = tmp_path / "tester.log"
+    source.write_text(log(proof="position"), encoding="utf-8")
+    output = tmp_path / "evidence"
+    metadata = MODULE.write_evidence(
+        source=source,
+        output_directory=output,
+        symbol="GOLD.i#",
+        timeframe="M15",
+        server="XMGlobal-MT5 5",
+        proof="position",
+    )
+    assert metadata["proof"] == "position"
+    assert metadata["order_authority"] == "DISABLED"
+    assert metadata["profile_matrix"] == ["GOLDI", "GOLDM"]
 
 
 @pytest.mark.parametrize("text", (log(passed=False), "unrelated\n"))

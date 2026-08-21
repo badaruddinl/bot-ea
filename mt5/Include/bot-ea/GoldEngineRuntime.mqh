@@ -7,6 +7,7 @@
 #include "GoldEngineRevisedSetup.mqh"
 #include "GoldEngineBearPersistence.mqh"
 #include "GoldEngineExecutionBroker.mqh"
+#include "GoldEnginePositionPersistence.mqh"
 #include "GoldEngineScheduler.mqh"
 
 class CGoldEngineRuntime
@@ -37,6 +38,48 @@ private:
    ManagedPosition     m_owned_positions[];
    bool                m_foreign_symbol_position;
    bool                m_manual_intervention;
+   CPositionStateStore m_position_store;
+   ExpectedPositionState m_expected_position;
+   PositionStateLoadStatus m_position_state_status;
+
+   bool PersistSubmittedPosition(const SignalPlan &plan,
+                                 const datetime server_time)
+     {
+      string reason="";
+      if(!m_execution_broker.DiscoverOwnedPositions(
+            m_owned_positions,m_foreign_symbol_position,
+            m_manual_intervention,reason))
+        {
+         SetEvent(ENGINE_EVENT_ERROR,server_time,reason);
+         return false;
+        }
+      if(m_foreign_symbol_position || m_manual_intervention ||
+         ArraySize(m_owned_positions)!=1)
+        {
+         m_execution_broker.DisableAuthority();
+         SetEvent(ENGINE_EVENT_ERROR,server_time,
+            "POSITION_CAPTURE_AMBIGUOUS");
+         return false;
+        }
+      const ManagedPosition position=m_owned_positions[0];
+      PositionStateReset(m_expected_position);
+      m_expected_position.active=true;
+      m_expected_position.ticket=position.ticket;
+      m_expected_position.signal_id=plan.signal_id;
+      m_expected_position.volume=position.volume;
+      m_expected_position.entry_price=position.entry_price;
+      m_expected_position.stop_loss=position.stop_loss;
+      m_expected_position.take_profit=position.take_profit;
+      if(!m_position_store.Save(m_expected_position))
+        {
+         m_execution_broker.DisableAuthority();
+         SetEvent(ENGINE_EVENT_ERROR,server_time,
+            "POSITION_STATE_SAVE_FAILED");
+         return false;
+        }
+      m_position_state_status=POSITION_STATE_VALID;
+      return true;
+     }
 
    void BuildSignalPlan(const EngineSide side,
                         const string setup_id,
@@ -79,12 +122,22 @@ private:
 
    void SubmitSignalPlan(const SignalPlan &plan,const datetime server_time)
      {
+      if(!RecoverOwnedPositions(server_time))
+         return;
+      if(ArraySize(m_owned_positions)>0)
+        {
+         SetEvent(ENGINE_EVENT_ENTRY_READY,server_time,
+            "POSITION_ALREADY_OPEN");
+         return;
+        }
       string reason="";
       m_has_execution_receipt=true;
       const bool submitted=m_execution_broker.Submit(
          plan,m_last_execution_receipt,reason);
       if(submitted)
         {
+         if(!PersistSubmittedPosition(plan,server_time))
+            return;
          m_state.phase=ENGINE_PHASE_POSITION_OPEN;
          SetEvent(ENGINE_EVENT_POSITION,server_time,"ORDER_SENT");
          return;
@@ -115,10 +168,57 @@ private:
             "FOREIGN_SYMBOL_POSITION_DETECTED");
          return true;
         }
-      if(ArraySize(m_owned_positions)>0)
+      m_position_state_status=m_position_store.Load(m_expected_position);
+      if(m_position_state_status==POSITION_STATE_INVALID)
         {
+         m_execution_broker.DisableAuthority();
+         m_manual_intervention=true;
+         SetEvent(ENGINE_EVENT_ERROR,server_time,"POSITION_STATE_INVALID");
+         return true;
+        }
+      const int owned_count=ArraySize(m_owned_positions);
+      if(owned_count>1)
+        {
+         m_execution_broker.DisableAuthority();
+         m_manual_intervention=true;
+         SetEvent(ENGINE_EVENT_ERROR,server_time,"MULTIPLE_OWNED_POSITIONS");
+         return true;
+        }
+      if(owned_count==1)
+        {
+         if(m_position_state_status!=POSITION_STATE_VALID ||
+            !m_expected_position.active)
+           {
+            m_execution_broker.DisableAuthority();
+            m_manual_intervention=true;
+            SetEvent(ENGINE_EVENT_ERROR,server_time,
+               "POSITION_STATE_MISSING");
+            return true;
+           }
+         if(!PositionStateMatches(
+               m_owned_positions[0],m_expected_position,
+               m_profile.tick_size,reason))
+           {
+            m_execution_broker.DisableAuthority();
+            m_manual_intervention=true;
+            SetEvent(ENGINE_EVENT_ERROR,server_time,reason);
+            return true;
+           }
          m_state.phase=ENGINE_PHASE_POSITION_OPEN;
          SetEvent(ENGINE_EVENT_POSITION,server_time,"POSITION_RECOVERED");
+        }
+      else
+        {
+         if(m_position_state_status==POSITION_STATE_VALID &&
+            m_expected_position.active &&
+            !m_position_store.Clear(m_expected_position))
+           {
+            m_execution_broker.DisableAuthority();
+            SetEvent(ENGINE_EVENT_ERROR,server_time,
+               "POSITION_STATE_CLEAR_FAILED");
+            return false;
+           }
+         m_state.phase=ENGINE_PHASE_IDLE;
         }
       return true;
      }
@@ -406,6 +506,8 @@ public:
       m_has_execution_receipt=false;
       m_foreign_symbol_position=false;
       m_manual_intervention=false;
+      m_position_state_status=POSITION_STATE_MISSING;
+      PositionStateReset(m_expected_position);
      }
 
    int Initialize(const long expected_login,
@@ -439,6 +541,8 @@ public:
                " reason=",reason);
          return INIT_FAILED;
         }
+      m_position_store.Initialize(
+         m_profile.profile_id,m_profile.profile_fingerprint);
 
       m_revised_engine.Initialize(m_profile.symbol);
       m_revised_detector.SetMaximumAgeBars(60);
@@ -549,6 +653,64 @@ public:
       if(transaction.symbol!="" && transaction.symbol!=m_profile.symbol)
          return;
       RecoverOwnedPositions(TimeCurrent());
+     }
+
+   bool ModifyOwnedPosition(const ulong ticket,
+                            const double stop_loss,
+                            const double take_profit,
+                            PositionActionReceipt &receipt)
+     {
+      string reason="";
+      if(m_manual_intervention ||
+         !m_execution_broker.ModifyOwnedPosition(
+            ticket,stop_loss,take_profit,receipt,reason))
+         return false;
+      if(!m_execution_broker.DiscoverOwnedPositions(
+            m_owned_positions,m_foreign_symbol_position,
+            m_manual_intervention,reason) ||
+         ArraySize(m_owned_positions)!=1 ||
+         m_owned_positions[0].ticket!=ticket)
+        {
+         m_execution_broker.DisableAuthority();
+         SetEvent(ENGINE_EVENT_ERROR,TimeCurrent(),
+            "POSITION_MODIFY_RECOVERY_FAILED");
+         return false;
+        }
+      const ManagedPosition position=m_owned_positions[0];
+      m_expected_position.active=true;
+      m_expected_position.ticket=position.ticket;
+      m_expected_position.volume=position.volume;
+      m_expected_position.entry_price=position.entry_price;
+      m_expected_position.stop_loss=position.stop_loss;
+      m_expected_position.take_profit=position.take_profit;
+      if(!m_position_store.Save(m_expected_position))
+        {
+         m_execution_broker.DisableAuthority();
+         SetEvent(ENGINE_EVENT_ERROR,TimeCurrent(),
+            "POSITION_STATE_SAVE_FAILED");
+         return false;
+        }
+      SetEvent(ENGINE_EVENT_POSITION,TimeCurrent(),"POSITION_MODIFIED");
+      return true;
+     }
+
+   bool CloseOwnedPosition(const ulong ticket,PositionActionReceipt &receipt)
+     {
+      string reason="";
+      if(m_manual_intervention ||
+         !m_execution_broker.CloseOwnedPosition(ticket,receipt,reason))
+         return false;
+      if(!m_position_store.Clear(m_expected_position))
+        {
+         m_execution_broker.DisableAuthority();
+         SetEvent(ENGINE_EVENT_ERROR,TimeCurrent(),
+            "POSITION_STATE_CLEAR_FAILED");
+         return false;
+        }
+      ArrayResize(m_owned_positions,0);
+      m_state.phase=ENGINE_PHASE_IDLE;
+      SetEvent(ENGINE_EVENT_POSITION,TimeCurrent(),"POSITION_CLOSED");
+      return true;
      }
 
    bool OrderAuthorityEnabled(void) const
