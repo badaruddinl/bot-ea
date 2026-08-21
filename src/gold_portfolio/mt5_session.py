@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import replace
 from datetime import UTC, datetime, timedelta, timezone
 from decimal import Decimal
 from importlib import import_module
@@ -10,20 +9,7 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any
 
-from gold_engine_core import (
-    BrokerCheck,
-    ExecutionAccount,
-    ExecutionContext,
-    ExecutionExposure,
-    ExecutionSymbol,
-    ProfileConfig,
-    Side,
-    Tick,
-    load_execution_policy,
-    load_named_profile,
-    validate_execution,
-)
-from gold_engine_core.profile import TradeMode
+from gold_engine_core import ProfileConfig, load_execution_policy, load_named_profile
 from goldm_bear.engine import BearBar
 from goldm_revised.engine import RevisedBar
 from goldm_revised.timebase import mt5_epoch_to_server_wall
@@ -49,7 +35,6 @@ class BoundMt5Session:
         self.execution_policy = load_execution_policy(
             root / "config" / "execution_profiles" / f"{profile_id}.json"
         )
-        self._submitted_signal_ids: set[str] = set()
 
     @property
     def server_timezone(self) -> timezone:
@@ -237,155 +222,10 @@ class BoundMt5Session:
         }
 
     def execute(self, signal: SignalPlan) -> dict[str, Any]:
-        if not self.config.order_execution:
-            return {"status": "SIGNAL_ONLY"}
-        self.validate_binding()
-        existing = self.managed_positions()
-        tick = self.mt5.symbol_info_tick(self.config.symbol)
-        info = self.mt5.symbol_info(self.config.symbol)
-        if tick is None or info is None:
-            raise RuntimeError("MT5 tick/symbol info unavailable")
-        server_time = self._tick_server_time(tick)
-        if server_time is None:
-            raise RuntimeError("MT5 tick has no semantic server timestamp")
-        execution_context = {
-            "signal_id": signal.event_id,
-            "server_time": server_time.isoformat(),
-            "vm_time": datetime.now().astimezone().isoformat(),
-        }
-        buy = signal.side is Side.BUY
-        price = float(tick.ask if buy else tick.bid)
-        request = {
-            "action": self.mt5.TRADE_ACTION_DEAL,
-            "symbol": self.config.symbol,
-            "volume": float(signal.volume),
-            "type": self.mt5.ORDER_TYPE_BUY if buy else self.mt5.ORDER_TYPE_SELL,
-            "price": price,
-            "sl": float(signal.planned_stop),
-            "tp": float(signal.planned_target),
-            "deviation": self.config.deviation_points,
-            "magic": signal.magic,
-            "comment": f"{self.config.group}:{signal.component}",
-            "type_time": self.mt5.ORDER_TIME_GTC,
-            "type_filling": self._filling_type(info),
-        }
-        margin = self.mt5.order_calc_margin(
-            request["type"],
-            request["symbol"],
-            request["volume"],
-            request["price"],
-        )
-        if margin is None:
-            raise RuntimeError(f"order_calc_margin failed: {self.mt5.last_error()}")
-        account = self.account_info()
-        trade_mode: TradeMode = "real" if self.config.execution_mode == "real" else "demo"
-        point = Decimal(str(info.point))
-        tick_size = Decimal(str(info.trade_tick_size))
-        symbol_contract = ExecutionSymbol(
-            symbol=str(info.name),
-            tick_size=tick_size,
-            point=point,
-            volume_minimum=Decimal(str(info.volume_min)),
-            volume_maximum=Decimal(str(info.volume_max)),
-            volume_step=Decimal(str(info.volume_step)),
-            stops_level_points=int(info.trade_stops_level),
-            freeze_level_points=int(info.trade_freeze_level),
-            trade_enabled=int(info.trade_mode)
-            != int(getattr(self.mt5, "SYMBOL_TRADE_MODE_DISABLED", 0)),
-        )
-        base_validation_context = ExecutionContext(
-            quote=Tick(
-                server_time,
-                Decimal(str(tick.bid)),
-                Decimal(str(tick.ask)),
-                volume=float(getattr(tick, "volume", 0.0) or 0.0),
-            ),
-            account=ExecutionAccount(
-                login=int(account.login),
-                server=str(account.server),
-                trade_mode=trade_mode,
-                terminal_identity=self.profile.terminal_identity,
-                free_margin=Decimal(str(account.margin_free)),
-            ),
-            symbol=symbol_contract,
-            exposure=ExecutionExposure(
-                position_count=len(existing),
-                total_volume=sum(
-                    (Decimal(str(position.volume)) for position in existing),
-                    start=Decimal("0"),
-                ),
-                active_signal_ids=frozenset(self._submitted_signal_ids),
-            ),
-            required_margin=Decimal(str(margin)),
-            broker_check=BrokerCheck(True, 0, "preflight"),
-            engineering_demo=(
-                self.profile.profile_id == "GOLDM" and self.config.execution_mode == "demo"
-            ),
-        )
-        preflight = validate_execution(
-            signal,
-            self.profile,
-            self.execution_policy,
-            base_validation_context,
-        )
-        if not preflight.allowed:
-            return {
-                **execution_context,
-                "status": "BLOCKED_VALIDITY",
-                "reasons": [item.value for item in preflight.reasons],
-                "drift_r": float(preflight.drift_r),
-            }
-        check = self.mt5.order_check(request)
-        if check is None:
-            raise RuntimeError(f"order_check returned None: {self.mt5.last_error()}")
-        validation = validate_execution(
-            signal,
-            self.profile,
-            self.execution_policy,
-            replace(
-                base_validation_context,
-                broker_check=BrokerCheck(
-                    int(check.retcode) == 0,
-                    int(check.retcode),
-                    str(check.comment),
-                ),
-            ),
-        )
-        if not validation.allowed:
-            return {
-                **execution_context,
-                "status": "BLOCKED_VALIDITY",
-                "reasons": [item.value for item in validation.reasons],
-                "drift_r": float(validation.drift_r),
-                "retcode": int(check.retcode),
-                "comment": str(check.comment),
-            }
-        # Account identity is deliberately the final read before order_send.
-        self.validate_binding()
-        result = self.mt5.order_send(request)
-        if result is None:
-            raise RuntimeError(f"order_send returned None: {self.mt5.last_error()}")
-        accepted_codes = {
-            int(getattr(self.mt5, "TRADE_RETCODE_DONE", 10009)),
-            int(getattr(self.mt5, "TRADE_RETCODE_PLACED", 10008)),
-            int(getattr(self.mt5, "TRADE_RETCODE_DONE_PARTIAL", 10010)),
-        }
-        accepted = int(result.retcode) in accepted_codes
-        if accepted:
-            self._submitted_signal_ids.add(signal.signal_id)
         return {
-            **execution_context,
-            "status": "EXECUTED" if accepted else "REJECTED_SEND",
-            "retcode": int(result.retcode),
-            "comment": str(result.comment),
-            "order": int(result.order),
-            "deal": int(result.deal),
-            "request_id": int(getattr(result, "request_id", 0) or 0),
-            "price": float(result.price),
-            "volume": float(signal.volume),
-            "sl": float(signal.planned_stop),
-            "tp": float(signal.planned_target),
-            "balance": float(self.account_info().balance),
+            "status": "SIGNAL_ONLY",
+            "order_authority": self.config.order_authority.upper(),
+            "signal_id": signal.event_id,
         }
 
     def _tick_server_time(self, tick: Any) -> datetime | None:

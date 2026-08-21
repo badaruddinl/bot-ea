@@ -7,12 +7,14 @@
 
 input long   InpExpectedLogin=0;
 input string InpExpectedServer="";
+input bool   InpEnableOrderAuthority=false;
 
 CGoldEngineRuntime Runtime;
 
 int OnInit(void)
   {
-   return Runtime.Initialize(InpExpectedLogin,InpExpectedServer);
+   return Runtime.Initialize(
+      InpExpectedLogin,InpExpectedServer,InpEnableOrderAuthority);
   }
 
 void OnTick(void)
@@ -23,4 +25,11 @@ void OnTick(void)
 void OnDeinit(const int reason)
   {
    Runtime.Deinitialize(reason);
+  }
+
+void OnTradeTransaction(const MqlTradeTransaction &transaction,
+                        const MqlTradeRequest &request,
+                        const MqlTradeResult &result)
+  {
+   Runtime.OnTradeTransaction(transaction,request,result);
   }

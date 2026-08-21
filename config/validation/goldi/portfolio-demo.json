@@ -2,6 +2,7 @@
   "portfolio_id": "GOLDI_REFERENCE_GUARDED_DEMO",
   "symbol": "GOLD.i#",
   "execution_mode": "demo",
+  "order_authority": "mql5",
   "revised_config": "config/final/goldi/revised.json",
   "bear_config": "config/final/goldi/bear.json",
   "terminal": {

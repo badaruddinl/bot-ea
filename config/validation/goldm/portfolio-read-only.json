@@ -2,6 +2,7 @@
   "portfolio_id": "GOLDM_REFERENCE_REAL_READ_ONLY",
   "symbol": "GOLDm#",
   "execution_mode": "signal_only",
+  "order_authority": "disabled",
   "revised_config": "config/final/goldm/revised.json",
   "bear_config": "config/final/goldm/bear.json",
   "terminal": {

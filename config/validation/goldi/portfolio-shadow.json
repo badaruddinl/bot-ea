@@ -2,6 +2,7 @@
   "portfolio_id": "GOLDI_REFERENCE_SHADOW_VALIDATION",
   "symbol": "GOLD.i#",
   "execution_mode": "signal_only",
+  "order_authority": "disabled",
   "revised_config": "config/final/goldi/revised.json",
   "bear_config": "config/final/goldi/bear.json",
   "terminal": {

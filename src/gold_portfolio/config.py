@@ -63,6 +63,7 @@ class PortfolioWorkerConfig:
     maximum_positions: int
     maximum_total_lot: float
     orders_enabled: bool
+    order_authority: str
     poll_seconds: float
     server_utc_offset_minutes: int
     state_path: Path
@@ -71,15 +72,23 @@ class PortfolioWorkerConfig:
 
     @property
     def real_execution(self) -> bool:
-        return self.execution_mode == "real" and self.orders_enabled
+        return (
+            self.execution_mode == "real"
+            and self.orders_enabled
+            and self.order_authority == "python"
+        )
 
     @property
     def demo_execution(self) -> bool:
-        return self.execution_mode == "demo" and self.orders_enabled
+        return (
+            self.execution_mode == "demo"
+            and self.orders_enabled
+            and self.order_authority == "python"
+        )
 
     @property
     def order_execution(self) -> bool:
-        return self.execution_mode in {"demo", "real"} and self.orders_enabled
+        return self.real_execution or self.demo_execution
 
     def lot_for_balance(self, balance: float) -> float:
         if balance < 0 or not self.balance_tiers:
@@ -151,6 +160,11 @@ def load_worker_config(path: str | Path) -> PortfolioWorkerConfig:
         raise ValueError("required terminal binding is incomplete")
     if mode in {"demo", "real"} and (not tiers or tiers[0][0] != 0.0):
         raise ValueError(f"{mode} execution requires balance tiers beginning at zero")
+    order_authority = str(portfolio.get("order_authority") or "disabled").lower()
+    if order_authority not in {"disabled", "mql5"}:
+        raise ValueError(
+            "Python portfolio workers cannot own order authority; expected 'disabled' or 'mql5'"
+        )
     audience = str(telegram_values.get("audience") or "admin_only").strip().lower()
     if audience not in {"admin_only", "goldi_approved"}:
         raise ValueError(f"unsupported Telegram audience: {audience}")
@@ -179,6 +193,7 @@ def load_worker_config(path: str | Path) -> PortfolioWorkerConfig:
         maximum_positions=int(portfolio.get("maximum_positions") or 0),
         maximum_total_lot=float(portfolio.get("maximum_total_lot") or 0.0),
         orders_enabled=bool(portfolio.get("orders_enabled", False)),
+        order_authority=order_authority,
         poll_seconds=float(worker.get("poll_seconds") or 15.0),
         server_utc_offset_minutes=int(worker.get("server_utc_offset_minutes") or 180),
         state_path=_repo_path(str(worker["state_path"])),

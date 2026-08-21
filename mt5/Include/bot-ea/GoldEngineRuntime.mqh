@@ -6,6 +6,8 @@
 #include "GoldEngineRevised.mqh"
 #include "GoldEngineRevisedSetup.mqh"
 #include "GoldEngineBearPersistence.mqh"
+#include "GoldEngineExecutionBroker.mqh"
+#include "GoldEnginePositionPersistence.mqh"
 #include "GoldEngineScheduler.mqh"
 
 class CGoldEngineRuntime
@@ -30,6 +32,196 @@ private:
    EngineBar           m_m1_history[];
    bool                m_initialized;
    bool                m_data_healthy;
+   CExecutionBroker    m_execution_broker;
+   ExecutionReceipt    m_last_execution_receipt;
+   bool                m_has_execution_receipt;
+   ManagedPosition     m_owned_positions[];
+   bool                m_foreign_symbol_position;
+   bool                m_manual_intervention;
+   CPositionStateStore m_position_store;
+   ExpectedPositionState m_expected_position;
+   PositionStateLoadStatus m_position_state_status;
+
+   bool PersistSubmittedPosition(const SignalPlan &plan,
+                                 const datetime server_time)
+     {
+      string reason="";
+      if(!m_execution_broker.DiscoverOwnedPositions(
+            m_owned_positions,m_foreign_symbol_position,
+            m_manual_intervention,reason))
+        {
+         SetEvent(ENGINE_EVENT_ERROR,server_time,reason);
+         return false;
+        }
+      if(m_foreign_symbol_position || m_manual_intervention ||
+         ArraySize(m_owned_positions)!=1)
+        {
+         m_execution_broker.DisableAuthority();
+         SetEvent(ENGINE_EVENT_ERROR,server_time,
+            "POSITION_CAPTURE_AMBIGUOUS");
+         return false;
+        }
+      const ManagedPosition position=m_owned_positions[0];
+      PositionStateReset(m_expected_position);
+      m_expected_position.active=true;
+      m_expected_position.ticket=position.ticket;
+      m_expected_position.signal_id=plan.signal_id;
+      m_expected_position.volume=position.volume;
+      m_expected_position.entry_price=position.entry_price;
+      m_expected_position.stop_loss=position.stop_loss;
+      m_expected_position.take_profit=position.take_profit;
+      if(!m_position_store.Save(m_expected_position))
+        {
+         m_execution_broker.DisableAuthority();
+         SetEvent(ENGINE_EVENT_ERROR,server_time,
+            "POSITION_STATE_SAVE_FAILED");
+         return false;
+        }
+      m_position_state_status=POSITION_STATE_VALID;
+      return true;
+     }
+
+   void BuildSignalPlan(const EngineSide side,
+                        const string setup_id,
+                        const string signal_id,
+                        const datetime setup_created_at,
+                        const datetime entry_ready_at,
+                        const double entry,
+                        const double stop_loss,
+                        const double take_profit,
+                        SignalPlan &plan)
+     {
+      ZeroMemory(plan);
+      plan.profile_id=m_profile.profile_id;
+      plan.profile_version=m_profile.profile_version;
+      plan.profile_fingerprint=m_profile.profile_fingerprint;
+      plan.strategy_version=m_profile.strategy_version;
+      plan.setup_id=setup_id;
+      plan.signal_id=signal_id;
+      plan.symbol=m_profile.symbol;
+      plan.side=side;
+      plan.account_login=AccountInfoInteger(ACCOUNT_LOGIN);
+      plan.account_server=AccountInfoString(ACCOUNT_SERVER);
+      plan.trade_mode=(ENUM_ACCOUNT_TRADE_MODE)AccountInfoInteger(ACCOUNT_TRADE_MODE);
+      plan.terminal_identity=m_profile.terminal_identity;
+      plan.magic=m_profile.magic;
+      plan.setup_created_at=setup_created_at;
+      plan.entry_ready_at=entry_ready_at;
+      plan.valid_until=entry_ready_at+m_profile.maximum_signal_age_seconds;
+      plan.volume=ResolveProfileLot(m_profile,AccountInfoDouble(ACCOUNT_BALANCE));
+      plan.tick_size=m_profile.tick_size;
+      plan.maximum_drift_r=m_profile.maximum_drift_r;
+      plan.maximum_spread=m_profile.maximum_spread;
+      plan.planned_entry=entry;
+      plan.stop_loss=stop_loss;
+      plan.take_profit=take_profit;
+      plan.invalidation=stop_loss;
+      plan.risk_price=MathAbs(entry-stop_loss);
+      plan.executable=plan.volume>0.0 && plan.risk_price>0.0;
+     }
+
+   void SubmitSignalPlan(const SignalPlan &plan,const datetime server_time)
+     {
+      if(!RecoverOwnedPositions(server_time))
+         return;
+      if(ArraySize(m_owned_positions)>0)
+        {
+         SetEvent(ENGINE_EVENT_ENTRY_READY,server_time,
+            "POSITION_ALREADY_OPEN");
+         return;
+        }
+      string reason="";
+      m_has_execution_receipt=true;
+      const bool submitted=m_execution_broker.Submit(
+         plan,m_last_execution_receipt,reason);
+      if(submitted)
+        {
+         if(!PersistSubmittedPosition(plan,server_time))
+            return;
+         m_state.phase=ENGINE_PHASE_POSITION_OPEN;
+         SetEvent(ENGINE_EVENT_POSITION,server_time,"ORDER_SENT");
+         return;
+        }
+      if(m_last_execution_receipt.state==EXECUTION_SUBMIT_DISABLED)
+        {
+         SetEvent(ENGINE_EVENT_ENTRY_READY,server_time,"ORDER_AUTHORITY_DISABLED");
+         return;
+        }
+      SetEvent(ENGINE_EVENT_ERROR,server_time,reason);
+     }
+
+   bool RecoverOwnedPositions(const datetime server_time)
+     {
+      string reason="";
+      if(!m_execution_broker.DiscoverOwnedPositions(
+            m_owned_positions,m_foreign_symbol_position,
+            m_manual_intervention,reason))
+        {
+         SetEvent(ENGINE_EVENT_ERROR,server_time,reason);
+         return false;
+        }
+      if(m_foreign_symbol_position || m_manual_intervention)
+        {
+         m_execution_broker.DisableAuthority();
+         SetEvent(ENGINE_EVENT_ERROR,server_time,
+            m_manual_intervention ? "MANUAL_INTERVENTION_DETECTED" :
+            "FOREIGN_SYMBOL_POSITION_DETECTED");
+         return true;
+        }
+      m_position_state_status=m_position_store.Load(m_expected_position);
+      if(m_position_state_status==POSITION_STATE_INVALID)
+        {
+         m_execution_broker.DisableAuthority();
+         m_manual_intervention=true;
+         SetEvent(ENGINE_EVENT_ERROR,server_time,"POSITION_STATE_INVALID");
+         return true;
+        }
+      const int owned_count=ArraySize(m_owned_positions);
+      if(owned_count>1)
+        {
+         m_execution_broker.DisableAuthority();
+         m_manual_intervention=true;
+         SetEvent(ENGINE_EVENT_ERROR,server_time,"MULTIPLE_OWNED_POSITIONS");
+         return true;
+        }
+      if(owned_count==1)
+        {
+         if(m_position_state_status!=POSITION_STATE_VALID ||
+            !m_expected_position.active)
+           {
+            m_execution_broker.DisableAuthority();
+            m_manual_intervention=true;
+            SetEvent(ENGINE_EVENT_ERROR,server_time,
+               "POSITION_STATE_MISSING");
+            return true;
+           }
+         if(!PositionStateMatches(
+               m_owned_positions[0],m_expected_position,
+               m_profile.tick_size,reason))
+           {
+            m_execution_broker.DisableAuthority();
+            m_manual_intervention=true;
+            SetEvent(ENGINE_EVENT_ERROR,server_time,reason);
+            return true;
+           }
+         m_state.phase=ENGINE_PHASE_POSITION_OPEN;
+         SetEvent(ENGINE_EVENT_POSITION,server_time,"POSITION_RECOVERED");
+        }
+      else
+        {
+         if(m_position_state_status==POSITION_STATE_VALID &&
+            m_expected_position.active &&
+            !m_position_store.Clear(m_expected_position))
+           {
+            m_execution_broker.DisableAuthority();
+            SetEvent(ENGINE_EVENT_ERROR,server_time,
+               "POSITION_STATE_CLEAR_FAILED");
+            return false;
+           }
+         m_state.phase=ENGINE_PHASE_IDLE;
+        }
+      return true;
+     }
 
    void CopyLatestBars(const EngineBar &source[],
                        const int maximum,
@@ -181,6 +373,22 @@ private:
             ENGINE_EVENT_ENTRY_READY,m_last_revised_decision.time,
             m_last_revised_decision.reason);
          m_revised_detector.Consume(side,setup.trigger_time);
+         if(!m_last_revised_decision.observation_only &&
+            m_last_revised_decision.has_entry &&
+            m_last_revised_decision.has_stop &&
+            m_last_revised_decision.has_target)
+           {
+            const string setup_id=m_profile.profile_id+":REVISED:"+
+               IntegerToString((long)side)+":"+
+               IntegerToString((long)setup.trigger_time);
+            const string signal_id=setup_id+":"+
+               IntegerToString((long)m_last_revised_decision.time);
+            SignalPlan plan;
+            BuildSignalPlan(side,setup_id,signal_id,setup.trigger_time,
+               m_last_revised_decision.time,m_last_revised_decision.entry,
+               m_last_revised_decision.stop,m_last_revised_decision.target,plan);
+            SubmitSignalPlan(plan,m_last_revised_decision.time);
+           }
         }
       else if(m_last_revised_decision.state==REVISED_STATE_CANCELLED)
          m_revised_detector.Consume(side,setup.trigger_time);
@@ -220,6 +428,14 @@ private:
          SetEvent(
             ENGINE_EVENT_ENTRY_READY,signal.opened_at,
             "M1_ENTRY_CONFIRMATION_READY");
+         const string setup_id=m_bear_machine.SetupId();
+         const string signal_id=setup_id+":"+
+            IntegerToString((long)signal.opened_at);
+         SignalPlan plan;
+         BuildSignalPlan(ENGINE_SIDE_SELL,setup_id,signal_id,
+            signal.armed_at,signal.opened_at,signal.entry,signal.stop,
+            signal.target,plan);
+         SubmitSignalPlan(plan,signal.opened_at);
         }
       else if(ArraySize(events)>0)
         {
@@ -287,9 +503,16 @@ public:
       m_last_event.type=ENGINE_EVENT_NONE;
       m_has_revised_decision=false;
       m_has_bear_signal=false;
+      m_has_execution_receipt=false;
+      m_foreign_symbol_position=false;
+      m_manual_intervention=false;
+      m_position_state_status=POSITION_STATE_MISSING;
+      PositionStateReset(m_expected_position);
      }
 
-   int Initialize(const long expected_login,const string expected_server)
+   int Initialize(const long expected_login,
+                  const string expected_server,
+                  const bool order_authority_requested=false)
      {
       LoadBuildProfile(m_profile);
       string reason="";
@@ -311,6 +534,15 @@ public:
                " reason=SCHEDULER_INIT_FAILED");
          return INIT_FAILED;
         }
+      if(!m_execution_broker.Initialize(
+            m_profile,order_authority_requested,reason))
+        {
+         Print("GOLD_ENGINE_INIT_REJECT profile=",m_profile.profile_id,
+               " reason=",reason);
+         return INIT_FAILED;
+        }
+      m_position_store.Initialize(
+         m_profile.profile_id,m_profile.profile_fingerprint);
 
       m_revised_engine.Initialize(m_profile.symbol);
       m_revised_detector.SetMaximumAgeBars(60);
@@ -349,9 +581,12 @@ public:
          m_revised_detector.SeedWarmup(
             m_m5_history[m5_count-1].open_time);
       SetEvent(ENGINE_EVENT_RUNTIME_READY,TimeCurrent(),"WARMUP_COMPLETE");
+      if(!RecoverOwnedPositions(TimeCurrent()))
+         return INIT_FAILED;
       Print("GOLD_ENGINE_READY profile=",m_profile.profile_id,
             " fingerprint=",m_profile.profile_fingerprint,
-            " order_authority=DISABLED");
+            " order_authority=",
+            m_execution_broker.AuthorityEnabled() ? "ENABLED" : "DISABLED");
       return INIT_SUCCEEDED;
      }
 
@@ -407,6 +642,85 @@ public:
       m_data_healthy=false;
       Print("GOLD_ENGINE_STOP profile=",m_profile.profile_id,
             " reason=",reason);
+     }
+
+   void OnTradeTransaction(const MqlTradeTransaction &transaction,
+                           const MqlTradeRequest &request,
+                           const MqlTradeResult &result)
+     {
+      if(!m_initialized)
+         return;
+      if(transaction.symbol!="" && transaction.symbol!=m_profile.symbol)
+         return;
+      RecoverOwnedPositions(TimeCurrent());
+     }
+
+   bool ModifyOwnedPosition(const ulong ticket,
+                            const double stop_loss,
+                            const double take_profit,
+                            PositionActionReceipt &receipt)
+     {
+      string reason="";
+      if(m_manual_intervention ||
+         !m_execution_broker.ModifyOwnedPosition(
+            ticket,stop_loss,take_profit,receipt,reason))
+         return false;
+      if(!m_execution_broker.DiscoverOwnedPositions(
+            m_owned_positions,m_foreign_symbol_position,
+            m_manual_intervention,reason) ||
+         ArraySize(m_owned_positions)!=1 ||
+         m_owned_positions[0].ticket!=ticket)
+        {
+         m_execution_broker.DisableAuthority();
+         SetEvent(ENGINE_EVENT_ERROR,TimeCurrent(),
+            "POSITION_MODIFY_RECOVERY_FAILED");
+         return false;
+        }
+      const ManagedPosition position=m_owned_positions[0];
+      m_expected_position.active=true;
+      m_expected_position.ticket=position.ticket;
+      m_expected_position.volume=position.volume;
+      m_expected_position.entry_price=position.entry_price;
+      m_expected_position.stop_loss=position.stop_loss;
+      m_expected_position.take_profit=position.take_profit;
+      if(!m_position_store.Save(m_expected_position))
+        {
+         m_execution_broker.DisableAuthority();
+         SetEvent(ENGINE_EVENT_ERROR,TimeCurrent(),
+            "POSITION_STATE_SAVE_FAILED");
+         return false;
+        }
+      SetEvent(ENGINE_EVENT_POSITION,TimeCurrent(),"POSITION_MODIFIED");
+      return true;
+     }
+
+   bool CloseOwnedPosition(const ulong ticket,PositionActionReceipt &receipt)
+     {
+      string reason="";
+      if(m_manual_intervention ||
+         !m_execution_broker.CloseOwnedPosition(ticket,receipt,reason))
+         return false;
+      if(!m_position_store.Clear(m_expected_position))
+        {
+         m_execution_broker.DisableAuthority();
+         SetEvent(ENGINE_EVENT_ERROR,TimeCurrent(),
+            "POSITION_STATE_CLEAR_FAILED");
+         return false;
+        }
+      ArrayResize(m_owned_positions,0);
+      m_state.phase=ENGINE_PHASE_IDLE;
+      SetEvent(ENGINE_EVENT_POSITION,TimeCurrent(),"POSITION_CLOSED");
+      return true;
+     }
+
+   bool OrderAuthorityEnabled(void) const
+     {
+      return m_execution_broker.AuthorityEnabled();
+     }
+
+   bool ManualInterventionDetected(void) const
+     {
+      return m_manual_intervention;
      }
 
    long BarsProcessed(void) const
