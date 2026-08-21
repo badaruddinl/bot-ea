@@ -23,7 +23,9 @@ def _time(value: object, label: str) -> datetime:
     return parsed.astimezone(UTC)
 
 
-def verify(config: dict[str, Any], preboot: dict[str, Any], postboot: dict[str, Any]) -> dict[str, Any]:
+def verify(
+    config: dict[str, Any], preboot: dict[str, Any], postboot: dict[str, Any]
+) -> dict[str, Any]:
     violations: list[str] = []
 
     for label, value in (
@@ -63,7 +65,9 @@ def verify(config: dict[str, Any], preboot: dict[str, Any], postboot: dict[str, 
         if health_started < postboot_time:
             violations.append("supervisor health predates the new boot")
         interactive_raw = postboot.get("interactive_login_observed_at_utc")
-        if interactive_raw is not None and health_started >= _time(interactive_raw, "interactive login"):
+        if interactive_raw is not None and health_started >= _time(
+            interactive_raw, "interactive login"
+        ):
             violations.append("supervisor did not start before interactive login")
     except ValueError as exc:
         violations.append(str(exc))
@@ -105,9 +109,10 @@ def verify(config: dict[str, Any], preboot: dict[str, Any], postboot: dict[str, 
             payload = event.get("payload") or {}
             if event.get("profile_id") != profile_id:
                 violations.append(f"{profile_id} event profile mismatch")
-            if event.get("profile_fingerprint", "").lower() != str(
-                expected["expected_profile_fingerprint"]
-            ).lower():
+            if (
+                event.get("profile_fingerprint", "").lower()
+                != str(expected["expected_profile_fingerprint"]).lower()
+            ):
                 violations.append(f"{profile_id} event fingerprint mismatch")
             if event.get("symbol") != expected["expected_symbol"]:
                 violations.append(f"{profile_id} event symbol mismatch")
@@ -155,11 +160,15 @@ def verify(config: dict[str, Any], preboot: dict[str, Any], postboot: dict[str, 
                 expected_state = (
                     "SUPPRESSED" if event.get("event_type") == "ENGINE_HEARTBEAT" else "DELIVERED"
                 )
-                if event.get("event_type") in {
-                    "ENGINE_STARTED",
-                    "PROFILE_VALIDATED",
-                    "ENGINE_HEARTBEAT",
-                } and latest_states.get(str(event.get("event_id"))) != expected_state:
+                if (
+                    event.get("event_type")
+                    in {
+                        "ENGINE_STARTED",
+                        "PROFILE_VALIDATED",
+                        "ENGINE_HEARTBEAT",
+                    }
+                    and latest_states.get(str(event.get("event_id"))) != expected_state
+                ):
                     violations.append(
                         f"bridge state mismatch for postboot event {event.get('event_id')}"
                     )
