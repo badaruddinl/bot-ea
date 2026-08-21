@@ -20,6 +20,8 @@ def test_restart_capture_correlates_same_ticket_across_processes() -> None:
         (
             "order #77 buy 0.01 / 0.01 GOLD.i# at x",
             "shutdown with 0",
+            "disconnected from XMGlobal-MT5 5",
+            "authorized on XMGlobal-MT5 5",
             "terminal synchronized with XM Global Limited: 1 positions, 0 orders",
             "market sell 0.01 GOLD.i#, close #77 buy 0.01",
             "shutdown with 0",
@@ -31,6 +33,8 @@ def test_restart_capture_correlates_same_ticket_across_processes() -> None:
     assert metadata["ticket"] == "77"
     assert metadata["positions_seen_after_restart"] == 1
     assert metadata["positions_after_recovery"] == 0
+    assert metadata["disconnect_seen"]
+    assert metadata["reconnect_authorized"]
     assert "close #77" in block
 
 

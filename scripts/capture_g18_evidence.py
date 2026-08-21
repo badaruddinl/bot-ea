@@ -163,6 +163,8 @@ def capture_restart(mql_text: str, terminal_text: str) -> tuple[str, dict[str, A
                 "terminal synchronized with XM Global Limited: 1 positions",
                 f"market sell 0.01 GOLD.i#, close #{ticket}",
                 f"order #{ticket}",
+                "disconnected from XMGlobal-MT5 5",
+                "authorized on XMGlobal-MT5 5",
                 "shutdown with 0",
             )
         )
@@ -172,6 +174,8 @@ def capture_restart(mql_text: str, terminal_text: str) -> tuple[str, dict[str, A
         f"order #{ticket} buy 0.01 / 0.01 GOLD.i#",
         "terminal synchronized with XM Global Limited: 1 positions",
         f"market sell 0.01 GOLD.i#, close #{ticket}",
+        "disconnected from XMGlobal-MT5 5",
+        "authorized on XMGlobal-MT5 5",
         "shutdown with 0",
     )
     if missing := [token for token in required if token not in joined]:
@@ -185,6 +189,8 @@ def capture_restart(mql_text: str, terminal_text: str) -> tuple[str, dict[str, A
         "ticket": ticket,
         "positions_seen_after_restart": 1,
         "positions_after_recovery": 0,
+        "disconnect_seen": True,
+        "reconnect_authorized": True,
         "close_retcode": 10009,
         "order_authority": "DEMO_E2E_ONLY",
     }
