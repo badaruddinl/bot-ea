@@ -30,6 +30,7 @@ REAL order authority: **DISABLED**
 | G14 | PASS | SHARED, GOLDI, GOLDM, CROSS_PROFILE | `evidence/G14-execution-lifecycle/` | Full guard/preflight/CTrade contract, Python authority removal, owned-position modify/close, dual-slot restart recovery, manual-intervention fail-closed behavior, warning-clean dual-profile compile, native tester proofs, 795 fast tests, 218 slow tests, and quality gate passed; REAL authority remained disabled. |
 | G15 | PASS | SHARED, GOLDI, GOLDM, CROSS_PROFILE | `evidence/G15-full-parity/` | Canonical four-pipeline parity, exact fields, zero-tick observed geometry delta, zero cross-profile events, dual-profile lifecycle Strategy Tester, warning-clean compile, 805 fast tests, 218 slow tests, and quality gate passed; REAL authority remained disabled. |
 | G16 | PASS | SHARED, GOLDI, GOLDM, CROSS_PROFILE | `evidence/G16-event-bridge/` | Profile-specific append-only EA spool, atomic idempotent SQLite ingest/ACK, recipient-level retry, GOLDI-approved/GOLDM-admin isolation, WATCH suppression, native tester, warning-clean compile, 820 fast tests, 218 slow tests, and quality gate passed. |
+| G17 | IN_PROGRESS | SHARED, GOLDI, GOLDM, CROSS_PROFILE | `evidence/G17-happy-path-e2e/` | Preparing broker-tick through EA/order/position/close/outbox/DB/Telegram happy paths; GOLDI uses DEMO and GOLDM uses isolated Strategy Tester because no broker DEMO mirror exists. |
 
 Raw or large evidence is stored outside Git under:
 
