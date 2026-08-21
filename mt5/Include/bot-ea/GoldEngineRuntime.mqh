@@ -48,7 +48,19 @@ private:
    ulong               m_last_bar_close_to_detection_ms;
    ulong               m_last_detection_to_decision_us;
    ulong               m_last_entry_ready_to_submit_us;
+   datetime            m_next_heartbeat_at;
    CEngineInstanceLease m_instance_lease;
+
+   string RuntimeEvidencePayload(void) const
+     {
+      return StringFormat(
+         "{\"account_login\":%I64d,\"account_server\":\"%s\","
+         "\"trade_mode\":%d,\"order_authority\":\"%s\"}",
+         AccountInfoInteger(ACCOUNT_LOGIN),
+         OutboxJsonEscape(AccountInfoString(ACCOUNT_SERVER)),
+         (int)AccountInfoInteger(ACCOUNT_TRADE_MODE),
+         m_execution_broker.AuthorityEnabled() ? "ENABLED" : "DISABLED");
+     }
 
    void EmitTransition(const string event_type,
                        const string setup_id="",
@@ -284,9 +296,12 @@ private:
          IntegerToString((long)server_time);
       if(type==ENGINE_EVENT_RUNTIME_READY)
         {
-         EmitTransition("ENGINE_STARTED");
-         EmitTransition("PROFILE_VALIDATED");
+         const string payload=RuntimeEvidencePayload();
+         EmitTransition("ENGINE_STARTED","","","","",payload);
+         EmitTransition("PROFILE_VALIDATED","","","","",payload);
         }
+      else if(type==ENGINE_EVENT_HEARTBEAT)
+         EmitTransition("ENGINE_HEARTBEAT","","","","",RuntimeEvidencePayload());
       else if(type==ENGINE_EVENT_ENTRY_READY)
          EmitTransition("ENTRY_READY",m_state.setup_id);
       else if(type==ENGINE_EVENT_POSITION)
@@ -568,6 +583,7 @@ public:
       m_last_bar_close_to_detection_ms=0;
       m_last_detection_to_decision_us=0;
       m_last_entry_ready_to_submit_us=0;
+      m_next_heartbeat_at=0;
       m_position_state_status=POSITION_STATE_MISSING;
       PositionStateReset(m_expected_position);
      }
@@ -651,6 +667,9 @@ public:
          m_revised_detector.SeedWarmup(
             m_m5_history[m5_count-1].open_time);
       SetEvent(ENGINE_EVENT_RUNTIME_READY,TimeCurrent(),"WARMUP_COMPLETE");
+      // Emit the first internal health receipt promptly after unattended boot,
+      // then remain bounded to one receipt per hour.
+      m_next_heartbeat_at=TimeCurrent()+60;
       if(!RecoverOwnedPositions(TimeCurrent()))
          return INIT_FAILED;
       Print("GOLD_ENGINE_READY profile=",m_profile.profile_id,
@@ -677,6 +696,12 @@ public:
       tick.bid=raw_tick.bid;
       tick.ask=raw_tick.ask;
       tick.last=raw_tick.last;
+
+      if(m_next_heartbeat_at>0 && raw_tick.time>=m_next_heartbeat_at)
+        {
+         m_next_heartbeat_at=raw_tick.time+3600;
+         SetEvent(ENGINE_EVENT_HEARTBEAT,raw_tick.time,"ENGINE_HEALTHY");
+        }
 
       EngineBar closed_bars[];
       int bar_count=0;

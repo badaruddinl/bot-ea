@@ -276,6 +276,7 @@ def test_order_and_modify_diagnostics_are_db_only_not_telegram(tmp_path: Path) -
         spool,
         event("goldi:order", event_type="ORDER_SUBMITTED", audience="admin_only"),
         event("goldi:modify", event_type="POSITION_MODIFIED", audience="admin_only"),
+        event("goldi:heartbeat", event_type="ENGINE_HEARTBEAT", audience="admin_only"),
     )
     store = EventStore(tmp_path / "events.db")
     sent: list[str] = []
