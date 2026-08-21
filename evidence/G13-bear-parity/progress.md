@@ -26,14 +26,20 @@ Current sub-batch:
   0.24 and the resulting stop/target geometry;
 - MetaEditor 6090 compile: 0 errors, 0 warnings;
 - harness binary SHA-256:
-  `696d9048e151ad38854e6425524ee3fb24c72ce75d9b409eb8399456e668e6ba`;
-- focused corpus/contract suite: 6 passed.
+  `3a44530399dfa51d7f5678c9fcf1279de7f730203e4c68daa15fe449173a6e30`;
+- bounded MQL5 state owner with per-timeframe closed-bar cursors, duplicate
+  idempotence, old-bar rejection, terminal reset-on-next-bar, exact transition
+  event IDs, causal `as_of`, and profile-scoped setup identity;
+- complete WATCH state snapshot/restore including bounded H1/M15/M5/M1
+  buffers, arm evidence, signal, cursors, semantic offset, and no-resurrection
+  last-setup time;
+- native harness now asserts exact Python happy-path sequence numbers 53/64/66,
+  event reasons/timestamps/setup ID, final sequence 68, and terminal IDLE;
+- focused corpus/contract suite: 7 passed.
 
 Remaining before PASS:
 
 - M15 confluence setup scanner port;
-- bounded incremental state owner, closed-bar cursors, transitions, events,
-  terminal reset, and restart snapshot/restore;
 - runtime integration and explicit proof that live code cannot full-replay;
 - all cancellation/restart vectors in the native harness;
 - dual-profile Strategy Tester, compile, regression, and final verifier.

@@ -81,6 +81,32 @@ struct BearEntryPlan
    int      m1_touches;
   };
 
+struct BearIncrementalEvent
+  {
+   string               event_id;
+   datetime             available_at;
+   string               profile_id;
+   string               setup_id;
+   BearIncrementalPhase from_phase;
+   BearIncrementalPhase to_phase;
+   string               reason;
+  };
+
+string BearPhaseName(const BearIncrementalPhase phase)
+  {
+   if(phase==BEAR_PHASE_IDLE)
+      return "IDLE";
+   if(phase==BEAR_PHASE_WATCH_H1)
+      return "WATCH_H1";
+   if(phase==BEAR_PHASE_WATCH_M5)
+      return "WATCH_M5";
+   if(phase==BEAR_PHASE_WATCH_M1)
+      return "WATCH_M1";
+   if(phase==BEAR_PHASE_ENTRY_READY)
+      return "ENTRY_READY";
+   return "CANCELLED";
+  }
+
 void LoadBearV4Config(BearV4Config &config,const double spread_floor)
   {
    config.h1_sma_period=20;

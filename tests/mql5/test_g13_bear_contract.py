@@ -5,6 +5,7 @@ TYPES = REPOSITORY_ROOT / "mt5" / "Include" / "bot-ea" / "GoldEngineBearTypes.mq
 INDICATORS = REPOSITORY_ROOT / "mt5" / "Include" / "bot-ea" / "GoldEngineBearIndicators.mqh"
 VALIDATION = REPOSITORY_ROOT / "mt5" / "Include" / "bot-ea" / "GoldEngineBearValidation.mqh"
 HARNESS = REPOSITORY_ROOT / "mt5" / "Experts" / "bot-ea" / "GoldEngineBearParityHarness.mq5"
+INCREMENTAL = REPOSITORY_ROOT / "mt5" / "Include" / "bot-ea" / "GoldEngineBearIncremental.mqh"
 
 
 def test_bear_types_lock_incremental_phases_and_v4_profile_contract() -> None:
@@ -66,5 +67,39 @@ def test_native_bear_harness_locks_profile_specific_python_geometry() -> None:
     assert "const double expected_stop=(goldm ? 100.68 : 100.60)" in value
     assert "const double expected_target=(goldm ? 93.21 : 93.37)" in value
     assert "BearCloseEnough(plan.entry,98.19,0.01)" in value
+    assert "EvaluateBearIncrementalSequence" in value
+    assert "machine.Sequence()!=68" in value
+    assert 'profile_id+":BEAR:53:IDLE:WATCH_H1:M15_SETUP_ACCEPTED"' in value
+    assert 'profile_id+":BEAR:66:WATCH_M1:ENTRY_READY:M1_ENTRY_CONFIRMATION_READY"' in value
+    assert 'profile_id+":BEAR:2026-01-02T00:00:00+03:00"' in value
     assert "return BearHarnessPassed ? INIT_SUCCEEDED : INIT_FAILED" in value
     assert "OrderSend" not in value
+
+
+def test_incremental_state_owner_is_bounded_idempotent_and_restart_safe() -> None:
+    value = INCREMENTAL.read_text(encoding="utf-8")
+
+    assert "class CBearIncrementalMachine" in value
+    assert "BAR_BEFORE_PROCESSED_CURSOR" in value
+    assert "if(cursor>0 && bar.open_time==cursor)" in value
+    assert "AppendBounded" in value
+    assert "return 45" in value
+    assert "return 40" in value
+    assert "return 128" in value
+    assert "Snapshot(CBearIncrementalSnapshot &snapshot) const" in value
+    assert "Restore(const CBearIncrementalSnapshot &snapshot)" in value
+    assert "snapshot.profile_id!=m_profile_id" in value
+    assert "SnapshotCursorValid" in value
+    assert "snapshot.phase==BEAR_PHASE_WATCH_M1 && !snapshot.has_arm" in value
+    assert "snapshot.phase==BEAR_PHASE_ENTRY_READY && !snapshot.has_signal" in value
+    assert "M15_SETUP_ACCEPTED" in value
+    assert "H1_BEARISH_CONTEXT_ACCEPTED" in value
+    assert "H1_BEARISH_CONTEXT_REJECTED" in value
+    assert "M5_REJECTION_ARMED" in value
+    assert "M5_WATCH_WINDOW_EXPIRED" in value
+    assert "M1_ENTRY_CONFIRMATION_READY" in value
+    assert "M1_WATCH_WINDOW_EXPIRED_OR_INVALIDATED" in value
+    assert "BearArmOnM5" in value
+    assert "BearEntryOnM1" in value
+    assert "OrderSend" not in value
+    assert "replay" not in value.casefold()
