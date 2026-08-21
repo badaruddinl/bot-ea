@@ -608,7 +608,7 @@ Goal hanya selesai bila seluruh required cell PASS.
 | G10B GOLD.i DEMO execution validation | PASS | IN_PROGRESS | N/A | N/A | `evidence/G10-reference-live-validation/` |
 | G10C GOLDm tester execution validation | PASS | N/A | DEFERRED_TO_G15 | N/A | `evidence/G10-reference-live-validation/` |
 | G11 MQL5 runtime skeleton | PASS | PASS | PASS | PASS | `evidence/G11-mql5-runtime-skeleton/` |
-| G12 Revised MQL5 parity | NOT_STARTED | NOT_STARTED | NOT_STARTED | N/A | |
+| G12 Revised MQL5 parity | PASS | PASS | PASS | PASS | `evidence/G12-revised-parity/` |
 | G13 Bear MQL5 parity | NOT_STARTED | NOT_STARTED | NOT_STARTED | N/A | |
 | G14 EA execution lifecycle | NOT_STARTED | NOT_STARTED | NOT_STARTED | NOT_STARTED | |
 | G15 Full parity certification | NOT_STARTED | NOT_STARTED | NOT_STARTED | NOT_STARTED | |

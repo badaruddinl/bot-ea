@@ -1,6 +1,6 @@
 # G12 Revised MQL5 Parity
 
-Status: **IN_PROGRESS**
+Status: **PASS**
 
 Completed sub-batch:
 
@@ -47,17 +47,17 @@ Completed sub-batch:
   result 1, and unchanged 100.00 USD tester balance;
 - GOLD.i raw final evidence is stored externally under
   `E:\luthfi\project\bot-ea-evidence\BOT-EA-LIVE-ENGINE-MQL5-DUAL-PROFILE-E2E\b042d51cfc3b2ea1f9aa048054af03d79d79726e\G12-revised-parity\final`;
+- expanded native GOLDm PASS on `GOLDm#`, `XMGlobal-MT5 14`, tester-only
+  against the production REAL symbol contract: all ten decision/setup/restart
+  assertions true, one tick, one bar, OnTester result 1, and unchanged 100.00
+  USD tester balance;
+- final dual-profile verifier PASS, SHA-256
+  `96bb599489580c723372d87322112485df654adf47f33dddaaa9a753921b7c52`;
 - 663 fast tests passed with 77 subtests;
 - 154 slow tests passed with 64 subtests;
 - G11 runtime invariants remain intact;
 - 34 focused MQL5/restart/compile-evidence tests passed.
 
-Remaining before PASS:
-
-- rerun the expanded native harness on GOLDm and capture the full state/restart
-  marker;
-- run and capture the expanded native harness on GOLDm after the user-owned
-  REAL account login dialog is completed (tester-only; no order authority);
-- finalize per-profile event/state/reason/timestamp and geometry reports.
+No remaining G12 acceptance work.
 
 REAL orders: **DISABLED**
