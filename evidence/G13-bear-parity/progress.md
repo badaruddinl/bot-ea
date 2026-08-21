@@ -36,6 +36,11 @@ Current sub-batch:
 - native harness now asserts exact Python happy-path sequence numbers 53/64/66,
   event reasons/timestamps/setup ID, final sequence 68, and terminal IDLE;
 - focused corpus/contract suite: 7 passed.
+- semantic profile bug fixed in the Python reference adapter: the Bear M15
+  setup scanner is now explicitly constructed with the worker profile symbol
+  instead of silently defaulting to `GOLD.i#`; GOLDI/GOLDM regression proves
+  exact `GOLD.i#`/`GOLDm#` binding without changing strategy parameters;
+- focused profile-binding/reference regression: 48 passed.
 
 Remaining before PASS:
 

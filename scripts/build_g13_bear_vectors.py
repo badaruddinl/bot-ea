@@ -116,7 +116,8 @@ def machine(profile_id: str) -> BearIncrementalMachine:
     profile = ProfileConfig.from_manifest(manifest, tick_size=Decimal("0.01"))
     spread = 0.20 if profile_id == "GOLDI" else 0.24
     replay = BearMultiTimeframeReplay(
-        BearV4Config(price_tick=0.01, spread_floor=spread, fixed_target_r=2.0)
+        BearV4Config(price_tick=0.01, spread_floor=spread, fixed_target_r=2.0),
+        symbol=profile.symbol,
     )
     replay.setup_engine = FixtureSetupEngine(setup_decision(profile.symbol))
     return BearIncrementalMachine(profile, replay)

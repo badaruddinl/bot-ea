@@ -107,9 +107,14 @@ class BearV4Report:
 class BearMultiTimeframeReplay:
     """H1 context, M15 setup, M5 validation, and M1 SELL timing."""
 
-    def __init__(self, config: BearV4Config | None = None) -> None:
+    def __init__(
+        self,
+        config: BearV4Config | None = None,
+        *,
+        symbol: str = "GOLD.i#",
+    ) -> None:
         self.config = config or BearV4Config()
-        self.setup_engine = BearEngine(confluence_v1_config())
+        self.setup_engine = BearEngine(confluence_v1_config(symbol=symbol))
 
     def run(
         self,
