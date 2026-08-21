@@ -72,6 +72,19 @@ def capture_native_contract(text: str, mode: str) -> tuple[str, dict[str, Any]]:
                 "OnTester result 1",
             ),
         ),
+        "ownership": (
+            "GoldEngineOwnershipFailureHarness",
+            "G18_OWNERSHIP_FAILURE passed=true",
+            (
+                "owned=true",
+                "other_symbol=true",
+                "foreign_magic=true",
+                "magic_collision=true",
+                "cross_profile_management=false",
+                "final balance 100.00 USD",
+                "OnTester result 1",
+            ),
+        ),
     }
     expert, marker, required = specifications[mode]
     block = tester_block(text, expert, marker)
@@ -198,14 +211,15 @@ def write_evidence(block: str, metadata: dict[str, Any], output: Path) -> dict[s
 def main() -> int:
     parser = argparse.ArgumentParser(description="Capture G18 failure/restart evidence")
     parser.add_argument(
-        "mode", choices=("instance", "broker", "market-closed", "algo-off", "restart")
+        "mode",
+        choices=("instance", "broker", "ownership", "market-closed", "algo-off", "restart"),
     )
     parser.add_argument("--tester-log", type=Path)
     parser.add_argument("--mql-log", type=Path)
     parser.add_argument("--terminal-log", type=Path)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
-    if args.mode in {"instance", "broker"}:
+    if args.mode in {"instance", "broker", "ownership"}:
         block, metadata = capture_native_contract(decode(args.tester_log), args.mode)
     elif args.mode == "market-closed":
         block, metadata = capture_market_closed(decode(args.tester_log))

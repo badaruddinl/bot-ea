@@ -38,6 +38,29 @@ enum PositionActionState
    POSITION_ACTION_FAILED=4
   };
 
+enum PositionOwnershipClass
+  {
+   POSITION_IDENTITY_OTHER_SYMBOL=0,
+   POSITION_IDENTITY_FOREIGN_MAGIC=1,
+   POSITION_IDENTITY_MANUAL_COMMENT=2,
+   POSITION_IDENTITY_OWNED=3
+  };
+
+PositionOwnershipClass ClassifyPositionIdentity(const ProfileConfig &profile,
+                                                const string symbol,
+                                                const long magic,
+                                                const string comment)
+  {
+   if(symbol!=profile.symbol)
+      return POSITION_IDENTITY_OTHER_SYMBOL;
+   if(magic!=profile.magic)
+      return POSITION_IDENTITY_FOREIGN_MAGIC;
+   const string prefix="GE|"+profile.profile_id+"|";
+   if(StringFind(comment,prefix)!=0)
+      return POSITION_IDENTITY_MANUAL_COMMENT;
+   return POSITION_IDENTITY_OWNED;
+  }
+
 struct PositionActionReceipt
   {
    PositionActionState state;
@@ -296,7 +319,6 @@ public:
          reason="EXECUTION_BROKER_NOT_INITIALIZED";
          return false;
         }
-      const string prefix="GE|"+m_profile.profile_id+"|";
       const int total=PositionsTotal();
       if(total<0)
         {
@@ -311,9 +333,12 @@ public:
             reason="POSITION_DISCOVERY_FAILED";
             return false;
            }
-         if(PositionGetString(POSITION_SYMBOL)!=m_profile.symbol)
+         const PositionOwnershipClass identity=ClassifyPositionIdentity(
+            m_profile,PositionGetString(POSITION_SYMBOL),
+            PositionGetInteger(POSITION_MAGIC),PositionGetString(POSITION_COMMENT));
+         if(identity==POSITION_IDENTITY_OTHER_SYMBOL)
             continue;
-         if(PositionGetInteger(POSITION_MAGIC)!=m_profile.magic)
+         if(identity==POSITION_IDENTITY_FOREIGN_MAGIC)
            {
             foreign_symbol_position=true;
             continue;
@@ -331,7 +356,7 @@ public:
          positions[count].stop_loss=PositionGetDouble(POSITION_SL);
          positions[count].take_profit=PositionGetDouble(POSITION_TP);
          positions[count].comment=PositionGetString(POSITION_COMMENT);
-         positions[count].owned=StringFind(positions[count].comment,prefix)==0;
+         positions[count].owned=identity==POSITION_IDENTITY_OWNED;
          if(!positions[count].owned)
             manual_intervention=true;
         }
