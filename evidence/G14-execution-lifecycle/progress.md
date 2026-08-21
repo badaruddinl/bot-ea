@@ -37,10 +37,23 @@ Current sub-batch:
   GOLDM `31dd9d5a35dd11965f88f196f2617a7d2ad610b1dca80ee6c48a5b1fbca6594d`,
   guard harness
   `1199ce84a7ab7ca6cc94f0ad8afbb427b6909e897a7d34773a28ebb50d7cf82c`.
+- read-only broker collector now obtains account/server/mode/free margin, symbol
+  tick/point/volume/stops/freeze/order capabilities, profile-owned exposure,
+  duplicate comment identity, calculated margin, deterministic filling mode,
+  immutable `MqlTradeRequest`, and `OrderCheck` result;
+- actual GOLD.i Strategy Tester broker preflight PASS: collected/validated/
+  order-check true, retcode `0`, `ORDER_FILLING_IOC`, margin 8.75 USD, zero
+  owned positions, unchanged structural SL/TP, `OnTester result 1`, and no
+  mutation authority;
+- broker preflight log SHA-256:
+  `78bec146371ba61d334bda424b022653cbd99cb87ca75e04f29865f0c5a35a57`;
+- broker harness binary SHA-256:
+  `ae224c04b743cc22a1748b01e4d1601467331a51cdcc735d4b601455cfe5c7a2`;
+- focused broker/guard/capture regression: 11 passed; broker harness compile
+  0 errors and 0 warnings.
 
 Next sub-batch:
 
-- broker context collector and preflight `OrderCheck`;
 - `CTrade` request/retcode/filling execution behind disabled-by-default
   authority;
 - owned-position discovery, modify/close, manual intervention, and restart

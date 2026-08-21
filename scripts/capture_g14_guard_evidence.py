@@ -11,6 +11,27 @@ class EvidenceError(RuntimeError):
     """Raised when a tester log cannot prove the native G14 guard matrix."""
 
 
+PROOFS = {
+    "guard": {
+        "expert": "GoldEngineExecutionGuardHarness.ex5",
+        "stem": "goldi-execution-guard-tester",
+        "required": (
+            "G14_EXECUTION_GUARD passed=true goldi=true goldm=true ",
+            "structural_geometry=true reasons=18 order_authority=DISABLED",
+        ),
+    },
+    "broker": {
+        "expert": "GoldEngineBrokerContextHarness.ex5",
+        "stem": "goldi-broker-context-tester",
+        "required": (
+            "G14_BROKER_CONTEXT passed=true collected=true validated=true ",
+            "order_check=true",
+            "order_authority=DISABLED reason=OK",
+        ),
+    },
+}
+
+
 def _decode(path: Path) -> str:
     raw = path.read_bytes()
     if raw.startswith((b"\xff\xfe", b"\xfe\xff")):
@@ -27,8 +48,14 @@ def _sha256(raw: bytes) -> str:
     return hashlib.sha256(raw).hexdigest()
 
 
-def capture_block(text: str, *, symbol: str, timeframe: str, server: str) -> str:
-    expert = "Experts\\bot-ea\\GoldEngineExecutionGuardHarness.ex5"
+def capture_block(
+    text: str, *, symbol: str, timeframe: str, server: str, proof: str = "guard"
+) -> str:
+    try:
+        specification = PROOFS[proof]
+    except KeyError as exc:
+        raise EvidenceError(f"unsupported G14 proof: {proof}") from exc
+    expert = f"Experts\\bot-ea\\{specification['expert']}"
     core_marker = f"{symbol},{timeframe}: testing of {expert}"
     server_marker = f"{symbol},{timeframe} ({server}):"
     lines = text.splitlines()
@@ -52,11 +79,16 @@ def capture_block(text: str, *, symbol: str, timeframe: str, server: str) -> str
     return "\n".join(lines[server_starts[-1] : end + 1]) + "\n"
 
 
-def validate_block(block: str, *, symbol: str, timeframe: str, server: str) -> None:
+def validate_block(
+    block: str, *, symbol: str, timeframe: str, server: str, proof: str = "guard"
+) -> None:
+    try:
+        specification = PROOFS[proof]
+    except KeyError as exc:
+        raise EvidenceError(f"unsupported G14 proof: {proof}") from exc
     required = (
         f"{symbol},{timeframe} ({server}):",
-        "G14_EXECUTION_GUARD passed=true goldi=true goldm=true ",
-        "structural_geometry=true reasons=18 order_authority=DISABLED",
+        *specification["required"],
         "final balance 100.00 USD",
         "OnTester result 1",
     )
@@ -78,13 +110,25 @@ def validate_block(block: str, *, symbol: str, timeframe: str, server: str) -> N
 
 
 def write_evidence(
-    *, source: Path, output_directory: Path, symbol: str, timeframe: str, server: str
+    *,
+    source: Path,
+    output_directory: Path,
+    symbol: str,
+    timeframe: str,
+    server: str,
+    proof: str = "guard",
 ) -> dict[str, object]:
+    try:
+        specification = PROOFS[proof]
+    except KeyError as exc:
+        raise EvidenceError(f"unsupported G14 proof: {proof}") from exc
     source_raw = source.read_bytes()
-    block = capture_block(_decode(source), symbol=symbol, timeframe=timeframe, server=server)
-    validate_block(block, symbol=symbol, timeframe=timeframe, server=server)
+    block = capture_block(
+        _decode(source), symbol=symbol, timeframe=timeframe, server=server, proof=proof
+    )
+    validate_block(block, symbol=symbol, timeframe=timeframe, server=server, proof=proof)
     output_directory.mkdir(parents=True, exist_ok=True)
-    log_path = output_directory / "goldi-execution-guard-tester.log"
+    log_path = output_directory / f"{specification['stem']}.log"
     log_raw = block.encode("utf-8")
     log_path.write_bytes(log_raw)
     digest = _sha256(log_raw)
@@ -95,13 +139,14 @@ def write_evidence(
         "captured_log_sha256": digest,
         "order_authority": "DISABLED",
         "profile_matrix": ["GOLDI", "GOLDM"],
+        "proof": proof,
         "server": server,
         "source_log": str(source.resolve()),
         "source_log_sha256": _sha256(source_raw),
         "symbol": symbol,
         "timeframe": timeframe,
     }
-    (output_directory / "goldi-execution-guard-tester.json").write_text(
+    (output_directory / f"{specification['stem']}.json").write_text(
         json.dumps(metadata, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
     return metadata
@@ -114,6 +159,7 @@ def main() -> int:
     parser.add_argument("--symbol", default="GOLD.i#")
     parser.add_argument("--timeframe", default="M15")
     parser.add_argument("--server", default="XMGlobal-MT5 5")
+    parser.add_argument("--proof", choices=tuple(PROOFS), default="guard")
     args = parser.parse_args()
     metadata = write_evidence(
         source=args.source,
@@ -121,6 +167,7 @@ def main() -> int:
         symbol=args.symbol,
         timeframe=args.timeframe,
         server=args.server,
+        proof=args.proof,
     )
     print(json.dumps(metadata, separators=(",", ":"), sort_keys=True))
     return 0

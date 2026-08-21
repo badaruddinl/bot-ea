@@ -1,0 +1,16 @@
+{
+  "captured_at_utc": "2026-08-21T04:16:20.157275+00:00",
+  "captured_log": "goldi-broker-context-tester.log",
+  "captured_log_sha256": "78bec146371ba61d334bda424b022653cbd99cb87ca75e04f29865f0c5a35a57",
+  "order_authority": "DISABLED",
+  "profile_matrix": [
+    "GOLDI",
+    "GOLDM"
+  ],
+  "proof": "broker",
+  "server": "XMGlobal-MT5 5",
+  "source_log": "C:\\Users\\badaruddinl\\AppData\\Roaming\\MetaQuotes\\Terminal\\D0E8209F77C8CF37AD8BF550E51FF075\\Tester\\logs\\20260821.log",
+  "source_log_sha256": "84264a395633f0472a2cea0ad5a4b4f90962262a29e61b6489d40c2acb1da14f",
+  "symbol": "GOLD.i#",
+  "timeframe": "M15"
+}
