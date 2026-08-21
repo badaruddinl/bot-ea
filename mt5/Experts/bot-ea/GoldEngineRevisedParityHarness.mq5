@@ -230,6 +230,213 @@ bool EvaluateMomentumCase(CRevisedEngine &engine)
           CloseEnough(decision.first_obstacle_r,1.5,1.0e-9);
   }
 
+void BuildInitialSetupBars(EngineBar &bars[])
+  {
+   const datetime base=D'2026.08.18 08:00:00';
+   ArrayResize(bars,18);
+   for(int index=0;index<16;index++)
+      SetHarnessBar(
+         bars[index],PERIOD_M5,base+index*300,
+         99.0,100.0,98.0,99.2,index);
+   SetHarnessBar(
+      bars[16],PERIOD_M5,base+16*300,
+      100.0,100.5,98.5,99.0,16);
+   SetHarnessBar(
+      bars[17],PERIOD_M5,base+17*300,
+      98.8,102.0,98.4,101.6,17);
+  }
+
+void BuildReinforcedSetupBars(EngineBar &bars[])
+  {
+   BuildInitialSetupBars(bars);
+   ArrayResize(bars,19);
+   SetHarnessBar(
+      bars[18],PERIOD_M5,D'2026.08.18 09:30:00',
+      101.0,103.5,100.8,103.2,18);
+  }
+
+void BuildReversalSetupBars(EngineBar &bars[])
+  {
+   BuildInitialSetupBars(bars);
+   ArrayResize(bars,19);
+   SetHarnessBar(
+      bars[18],PERIOD_M5,D'2026.08.18 09:30:00',
+      102.0,102.2,96.0,96.5,18);
+  }
+
+bool SetupMatches(const RevisedM5Setup &setup,
+                  const EngineSide side,
+                  const datetime trigger_time,
+                  const string pattern,
+                  const int votes,
+                  const double confidence,
+                  const double level,
+                  const double invalidation)
+  {
+   return setup.side==side &&
+          setup.trigger_time==trigger_time &&
+          setup.pattern==pattern &&
+          setup.votes==votes &&
+          CloseEnough(setup.confidence,confidence,1.0e-9) &&
+          CloseEnough(setup.level,level,1.0e-9) &&
+          CloseEnough(setup.invalidation,invalidation,1.0e-9);
+  }
+
+bool SetupMatchesAcceptedBuy(const RevisedM5Setup &setup)
+  {
+   return SetupMatches(
+      setup,ENGINE_SIDE_BUY,D'2026.08.18 09:30:00',
+      "BULL_ENGULFING",3,90.0,100.5,98.5);
+  }
+
+bool EvaluateSetupAcceptanceCase(void)
+  {
+   CRevisedSetupDetector detector;
+   detector.SetMaximumAgeBars(12);
+   EngineBar bars[];
+   BuildInitialSetupBars(bars);
+   RevisedM5Setup setup;
+   const bool active=detector.Update(
+      bars,D'2026.08.18 09:31:00',ENGINE_SIDE_BUY,setup);
+   const RevisedDetectorState state=detector.Snapshot();
+   return active &&
+          SetupMatchesAcceptedBuy(setup) &&
+          state.maximum_m1_bars==12 &&
+          state.buy_active &&
+          !state.sell_active &&
+          !state.buy_terminated &&
+          !state.sell_terminated &&
+          state.last_classified_m5==D'2026.08.18 09:25:00';
+  }
+
+bool EvaluateReinforcementRestartCase(void)
+  {
+   CRevisedSetupDetector detector;
+   detector.SetMaximumAgeBars(12);
+   EngineBar initial[];
+   BuildInitialSetupBars(initial);
+   RevisedM5Setup first;
+   if(!detector.Update(
+         initial,D'2026.08.18 09:31:00',ENGINE_SIDE_BUY,first))
+      return false;
+   EngineBar reinforced_bars[];
+   BuildReinforcedSetupBars(reinforced_bars);
+   RevisedM5Setup reinforced;
+   if(!detector.Update(
+         reinforced_bars,D'2026.08.18 09:36:00',
+         ENGINE_SIDE_BUY,reinforced))
+      return false;
+   const RevisedDetectorState persisted=detector.Snapshot();
+   CRevisedSetupDetector restored;
+   restored.Restore(persisted);
+   RevisedM5Setup after_restart;
+   const bool active=restored.Update(
+      reinforced_bars,D'2026.08.18 09:37:00',
+      ENGINE_SIDE_BUY,after_restart);
+   const RevisedDetectorState restored_state=restored.Snapshot();
+   return active &&
+          SetupMatchesAcceptedBuy(first) &&
+          SetupMatchesAcceptedBuy(reinforced) &&
+          SetupMatchesAcceptedBuy(after_restart) &&
+          persisted.maximum_m1_bars==12 &&
+          restored_state.maximum_m1_bars==12 &&
+          persisted.last_classified_m5==D'2026.08.18 09:30:00' &&
+          restored_state.last_classified_m5==persisted.last_classified_m5;
+  }
+
+bool EvaluateConsumeRestartCase(void)
+  {
+   CRevisedSetupDetector detector;
+   detector.SetMaximumAgeBars(12);
+   EngineBar bars[];
+   BuildInitialSetupBars(bars);
+   RevisedM5Setup setup;
+   if(!detector.Update(
+         bars,D'2026.08.18 09:31:00',ENGINE_SIDE_BUY,setup))
+      return false;
+   detector.Consume(ENGINE_SIDE_BUY,setup.trigger_time);
+   const RevisedDetectorState persisted=detector.Snapshot();
+   CRevisedSetupDetector restored;
+   restored.Restore(persisted);
+   RevisedM5Setup resurrected;
+   const bool active=restored.Update(
+      bars,D'2026.08.18 09:32:00',ENGINE_SIDE_BUY,resurrected);
+   const RevisedDetectorState state=restored.Snapshot();
+   return !active &&
+          !state.buy_active &&
+          state.buy_consumed_at==D'2026.08.18 09:30:00' &&
+          state.maximum_m1_bars==12;
+  }
+
+bool EvaluateExpiryRestartCase(void)
+  {
+   CRevisedSetupDetector detector;
+   detector.SetMaximumAgeBars(2);
+   EngineBar bars[];
+   BuildInitialSetupBars(bars);
+   RevisedM5Setup setup;
+   if(!detector.Update(
+         bars,D'2026.08.18 09:31:00',ENGINE_SIDE_BUY,setup))
+      return false;
+   RevisedM5Setup expired;
+   if(detector.Update(
+         bars,D'2026.08.18 09:33:00',ENGINE_SIDE_BUY,expired))
+      return false;
+   const RevisedDetectorState persisted=detector.Snapshot();
+   CRevisedSetupDetector restored;
+   restored.Restore(persisted);
+   string reason="";
+   const bool popped=restored.PopTermination(
+      ENGINE_SIDE_BUY,expired,reason);
+   string duplicate_reason="";
+   RevisedM5Setup duplicate;
+   const bool popped_twice=restored.PopTermination(
+      ENGINE_SIDE_BUY,duplicate,duplicate_reason);
+   return popped &&
+          !popped_twice &&
+          reason=="WATCH_WINDOW_EXPIRED" &&
+          SetupMatchesAcceptedBuy(expired) &&
+          persisted.maximum_m1_bars==2 &&
+          !persisted.buy_active &&
+          persisted.buy_terminated;
+  }
+
+bool EvaluateOppositeRestartCase(void)
+  {
+   CRevisedSetupDetector detector;
+   detector.SetMaximumAgeBars(12);
+   EngineBar initial[];
+   BuildInitialSetupBars(initial);
+   RevisedM5Setup buy;
+   if(!detector.Update(
+         initial,D'2026.08.18 09:31:00',ENGINE_SIDE_BUY,buy))
+      return false;
+   EngineBar reversal[];
+   BuildReversalSetupBars(reversal);
+   RevisedM5Setup sell;
+   if(!detector.Update(
+         reversal,D'2026.08.18 09:36:00',ENGINE_SIDE_SELL,sell))
+      return false;
+   const RevisedDetectorState persisted=detector.Snapshot();
+   CRevisedSetupDetector restored;
+   restored.Restore(persisted);
+   RevisedM5Setup terminated;
+   string reason="";
+   const bool popped=restored.PopTermination(
+      ENGINE_SIDE_BUY,terminated,reason);
+   return popped &&
+          reason=="OPPOSITE_M5_SETUP_ACCEPTED" &&
+          SetupMatchesAcceptedBuy(buy) &&
+          SetupMatchesAcceptedBuy(terminated) &&
+          SetupMatches(
+             sell,ENGINE_SIDE_SELL,D'2026.08.18 09:35:00',
+             "BEAR_ENGULFING",3,90.0,98.4,102.0) &&
+          !persisted.buy_active &&
+          persisted.sell_active &&
+          persisted.buy_terminated &&
+          persisted.last_classified_m5==D'2026.08.18 09:30:00';
+  }
+
 int OnInit(void)
   {
    CRevisedEngine engine;
@@ -239,18 +446,34 @@ int OnInit(void)
    const bool no_setup_passed=EvaluateNoSetupCase(engine);
    const bool obstacle_passed=EvaluateObstacleCase(engine);
    const bool momentum_passed=EvaluateMomentumCase(engine);
+   const bool setup_passed=EvaluateSetupAcceptanceCase();
+   const bool reinforcement_restart_passed=EvaluateReinforcementRestartCase();
+   const bool consume_restart_passed=EvaluateConsumeRestartCase();
+   const bool expiry_restart_passed=EvaluateExpiryRestartCase();
+   const bool opposite_restart_passed=EvaluateOppositeRestartCase();
    HarnessPassed=range_passed &&
                  sell_range_passed &&
                  no_setup_passed &&
                  obstacle_passed &&
-                 momentum_passed;
+                 momentum_passed &&
+                 setup_passed &&
+                 reinforcement_restart_passed &&
+                 consume_restart_passed &&
+                 expiry_restart_passed &&
+                 opposite_restart_passed;
    Print("G12_REVISED_PARITY profile=",_Symbol,
          " passed=",(HarnessPassed ? "true" : "false"),
          " range=",(range_passed ? "true" : "false"),
          " sell_range=",(sell_range_passed ? "true" : "false"),
          " no_setup=",(no_setup_passed ? "true" : "false"),
          " obstacle=",(obstacle_passed ? "true" : "false"),
-         " momentum=",(momentum_passed ? "true" : "false"));
+         " momentum=",(momentum_passed ? "true" : "false"),
+         " setup=",(setup_passed ? "true" : "false"),
+         " reinforcement_restart=",
+         (reinforcement_restart_passed ? "true" : "false"),
+         " consume_restart=",(consume_restart_passed ? "true" : "false"),
+         " expiry_restart=",(expiry_restart_passed ? "true" : "false"),
+         " opposite_restart=",(opposite_restart_passed ? "true" : "false"));
    return HarnessPassed ? INIT_SUCCEEDED : INIT_FAILED;
   }
 

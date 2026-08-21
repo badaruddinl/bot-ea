@@ -229,11 +229,12 @@ public:
    CRevisedSetupDetector(void)
      {
       Reset();
-      m_maximum_age_seconds=60*60;
      }
 
    void Reset(void)
      {
+      m_state.maximum_m1_bars=60;
+      m_maximum_age_seconds=60*60;
       m_state.buy_active=false;
       m_state.sell_active=false;
       m_state.buy_terminated=false;
@@ -247,7 +248,8 @@ public:
 
    void SetMaximumAgeBars(const int maximum_m1_bars)
      {
-      m_maximum_age_seconds=MathMax(1,maximum_m1_bars)*60;
+      m_state.maximum_m1_bars=MathMax(1,maximum_m1_bars);
+      m_maximum_age_seconds=m_state.maximum_m1_bars*60;
      }
 
    void SeedWarmup(const datetime latest_closed_m5)
@@ -264,6 +266,7 @@ public:
    void Restore(const RevisedDetectorState &state)
      {
       m_state=state;
+      SetMaximumAgeBars(state.maximum_m1_bars);
      }
 
    bool Update(const EngineBar &m5_bars[],

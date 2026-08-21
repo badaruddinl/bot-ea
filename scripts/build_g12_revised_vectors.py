@@ -14,14 +14,21 @@ sys.path.insert(0, str(REPOSITORY_ROOT / "src"))
 from gold_engine_core import load_named_profile  # noqa: E402
 from gold_engine_core.rules.revised import (  # noqa: E402
     RevisedBar,
+    RevisedDecision,
     RevisedEngine,
     RevisedEngineConfig,
     RevisedSide,
     RevisedSnapshot,
 )
+from gold_engine_core.rules.revised_setup import (  # noqa: E402
+    RevisedDetectorState,
+    RevisedM5Setup,
+    RevisedSetupDetector,
+)
 
 TZ = timezone(timedelta(hours=3))
 BASE = datetime(2026, 8, 18, 12, 0, tzinfo=TZ)
+SETUP_BASE = datetime(2026, 8, 18, 8, 0, tzinfo=TZ)
 
 
 def bar(
@@ -126,6 +133,37 @@ def base_snapshot(symbol: str) -> RevisedSnapshot:
     )
 
 
+def setup_bar(index: int, open_: float, high: float, low: float, close: float) -> RevisedBar:
+    return RevisedBar(
+        time=SETUP_BASE + timedelta(minutes=5 * index),
+        open=open_,
+        high=max(high, open_, close),
+        low=min(low, open_, close),
+        close=close,
+        volume=100 + index,
+        spread=0.20,
+    )
+
+
+def initial_setup_bars() -> tuple[RevisedBar, ...]:
+    bars = [setup_bar(index, 99.0, 100.0, 98.0, 99.2) for index in range(16)]
+    bars.extend(
+        (
+            setup_bar(16, 100.0, 100.5, 98.5, 99.0),
+            setup_bar(17, 98.8, 102.0, 98.4, 101.6),
+        )
+    )
+    return tuple(bars)
+
+
+def reinforced_setup_bars() -> tuple[RevisedBar, ...]:
+    return (*initial_setup_bars(), setup_bar(18, 101.0, 103.5, 100.8, 103.2))
+
+
+def reversal_setup_bars() -> tuple[RevisedBar, ...]:
+    return (*initial_setup_bars(), setup_bar(18, 102.0, 102.2, 96.0, 96.5))
+
+
 def serialize_bar(value: RevisedBar) -> dict[str, object]:
     return {
         "close": value.close,
@@ -157,7 +195,7 @@ def serialize_snapshot(value: RevisedSnapshot) -> dict[str, object]:
     }
 
 
-def serialize_decision(value) -> dict[str, object]:
+def serialize_decision(value: RevisedDecision) -> dict[str, object]:
     return {
         "action": value.action.value,
         "confidence": value.confidence,
@@ -176,6 +214,25 @@ def serialize_decision(value) -> dict[str, object]:
         "target": value.target,
         "touch_count": value.touch_count,
     }
+
+
+def serialize_setup(value: RevisedM5Setup | None) -> dict[str, object] | None:
+    if value is None:
+        return None
+    return {
+        "confidence": value.confidence,
+        "invalidation": value.invalidation,
+        "level": value.level,
+        "pattern": value.pattern,
+        "side": value.side.value,
+        "trigger_time": value.trigger_time.isoformat(),
+        "votes": value.votes,
+    }
+
+
+def roundtrip_detector(detector: RevisedSetupDetector) -> RevisedSetupDetector:
+    payload = json.loads(json.dumps(detector.snapshot().to_payload()))
+    return RevisedSetupDetector.from_state(RevisedDetectorState.from_payload(payload))
 
 
 def build_vectors() -> list[dict[str, object]]:
@@ -224,17 +281,137 @@ def build_vectors() -> list[dict[str, object]]:
     return result
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--output",
-        type=Path,
-        default=REPOSITORY_ROOT / "corpus" / "revised_parity" / "vectors.json",
-    )
-    args = parser.parse_args()
+def build_setup_vectors() -> list[dict[str, object]]:
+    result: list[dict[str, object]] = []
+    initial = initial_setup_bars()
+    reinforced_bars = reinforced_setup_bars()
+    reversal_bars = reversal_setup_bars()
+    for profile_id, symbol in (("GOLDI", "GOLD.i#"), ("GOLDM", "GOLDm#")):
+        fingerprint = load_named_profile(REPOSITORY_ROOT, profile_id).fingerprint
+
+        detector = RevisedSetupDetector(maximum_m1_bars=12)
+        accepted = detector.update(
+            initial,
+            current_m1_time=initial[-1].time + timedelta(minutes=6),
+            side=RevisedSide.BUY,
+        )
+        assert accepted is not None
+        accepted_state = detector.snapshot().to_payload()
+
+        reinforced = detector.update(
+            reinforced_bars,
+            current_m1_time=accepted.trigger_time + timedelta(minutes=6),
+            side=RevisedSide.BUY,
+        )
+        assert reinforced is not None
+        reinforced_state = detector.snapshot().to_payload()
+
+        restored = roundtrip_detector(detector)
+        after_restart = restored.update(
+            reinforced_bars,
+            current_m1_time=accepted.trigger_time + timedelta(minutes=7),
+            side=RevisedSide.BUY,
+        )
+        assert after_restart == reinforced
+
+        consumed = roundtrip_detector(detector)
+        consumed.consume(RevisedSide.BUY, accepted.trigger_time)
+        consumed = roundtrip_detector(consumed)
+        after_consume = consumed.update(
+            reinforced_bars,
+            current_m1_time=accepted.trigger_time + timedelta(minutes=7),
+            side=RevisedSide.BUY,
+        )
+        assert after_consume is None
+
+        expiring = RevisedSetupDetector(maximum_m1_bars=2)
+        expiring_setup = expiring.update(
+            initial,
+            current_m1_time=initial[-1].time + timedelta(minutes=6),
+            side=RevisedSide.BUY,
+        )
+        assert expiring_setup is not None
+        assert (
+            expiring.update(
+                initial,
+                current_m1_time=expiring_setup.trigger_time + timedelta(minutes=3),
+                side=RevisedSide.BUY,
+            )
+            is None
+        )
+        expiry_state = expiring.snapshot().to_payload()
+        expiry_restored = roundtrip_detector(expiring)
+        expiry_termination = expiry_restored.pop_termination(RevisedSide.BUY)
+        assert expiry_termination == (expiring_setup, "WATCH_WINDOW_EXPIRED")
+
+        opposite = RevisedSetupDetector(maximum_m1_bars=12)
+        opposite_buy = opposite.update(
+            initial,
+            current_m1_time=initial[-1].time + timedelta(minutes=6),
+            side=RevisedSide.BUY,
+        )
+        assert opposite_buy is not None
+        opposite_sell = opposite.update(
+            reversal_bars,
+            current_m1_time=reversal_bars[-1].time + timedelta(minutes=6),
+            side=RevisedSide.SELL,
+        )
+        assert opposite_sell is not None
+        opposite_state = opposite.snapshot().to_payload()
+        opposite_restored = roundtrip_detector(opposite)
+        opposite_termination = opposite_restored.pop_termination(RevisedSide.BUY)
+        assert opposite_termination == (opposite_buy, "OPPOSITE_M5_SETUP_ACCEPTED")
+
+        cases = (
+            ("setup_accept", serialize_setup(accepted), accepted_state),
+            ("reinforcement", serialize_setup(reinforced), reinforced_state),
+            (
+                "restart_restore",
+                serialize_setup(after_restart),
+                restored.snapshot().to_payload(),
+            ),
+            (
+                "consume_restart_no_resurrection",
+                serialize_setup(after_consume),
+                consumed.snapshot().to_payload(),
+            ),
+            (
+                "expiry_restart",
+                {
+                    "reason": expiry_termination[1],
+                    "setup": serialize_setup(expiry_termination[0]),
+                },
+                expiry_state,
+            ),
+            (
+                "opposite_cancel_restart",
+                {
+                    "reason": opposite_termination[1],
+                    "setup": serialize_setup(opposite_termination[0]),
+                    "sell_setup": serialize_setup(opposite_sell),
+                },
+                opposite_state,
+            ),
+        )
+        for case_id, expected, state in cases:
+            result.append(
+                {
+                    "case_id": case_id,
+                    "expected": expected,
+                    "profile_fingerprint": fingerprint,
+                    "profile_id": profile_id,
+                    "schema_version": 1,
+                    "state": state,
+                    "symbol": symbol,
+                }
+            )
+    return result
+
+
+def write_canonical(path: Path, payload: object) -> str:
     raw = (
         json.dumps(
-            build_vectors(),
+            payload,
             allow_nan=False,
             ensure_ascii=False,
             separators=(",", ":"),
@@ -242,14 +419,29 @@ def main() -> int:
         )
         + "\n"
     ).encode("utf-8")
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_bytes(raw)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(raw)
     digest = hashlib.sha256(raw).hexdigest()
-    args.output.with_suffix(".sha256").write_text(
-        f"{digest}  {args.output.name}\n",
+    path.with_suffix(".sha256").write_text(
+        f"{digest}  {path.name}\n",
         encoding="ascii",
     )
-    print(f"vectors=10 sha256={digest}")
+    return digest
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=REPOSITORY_ROOT / "corpus" / "revised_parity" / "vectors.json",
+    )
+    parser.add_argument("--setup-output", type=Path)
+    args = parser.parse_args()
+    setup_output = args.setup_output or args.output.with_name("setup_vectors.json")
+    digest = write_canonical(args.output, build_vectors())
+    setup_digest = write_canonical(setup_output, build_setup_vectors())
+    print(f"vectors=10 sha256={digest} setup_vectors=12 setup_sha256={setup_digest}")
     return 0
 
 

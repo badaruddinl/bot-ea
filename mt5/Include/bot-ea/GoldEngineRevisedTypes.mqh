@@ -208,6 +208,7 @@ struct RevisedM5Setup
 
 struct RevisedDetectorState
   {
+   int            maximum_m1_bars;
    bool           buy_active;
    RevisedM5Setup buy_setup;
    bool           sell_active;

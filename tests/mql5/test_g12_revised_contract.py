@@ -214,6 +214,15 @@ def test_native_parity_harness_locks_python_range_vector() -> None:
     assert "EvaluateMomentumCase" in value
     assert '"MOMENTUM_ENTRY"' in value
     assert "CloseEnough(decision.target,4399.64,0.01)" in value
+    assert "EvaluateSetupAcceptanceCase" in value
+    assert "EvaluateReinforcementRestartCase" in value
+    assert "EvaluateConsumeRestartCase" in value
+    assert "EvaluateExpiryRestartCase" in value
+    assert "EvaluateOppositeRestartCase" in value
+    assert 'reason=="WATCH_WINDOW_EXPIRED"' in value
+    assert 'reason=="OPPOSITE_M5_SETUP_ACCEPTED"' in value
+    assert "state.buy_consumed_at==D'2026.08.18 09:30:00'" in value
+    assert "persisted.maximum_m1_bars==2" in value
 
 
 def test_runtime_wires_bounded_revised_state_without_historical_promotion() -> None:
