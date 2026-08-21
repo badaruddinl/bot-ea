@@ -42,6 +42,11 @@ Completed sub-batch:
 - native GOLDm decision-only harness PASS was captured before the setup-state
   expansion; it is retained only as preliminary evidence and cannot satisfy
   final G12 acceptance;
+- expanded native GOLD.i PASS on `GOLD.i#`, `XMGlobal-MT5 5`, account DEMO:
+  all ten decision/setup/restart assertions true, one tick, one bar, OnTester
+  result 1, and unchanged 100.00 USD tester balance;
+- GOLD.i raw final evidence is stored externally under
+  `E:\luthfi\project\bot-ea-evidence\BOT-EA-LIVE-ENGINE-MQL5-DUAL-PROFILE-E2E\b042d51cfc3b2ea1f9aa048054af03d79d79726e\G12-revised-parity\final`;
 - 663 fast tests passed with 77 subtests;
 - 154 slow tests passed with 64 subtests;
 - G11 runtime invariants remain intact;
@@ -51,8 +56,8 @@ Remaining before PASS:
 
 - rerun the expanded native harness on GOLDm and capture the full state/restart
   marker;
-- run and capture the expanded native harness on GOLD.i after the user-owned
-  DEMO login dialog is completed;
+- run and capture the expanded native harness on GOLDm after the user-owned
+  REAL account login dialog is completed (tester-only; no order authority);
 - finalize per-profile event/state/reason/timestamp and geometry reports.
 
 REAL orders: **DISABLED**

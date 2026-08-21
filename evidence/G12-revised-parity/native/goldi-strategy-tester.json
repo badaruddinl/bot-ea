@@ -1,0 +1,12 @@
+{
+  "captured_at_utc": "2026-08-21T01:32:20.293582+00:00",
+  "captured_log": "goldi-strategy-tester.log",
+  "captured_log_sha256": "33667f5797811cde14be546a579bda7d316d4de37386db7efb68a3a7f86e6d8d",
+  "profile_id": "GOLDI",
+  "real_order_authority": "DISABLED",
+  "server": "XMGlobal-MT5 5",
+  "source_log": "C:\\Users\\badaruddinl\\AppData\\Roaming\\MetaQuotes\\Terminal\\D0E8209F77C8CF37AD8BF550E51FF075\\Tester\\logs\\20260821.log",
+  "source_log_sha256": "4493d74ee1c4e639e6dcfc8f046d3888e000d98a09302d75fef5429319982a0e",
+  "symbol": "GOLD.i#",
+  "timeframe": "M15"
+}
