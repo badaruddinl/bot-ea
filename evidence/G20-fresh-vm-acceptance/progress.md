@@ -99,7 +99,36 @@ The operator explicitly approved automatic console sign-in plus immediate
 workstation lock after reviewing the Session 0 failure and Microsoft LSA-secret
 warning. Interactive-token task tooling, Microsoft signature verification,
 plaintext-password rejection, prompt lock marker, and verifier mutation cases
-are implemented. G20 remains IN_PROGRESS until the revised design passes an
-actual cold boot.
+are implemented.
+
+The first automatic-sign-in cold boot proved that sign-in and immediate lock
+worked, but its strict verifier result was FAIL. A visible supervisor
+PowerShell window was accidentally closed during evidence collection, so the
+task was no longer running; Windows also restored previously open MT5 windows
+before the supervisor could launch the profile configs. GOLDI therefore had no
+new postboot startup/profile/heartbeat evidence. GOLDM correctly emitted
+`MANUAL_INTERVENTION_DETECTED` because the REAL account had a live position
+while its order authority remained disabled. The raw VM files are retained as
+`C:\bot-ea-g20\preboot-auto.json`, `postboot-auto.json`, and
+`verification-auto.json`; the diagnosis is recorded in
+`autologon-first-failure.md`.
+
+Corrections are now installed:
+
+- scheduled supervisor and immediate-lock PowerShell hosts use hidden windows;
+- Task Scheduler result evidence preserves the full unsigned 32-bit value;
+- legacy configs default to no allowed ENGINE_ERROR exceptions;
+- only GOLDM REAL with order authority disabled may explicitly allow
+  `MANUAL_INTERVENTION_DETECTED`; every other ENGINE_ERROR still fails;
+- both MT5 terminals were closed normally before the second cold boot so
+  Windows could not restore them outside the supervisor path.
+
+Post-correction regression: 823 fast tests plus 77 subtests PASS; 154 slow
+tests plus 64 subtests PASS. The incremental quality gate PASSes with core
+coverage 90.12% and strategy-rule coverage 82.66%.
+
+The second cold boot reached the workstation lock automatically and remained
+locked for more than two minutes while engines warmed up. G20 remains
+IN_PROGRESS pending authenticated postboot capture and strict verifier PASS.
 
 REAL orders: **DISABLED**
