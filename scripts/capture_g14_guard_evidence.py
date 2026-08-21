@@ -29,6 +29,15 @@ PROOFS = {
             "order_authority=DISABLED reason=OK",
         ),
     },
+    "disabled": {
+        "expert": "GoldEngineExecutionDisabledHarness.ex5",
+        "stem": "goldi-execution-disabled-tester",
+        "required": (
+            "G14_EXECUTION_DISABLED passed=true initialized=true submitted=false ",
+            "validation=true positions_before=0 positions_after=0",
+            "order_authority=DISABLED reason=ORDER_AUTHORITY_DISABLED",
+        ),
+    },
 }
 
 

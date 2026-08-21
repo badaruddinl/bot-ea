@@ -1,0 +1,16 @@
+{
+  "captured_at_utc": "2026-08-21T04:23:58.338517+00:00",
+  "captured_log": "goldi-execution-disabled-tester.log",
+  "captured_log_sha256": "7ecddc4667e08f589a073203a2480f85408cedab13a5d703566481813c5658a3",
+  "order_authority": "DISABLED",
+  "profile_matrix": [
+    "GOLDI",
+    "GOLDM"
+  ],
+  "proof": "disabled",
+  "server": "XMGlobal-MT5 5",
+  "source_log": "C:\\Users\\badaruddinl\\AppData\\Roaming\\MetaQuotes\\Terminal\\D0E8209F77C8CF37AD8BF550E51FF075\\Tester\\logs\\20260821.log",
+  "source_log_sha256": "0c69fad92e0a3db216a8d26f0d7934d2d2aef318821ba3a7ce849984d91b761d",
+  "symbol": "GOLD.i#",
+  "timeframe": "M15"
+}

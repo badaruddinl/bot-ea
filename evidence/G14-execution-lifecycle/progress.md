@@ -51,6 +51,21 @@ Current sub-batch:
   `ae224c04b743cc22a1748b01e4d1601467331a51cdcc735d4b601455cfe5c7a2`;
 - focused broker/guard/capture regression: 11 passed; broker harness compile
   0 errors and 0 warnings.
+- `CExecutionBroker` now configures synchronous `CTrade`, exact profile magic,
+  deviation, symbol filling, explicit success retcodes, full result receipt,
+  and routes every request through broker collection plus pure validation;
+- the mutation call is structurally below `m_authority_enabled`; unsafe profile
+  defaults fail initialization and authority remains false unless explicitly
+  requested;
+- native disabled-authority Strategy Tester PASS: initialized true,
+  validation true, submitted false, positions `0 -> 0`, receipt disabled,
+  `OnTester result 1`, final balance 100.00 USD;
+- disabled-authority log SHA-256:
+  `7ecddc4667e08f589a073203a2480f85408cedab13a5d703566481813c5658a3`;
+- disabled-authority harness binary SHA-256:
+  `635ab0672704beb9be754f8ae1b53201e424b4ebaeedfa827d9c3fda93245423`;
+- focused CTrade interlock/capture regression: 8 passed; harness compile 0
+  errors and 0 warnings.
 
 Next sub-batch:
 

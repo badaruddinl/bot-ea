@@ -17,7 +17,14 @@ SPEC.loader.exec_module(MODULE)
 
 def log(*, passed: bool = True, proof: str = "guard") -> str:
     status = "true" if passed else "false"
-    if proof == "broker":
+    if proof == "disabled":
+        expert = "GoldEngineExecutionDisabledHarness.ex5"
+        marker = (
+            f"G14_EXECUTION_DISABLED passed={status} initialized=true submitted=false "
+            "validation=true positions_before=0 positions_after=0 retcode=0 "
+            "order_authority=DISABLED reason=ORDER_AUTHORITY_DISABLED"
+        )
+    elif proof == "broker":
         expert = "GoldEngineBrokerContextHarness.ex5"
         marker = (
             f"G14_BROKER_CONTEXT passed={status} collected=true validated=true "
@@ -75,6 +82,22 @@ def test_capture_supports_actual_broker_context_proof(tmp_path: Path) -> None:
     )
     assert metadata["proof"] == "broker"
     assert (output / "goldi-broker-context-tester.log").is_file()
+
+
+def test_capture_supports_disabled_authority_proof(tmp_path: Path) -> None:
+    source = tmp_path / "tester.log"
+    source.write_text(log(proof="disabled"), encoding="utf-8")
+    output = tmp_path / "evidence"
+    metadata = MODULE.write_evidence(
+        source=source,
+        output_directory=output,
+        symbol="GOLD.i#",
+        timeframe="M15",
+        server="XMGlobal-MT5 5",
+        proof="disabled",
+    )
+    assert metadata["proof"] == "disabled"
+    assert (output / "goldi-execution-disabled-tester.log").is_file()
 
 
 @pytest.mark.parametrize("text", (log(passed=False), "unrelated\n"))
