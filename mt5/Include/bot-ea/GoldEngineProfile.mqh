@@ -98,6 +98,38 @@ double ResolveProfileLot(const ProfileConfig &config,const double balance)
    return selected;
   }
 
+bool ValidateObservedAccountBinding(const ProfileConfig &config,
+                                    const long expected_login,
+                                    const string expected_server,
+                                    const long observed_login,
+                                    const string observed_server,
+                                    const ENUM_ACCOUNT_TRADE_MODE observed_mode,
+                                    string &reason)
+  {
+   if(expected_login<=0 || StringLen(expected_server)==0)
+     {
+      reason="ACCOUNT_BINDING_REQUIRED";
+      return false;
+     }
+   if(observed_login!=expected_login)
+     {
+      reason="WRONG_ACCOUNT";
+      return false;
+     }
+   if(observed_server!=expected_server)
+     {
+      reason="WRONG_SERVER";
+      return false;
+     }
+   if(observed_mode!=config.expected_trade_mode)
+     {
+      reason="WRONG_TRADE_MODE";
+      return false;
+     }
+   reason="OK";
+   return true;
+  }
+
 bool ValidateBuildProfile(const ProfileConfig &config,
                           const long expected_login,
                           const string expected_server,
@@ -125,30 +157,10 @@ bool ValidateBuildProfile(const ProfileConfig &config,
       reason="OK_TESTER";
       return true;
      }
-   if(expected_login<=0 || StringLen(expected_server)==0)
-     {
-      reason="ACCOUNT_BINDING_REQUIRED";
-      return false;
-     }
-   if(AccountInfoInteger(ACCOUNT_LOGIN)!=expected_login)
-     {
-      reason="WRONG_ACCOUNT";
-      return false;
-     }
-   if(AccountInfoString(ACCOUNT_SERVER)!=expected_server)
-     {
-      reason="WRONG_SERVER";
-      return false;
-     }
-   if((ENUM_ACCOUNT_TRADE_MODE)AccountInfoInteger(ACCOUNT_TRADE_MODE)!=
-      config.expected_trade_mode)
-     {
-      reason="WRONG_TRADE_MODE";
-      return false;
-     }
-
-   reason="OK";
-   return true;
+   return ValidateObservedAccountBinding(
+      config,expected_login,expected_server,
+      AccountInfoInteger(ACCOUNT_LOGIN),AccountInfoString(ACCOUNT_SERVER),
+      (ENUM_ACCOUNT_TRADE_MODE)AccountInfoInteger(ACCOUNT_TRADE_MODE),reason);
   }
 
 #endif

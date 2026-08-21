@@ -138,6 +138,58 @@ def capture_tester_goldm(text: str) -> tuple[str, dict[str, object]]:
     }
 
 
+def capture_goldm_refusal(text: str) -> tuple[str, dict[str, object]]:
+    lines = text.splitlines()
+    marker_indexes = [
+        index for index, line in enumerate(lines) if "G17_GOLDM_REFUSAL passed=true" in line
+    ]
+    if not marker_indexes:
+        raise EvidenceError("GOLDM refusal marker missing")
+    marker_index = marker_indexes[-1]
+    start = next(
+        (
+            index
+            for index in range(marker_index, -1, -1)
+            if "testing of Experts\\bot-ea\\GoldEngineGoldmRefusalHarness.ex5" in lines[index]
+            and "started" in lines[index]
+        ),
+        None,
+    )
+    end = next(
+        (index for index in range(marker_index, len(lines)) if "connection closed" in lines[index]),
+        None,
+    )
+    if start is None or end is None:
+        raise EvidenceError("GOLDM refusal run boundary incomplete")
+    block = "\n".join(lines[start : end + 1]) + "\n"
+    required = (
+        "exact_profile=true",
+        "wrong_account=true",
+        "wrong_server=true",
+        "demo_refused=true",
+        "magic=26081912",
+        "order_authority=DISABLED",
+        "final balance 100.00 USD",
+        "OnTester result 1",
+    )
+    if missing := [token for token in required if token not in block]:
+        raise EvidenceError(f"GOLDM refusal proof incomplete: {missing}")
+    forbidden = ("market buy", "market sell", "deal performed", "order performed")
+    if present := [token for token in forbidden if token in block.casefold()]:
+        raise EvidenceError(f"GOLDM refusal proof contains mutation: {present}")
+    return block, {
+        "profile_id": "GOLDM_REFUSAL",
+        "account_mode": "STRATEGY_TESTER",
+        "server": "XMGlobal-MT5 14",
+        "symbol": "GOLDm#",
+        "wrong_account_refused": True,
+        "wrong_server_refused": True,
+        "demo_mode_refused": True,
+        "magic": 26081912,
+        "order_authority": "DISABLED",
+    }
+
+
 def write_evidence(block: str, metadata: dict[str, object], output: Path) -> dict[str, object]:
     output.mkdir(parents=True, exist_ok=True)
     stem = str(metadata["profile_id"]).lower() + "-e2e"
@@ -169,11 +221,16 @@ def main() -> int:
     tester = subparsers.add_parser("goldm-tester")
     tester.add_argument("--tester-log", type=Path, required=True)
     tester.add_argument("--output", type=Path, required=True)
+    refusal = subparsers.add_parser("goldm-refusal")
+    refusal.add_argument("--tester-log", type=Path, required=True)
+    refusal.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     if args.mode == "goldi-live":
         block, metadata = capture_live_goldi(decode(args.mql_log), decode(args.terminal_log))
-    else:
+    elif args.mode == "goldm-tester":
         block, metadata = capture_tester_goldm(decode(args.tester_log))
+    else:
+        block, metadata = capture_goldm_refusal(decode(args.tester_log))
     print(json.dumps(write_evidence(block, metadata, args.output), sort_keys=True))
     return 0
 

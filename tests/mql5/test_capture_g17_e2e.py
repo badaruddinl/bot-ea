@@ -56,3 +56,22 @@ def test_goldm_tester_capture_requires_complete_boundary() -> None:
     assert metadata["chain_id"] == "G17|GOLDM|100"
     assert metadata["order_authority"] == "TESTER_ONLY"
     assert "OnTester result 1" in block
+
+
+def test_goldm_refusal_capture_proves_no_mutation() -> None:
+    text = "\n".join(
+        (
+            "testing of Experts\\bot-ea\\GoldEngineGoldmRefusalHarness.ex5 from x started",
+            "G17_GOLDM_REFUSAL passed=true exact_profile=true wrong_account=true "
+            "wrong_server=true demo_refused=true magic=26081912 order_authority=DISABLED",
+            "final balance 100.00 USD",
+            "OnTester result 1",
+            "connection closed",
+        )
+    )
+
+    block, metadata = MODULE.capture_goldm_refusal(text)
+
+    assert metadata["demo_mode_refused"]
+    assert metadata["order_authority"] == "DISABLED"
+    assert "market buy" not in block
