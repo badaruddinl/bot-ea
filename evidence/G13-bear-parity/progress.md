@@ -57,10 +57,20 @@ Current sub-batch:
 - current harness binary SHA-256:
   `70b1c546c67091586849f3bfbf2227fdff72ca1c8c2ccdacd5084ab4076769b8`;
 - focused oracle/contract suite: 9 passed.
+- shared runtime now seeds bounded Bear history without promotion, evaluates
+  only the newest 50-bar M15 window, feeds each H1/M15/M5/M1 closed bar once,
+  exposes the last Bear signal/phase, and emits ENTRY_READY without order API;
+- D1 bars are explicitly excluded from the Bear machine and runtime stays
+  fail-closed on cursor/data errors;
+- dual-profile runtime compile: 0 errors, 0 warnings;
+- runtime binary SHA-256: GOLDI
+  `b98e8245835b98bbe31d7a42397dfeb6401da75f0cbd47fbb3ac642853651ee9`,
+  GOLDM
+  `fa6dd2422a8ee6b65335af6b2ed82a319d57aea8351ad4f5bbe9856f3dce4866`;
+- focused runtime/Revised/G11 regression: 26 passed.
 
 Remaining before PASS:
 
-- runtime integration and explicit proof that live code cannot full-replay;
 - all cancellation/restart vectors in the native harness;
 - dual-profile Strategy Tester, compile, regression, and final verifier.
 

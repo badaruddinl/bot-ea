@@ -4,6 +4,30 @@
 #include "GoldEngineBearValidation.mqh"
 #include "GoldEngineBearSetup.mqh"
 
+int BearBrokerUtcOffsetMinutes(const datetime server_time)
+  {
+   MqlDateTime parts;
+   TimeToStruct(server_time,parts);
+   if(parts.mon>3 && parts.mon<10)
+      return 180;
+   if(parts.mon<3 || parts.mon>10)
+      return 120;
+   MqlDateTime last_day=parts;
+   last_day.day=(parts.mon==3 ? 31 : 31);
+   last_day.hour=0;
+   last_day.min=0;
+   last_day.sec=0;
+   const datetime last_value=StructToTime(last_day);
+   MqlDateTime last_parts;
+   TimeToStruct(last_value,last_parts);
+   const int last_sunday=31-last_parts.day_of_week;
+   if(parts.mon==3)
+      return (parts.day>last_sunday ||
+              (parts.day==last_sunday && parts.hour>=3)) ? 180 : 120;
+   return (parts.day<last_sunday ||
+           (parts.day==last_sunday && parts.hour<3)) ? 180 : 120;
+  }
+
 class CBearIncrementalSnapshot
   {
 public:

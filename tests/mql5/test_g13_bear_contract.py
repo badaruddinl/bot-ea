@@ -7,6 +7,7 @@ VALIDATION = REPOSITORY_ROOT / "mt5" / "Include" / "bot-ea" / "GoldEngineBearVal
 HARNESS = REPOSITORY_ROOT / "mt5" / "Experts" / "bot-ea" / "GoldEngineBearParityHarness.mq5"
 INCREMENTAL = REPOSITORY_ROOT / "mt5" / "Include" / "bot-ea" / "GoldEngineBearIncremental.mqh"
 SETUP = REPOSITORY_ROOT / "mt5" / "Include" / "bot-ea" / "GoldEngineBearSetup.mqh"
+RUNTIME = REPOSITORY_ROOT / "mt5" / "Include" / "bot-ea" / "GoldEngineRuntime.mqh"
 
 
 def test_bear_types_lock_incremental_phases_and_v4_profile_contract() -> None:
@@ -138,3 +139,23 @@ def test_m15_scanner_ports_full_standalone_confluence_and_obstacle_geometry() ->
     assert "OrderSend" not in value
     assert "WebRequest" not in value
     assert "GoldEngineRevised" not in value
+
+
+def test_live_runtime_wires_only_bounded_incremental_bear_path() -> None:
+    value = RUNTIME.read_text(encoding="utf-8")
+
+    assert '#include "GoldEngineBearIncremental.mqh"' in value
+    assert "CBearIncrementalMachine m_bear_machine" in value
+    assert "CopyLatestBars(m_m15_history,50,scanner_bars)" in value
+    assert "BearM15Setup" in value
+    assert "m_bear_machine.OnBarClose" in value
+    assert "m_bear_machine.SeedClosedHistory" in value
+    assert "bar.timeframe==PERIOD_H1 ||" in value
+    assert "bar.timeframe==PERIOD_M15 ||" in value
+    assert "bar.timeframe==PERIOD_M5" in value
+    assert "BearBrokerUtcOffsetMinutes(TimeCurrent())" in value
+    assert "HasBearSignal" in value
+    assert "LastBearSignal" in value
+    assert "bear_replay" not in value.casefold()
+    assert "lookback_days" not in value.casefold()
+    assert "OrderSend" not in value
