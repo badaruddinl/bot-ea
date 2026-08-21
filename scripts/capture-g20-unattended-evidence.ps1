@@ -15,7 +15,14 @@ Set-StrictMode -Version Latest
 
 function Resolve-ConfiguredPath {
     param([Parameter(Mandatory = $true)][string]$Path)
-    return [Environment]::ExpandEnvironmentVariables($Path)
+    $expanded = [Environment]::ExpandEnvironmentVariables($Path)
+    if ([IO.Path]::IsPathRooted($expanded)) {
+        return [IO.Path]::GetFullPath($expanded)
+    }
+    # Resolve relative paths against the PowerShell provider location.  Using
+    # [IO.Path]::GetFullPath($expanded) directly would use the process working
+    # directory (often C:\Users\Administrator), not the visible PS location.
+    return [IO.Path]::GetFullPath((Join-Path -Path (Get-Location).Path -ChildPath $expanded))
 }
 
 function Get-StringSha256 {
@@ -177,6 +184,7 @@ function Write-AtomicJson {
 }
 
 $resolvedConfig = [IO.Path]::GetFullPath((Resolve-ConfiguredPath $ConfigPath))
+$resolvedOutputPath = Resolve-ConfiguredPath $OutputPath
 $config = Get-Content -LiteralPath $resolvedConfig -Raw | ConvertFrom-Json
 $bootTime = (Get-CimInstance Win32_OperatingSystem).LastBootUpTime.ToUniversalTime()
 $capturedAt = [DateTimeOffset]::UtcNow
@@ -198,16 +206,19 @@ if ($Phase -eq 'Preboot') {
         task = Get-TaskEvidence -Name $TaskName
         spools = $spools
     }
-    Write-AtomicJson -Path $OutputPath -Value $result
+    Write-AtomicJson -Path $resolvedOutputPath -Value $result
     $result | ConvertTo-Json -Compress -Depth 12
     exit 0
 }
 
-if ([string]::IsNullOrWhiteSpace($PrebootPath) -or
-    -not (Test-Path -LiteralPath $PrebootPath -PathType Leaf)) {
+if ([string]::IsNullOrWhiteSpace($PrebootPath)) {
     throw 'Postboot capture requires an existing -PrebootPath'
 }
-$preboot = Get-Content -LiteralPath $PrebootPath -Raw | ConvertFrom-Json
+$resolvedPrebootPath = Resolve-ConfiguredPath $PrebootPath
+if (-not (Test-Path -LiteralPath $resolvedPrebootPath -PathType Leaf)) {
+    throw "Postboot preboot evidence is missing: $resolvedPrebootPath"
+}
+$preboot = Get-Content -LiteralPath $resolvedPrebootPath -Raw | ConvertFrom-Json
 $newEvents = [ordered]@{}
 foreach ($terminal in @($config.terminals)) {
     $profileId = [string]$terminal.profile_id
@@ -255,5 +266,5 @@ $result = [ordered]@{
     spools = $spools
     new_events = $newEvents
 }
-Write-AtomicJson -Path $OutputPath -Value $result
+Write-AtomicJson -Path $resolvedOutputPath -Value $result
 $result | ConvertTo-Json -Compress -Depth 12

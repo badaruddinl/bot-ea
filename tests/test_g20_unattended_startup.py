@@ -137,6 +137,9 @@ def test_capture_classifies_script_and_module_bridge_names() -> None:
     capture = (ROOT / "scripts/capture-g20-unattended-evidence.ps1").read_text(encoding="utf-8")
 
     assert "gold_event_bridge|run-gold-event-bridge" in capture
+    assert "Get-Location).Path" in capture
+    assert "resolvedOutputPath = Resolve-ConfiguredPath $OutputPath" in capture
+    assert "resolvedPrebootPath = Resolve-ConfiguredPath $PrebootPath" in capture
     assert "last_task_result = [long]$info.LastTaskResult" in capture
     assert "last_task_result = [int]$info.LastTaskResult" not in capture
 
