@@ -143,7 +143,10 @@ supervisor then attached `GoldEngine-GOLDi` successfully and increased the
 GOLDI spool from 1,571 to 3,584 bytes. Commit `820f977` adds an explicit,
 terminal-safe, hash-verified, recoverable repair tool plus runtime tests. The
 post-repair focused matrix is 29 PASS, incremental quality/coverage PASS, and
-fast regression is 826 tests plus 77 subtests PASS.
+fast regression is 826 tests plus 77 subtests PASS. Commit `9a807c8` further
+requires a profile spool receipt after process start and marks missing/stale EA
+receipts fail-closed without terminating terminal processes. Its focused
+matrix is 31 PASS and final fast regression is 828 tests plus 77 subtests PASS.
 
 G20 remains IN_PROGRESS pending source synchronization to the VM and a third
 clean cold boot with strict verifier PASS.
