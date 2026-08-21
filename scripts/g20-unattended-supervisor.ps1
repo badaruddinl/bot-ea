@@ -41,6 +41,53 @@ function Get-PortableProcessId {
     return $null
 }
 
+function Get-PortableProcessStartUtc {
+    param($Process)
+    if ($null -eq $Process) {
+        return $null
+    }
+    if ($null -ne $Process.PSObject.Properties['CreationDate'] -and
+        $null -ne $Process.CreationDate) {
+        return ([DateTimeOffset]$Process.CreationDate).ToUniversalTime()
+    }
+    if ($null -ne $Process.PSObject.Properties['StartTime'] -and
+        $null -ne $Process.StartTime) {
+        return ([DateTimeOffset]$Process.StartTime).ToUniversalTime()
+    }
+    return $null
+}
+
+function Get-EaReceiptEvidence {
+    param(
+        [Parameter(Mandatory = $true)][string]$SpoolPath,
+        [Parameter(Mandatory = $true)][DateTimeOffset]$ProcessStartedAtUtc
+    )
+    $resolved = Resolve-ConfiguredPath $SpoolPath
+    if (-not (Test-Path -LiteralPath $resolved -PathType Leaf)) {
+        return [ordered]@{
+            path = $resolved
+            exists = $false
+            length = 0
+            last_write_utc = $null
+            receipt_after_process_start = $false
+            age_seconds = $null
+        }
+    }
+    $item = Get-Item -LiteralPath $resolved
+    $lastWrite = ([DateTimeOffset]$item.LastWriteTimeUtc).ToUniversalTime()
+    return [ordered]@{
+        path = $resolved
+        exists = $true
+        length = [long]$item.Length
+        last_write_utc = $lastWrite.ToString('o')
+        receipt_after_process_start = $lastWrite -ge $ProcessStartedAtUtc.AddSeconds(-5)
+        age_seconds = [Math]::Max(
+            0.0,
+            ([DateTimeOffset]::UtcNow - $lastWrite).TotalSeconds
+        )
+    }
+}
+
 function Assert-FileHash {
     param(
         [Parameter(Mandatory = $true)][string]$Path,
@@ -79,6 +126,21 @@ function Read-G20Config {
     }
     if ([double]$value.poll_seconds -lt 1.0) {
         throw "poll_seconds must be at least one second"
+    }
+    if ($null -eq $value.PSObject.Properties['ea_startup_grace_seconds']) {
+        $value | Add-Member -NotePropertyName ea_startup_grace_seconds -NotePropertyValue 180
+    }
+    if ($null -eq $value.PSObject.Properties['ea_heartbeat_stale_seconds']) {
+        $value | Add-Member -NotePropertyName ea_heartbeat_stale_seconds -NotePropertyValue 3900
+    }
+    if ([double]$value.ea_startup_grace_seconds -lt 30 -or
+        [double]$value.ea_startup_grace_seconds -gt 600) {
+        throw "ea_startup_grace_seconds must be between 30 and 600"
+    }
+    if ([double]$value.ea_heartbeat_stale_seconds -lt
+        [double]$value.ea_startup_grace_seconds -or
+        [double]$value.ea_heartbeat_stale_seconds -gt 86400) {
+        throw "ea_heartbeat_stale_seconds is outside the safe range"
     }
     if (@($value.terminals).Count -ne 2) {
         throw "Exactly two terminal profiles are required"
@@ -244,6 +306,8 @@ while ($true) {
         $state = "RUNNING"
         $failure = $null
         $process = $null
+        $processStartedAt = $null
+        $receipt = $null
         try {
             Assert-FileHash -Path $eaPath -ExpectedSha256 ([string]$terminal.ea_sha256) `
                 -Label "$profileId EA"
@@ -266,6 +330,24 @@ while ($true) {
             else {
                 $process = $matches[0]
             }
+            $processStartedAt = Get-PortableProcessStartUtc -Process $process
+            if ($null -eq $processStartedAt) {
+                throw "$profileId process start time is unavailable"
+            }
+            $receipt = Get-EaReceiptEvidence `
+                -SpoolPath ([string]$terminal.spool_path) `
+                -ProcessStartedAtUtc $processStartedAt
+            $processAgeSeconds = ([DateTimeOffset]::UtcNow - $processStartedAt).TotalSeconds
+            if (-not [bool]$receipt.receipt_after_process_start) {
+                if ($processAgeSeconds -gt [double]$config.ea_startup_grace_seconds) {
+                    throw "$profileId PROFILE_EA_STARTUP_RECEIPT_MISSING"
+                }
+                $state = "STARTING"
+            }
+            elseif ([double]$receipt.age_seconds -gt
+                [double]$config.ea_heartbeat_stale_seconds) {
+                throw "$profileId PROFILE_EA_HEARTBEAT_STALE"
+            }
         }
         catch {
             $state = "FAILED_CLOSED"
@@ -275,6 +357,9 @@ while ($true) {
             profile_id = $profileId
             state = $state
             pid = Get-PortableProcessId -Process $process
+            process_started_at_utc = if ($null -ne $processStartedAt) {
+                $processStartedAt.ToString('o')
+            } else { $null }
             terminal_path = $terminalPath
             ea_sha256 = ([string]$terminal.ea_sha256).ToLowerInvariant()
             expected_account_login = [long]$terminal.expected_account_login
@@ -284,6 +369,7 @@ while ($true) {
             expected_trade_mode = [int]$terminal.expected_trade_mode
             expected_order_authority = [string]$terminal.expected_order_authority
             restart_count = [int]$restartCounts[$profileId]
+            ea_receipt = $receipt
             failure = $failure
         }
     }

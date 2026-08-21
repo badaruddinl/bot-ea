@@ -81,12 +81,26 @@ def _evidence() -> tuple[dict[str, object], dict[str, object], dict[str, object]
                     "state": "RUNNING",
                     "pid": 10,
                     "ea_sha256": goldi["ea_sha256"],
+                    "process_started_at_utc": "2026-08-21T10:00:32+00:00",
+                    "ea_receipt": {
+                        "exists": True,
+                        "last_write_utc": "2026-08-21T10:00:40+00:00",
+                        "receipt_after_process_start": True,
+                        "age_seconds": 20,
+                    },
                 },
                 {
                     "profile_id": "GOLDM",
                     "state": "RUNNING",
                     "pid": 20,
                     "ea_sha256": goldm["ea_sha256"],
+                    "process_started_at_utc": "2026-08-21T10:00:33+00:00",
+                    "ea_receipt": {
+                        "exists": True,
+                        "last_write_utc": "2026-08-21T10:00:41+00:00",
+                        "receipt_after_process_start": True,
+                        "age_seconds": 19,
+                    },
                 },
             ],
         },
@@ -236,12 +250,21 @@ def test_autologon_safety_mutations_fail(mutation: str) -> None:
 
 @pytest.mark.parametrize(
     "mutation",
-    ["missing_heartbeat", "authority_enabled", "after_login", "forbidden_python", "legacy_task"],
+    [
+        "missing_heartbeat",
+        "missing_ea_receipt",
+        "authority_enabled",
+        "after_login",
+        "forbidden_python",
+        "legacy_task",
+    ],
 )
 def test_strict_mutations_fail(mutation: str) -> None:
     config, preboot, postboot = copy.deepcopy(_evidence())
     if mutation == "missing_heartbeat":
         postboot["new_events"]["GOLDM"] = postboot["new_events"]["GOLDM"][:-1]
+    elif mutation == "missing_ea_receipt":
+        postboot["supervisor_health"]["terminals"][0]["ea_receipt"] = None
     elif mutation == "authority_enabled":
         postboot["new_events"]["GOLDM"][0]["payload"]["order_authority"] = "ENABLED"
     elif mutation == "after_login":

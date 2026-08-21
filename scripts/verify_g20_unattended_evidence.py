@@ -119,6 +119,13 @@ def verify(
             continue
         if observed.get("state") != "RUNNING":
             violations.append(f"{profile_id} terminal is not RUNNING")
+        receipt = observed.get("ea_receipt") or {}
+        if (
+            receipt.get("exists") is not True
+            or receipt.get("receipt_after_process_start") is not True
+            or not receipt.get("last_write_utc")
+        ):
+            violations.append(f"{profile_id} EA startup receipt is not proven")
         if observed.get("ea_sha256", "").lower() != str(expected["ea_sha256"]).lower():
             violations.append(f"{profile_id} EA hash differs from configured hash")
         if process.get("process_count") != 1:

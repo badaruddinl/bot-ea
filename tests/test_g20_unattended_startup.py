@@ -196,3 +196,17 @@ def test_chart_profile_repair_is_explicit_recoverable_and_terminal_safe() -> Non
     assert "Move-Item -LiteralPath $chartPath -Destination $backupPath" in value
     assert "Remove-Item" not in value
     assert "production_real_orders = 'DISABLED'" in value
+
+
+def test_supervisor_requires_profile_receipt_not_only_terminal_process() -> None:
+    supervisor = SUPERVISOR.read_text(encoding="utf-8")
+    preparer = PREPARE.read_text(encoding="utf-8")
+
+    assert "Get-EaReceiptEvidence" in supervisor
+    assert "receipt_after_process_start" in supervisor
+    assert "PROFILE_EA_STARTUP_RECEIPT_MISSING" in supervisor
+    assert "PROFILE_EA_HEARTBEAT_STALE" in supervisor
+    assert '$state = "STARTING"' in supervisor
+    assert "Stop-Process" not in supervisor
+    assert "ea_startup_grace_seconds = 180" in preparer
+    assert "ea_heartbeat_stale_seconds = 3900" in preparer
