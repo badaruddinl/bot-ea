@@ -85,10 +85,13 @@ def build_report(root: Path) -> dict[str, Any]:
     _require(
         telegram.get("status") == "PASS"
         and telegram.get("transport") == "TELEGRAM_BOT_API"
-        and telegram.get("delivery_calls") == 9
+        and telegram.get("delivery_calls") == telegram.get("expected_delivery_calls")
+        and int(telegram.get("delivery_calls", 0)) >= 6
         and telegram.get("failed_calls") == 0
         and telegram.get("goldm_approved_leak_count") == 0
-        and len(telegram.get("receipts") or []) == 9,
+        and int(telegram.get("admin_recipient_count", 0)) >= 1
+        and int(telegram.get("approved_recipient_count", 0)) >= 1
+        and len(telegram.get("receipts") or []) == telegram.get("delivery_calls"),
         "actual Telegram receipt matrix is incomplete",
     )
     for value in values.values():
@@ -102,7 +105,7 @@ def build_report(root: Path) -> dict[str, Any]:
         "status": "PASS",
         "chains": {"GOLDI": goldi["chain_id"], "GOLDM": goldm["chain_id"]},
         "database_event_count": 12,
-        "telegram_delivery_calls": 9,
+        "telegram_delivery_calls": telegram["delivery_calls"],
         "goldm_approved_leak_count": 0,
         "input_sha256": {key: _sha256(path) for key, path in paths.items()},
         "production_real_orders": "DISABLED",

@@ -81,8 +81,11 @@ def fixture_root(tmp_path: Path, *, telegram: bool = True) -> Path:
                 "status": "PASS",
                 "transport": "TELEGRAM_BOT_API",
                 "delivery_calls": 9,
+                "expected_delivery_calls": 9,
                 "failed_calls": 0,
                 "goldm_approved_leak_count": 0,
+                "admin_recipient_count": 1,
+                "approved_recipient_count": 1,
                 "receipts": [{} for _ in range(9)],
             },
         )

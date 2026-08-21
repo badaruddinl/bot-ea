@@ -57,15 +57,20 @@ def run_delivery(
         store.ingest_spool(goldm_spool)
         bridge = EventBridge(store, RecipientPolicy(admins, approved), recording_sender)
         delivered, failed = bridge.deliver_pending(limit=100)
-        if failed or delivered != 9:
+        admin_set = set(admins)
+        approved_set = set(approved)
+        expected_deliveries = 3 * len(admin_set) + 3 * len(admin_set | approved_set)
+        if failed or delivered != expected_deliveries:
             raise TelegramE2EError(
-                f"expected nine final recipient deliveries, got delivered={delivered} failed={failed}"
+                f"expected {expected_deliveries} final recipient deliveries, "
+                f"got delivered={delivered} failed={failed}"
             )
+        approved_only = approved_set - admin_set
         goldm_leaks = [
             receipt
             for receipt in receipts
             if receipt["chat_id_sha256"]
-            in {hashlib.sha256(value.encode()).hexdigest() for value in approved}
+            in {hashlib.sha256(value.encode()).hexdigest() for value in approved_only}
             and "GOLDM" in receipt["title"]
         ]
         if goldm_leaks:
@@ -75,8 +80,13 @@ def run_delivery(
             "status": "PASS",
             "transport": "TELEGRAM_BOT_API",
             "delivery_calls": delivered,
+            "expected_delivery_calls": expected_deliveries,
             "failed_calls": failed,
             "goldm_approved_leak_count": len(goldm_leaks),
+            "admin_recipient_count": len(admin_set),
+            "approved_recipient_count": len(approved_set),
+            "approved_only_recipient_count": len(approved_only),
+            "recipient_overlap_count": len(admin_set & approved_set),
             "receipts": receipts,
             "production_real_orders": "DISABLED",
         }
