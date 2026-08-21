@@ -213,22 +213,20 @@ def resolve_signal_path(
                 "TICK",
             )
     post_bars = tuple(item for item in bars if item.close_time > plan.entry_ready_at)
-    for item in post_bars:
+    for bar in post_bars:
         stop_hit = (
-            item.low <= plan.planned_stop
-            if plan.side is Side.BUY
-            else item.high >= plan.planned_stop
+            bar.low <= plan.planned_stop if plan.side is Side.BUY else bar.high >= plan.planned_stop
         )
         target_hit = (
-            item.high >= plan.planned_target
+            bar.high >= plan.planned_target
             if plan.side is Side.BUY
-            else item.low <= plan.planned_target
+            else bar.low <= plan.planned_target
         )
         if stop_hit:  # conservative same-bar policy: STOP wins ambiguity
             return ReplayTradeOutcome(
                 plan.signal_id,
                 ReplayTradeResult.STOP,
-                item.close_time,
+                bar.close_time,
                 plan.planned_stop,
                 "BAR_CONSERVATIVE",
             )
@@ -236,7 +234,7 @@ def resolve_signal_path(
             return ReplayTradeOutcome(
                 plan.signal_id,
                 ReplayTradeResult.TARGET,
-                item.close_time,
+                bar.close_time,
                 plan.planned_target,
                 "BAR_CONSERVATIVE",
             )

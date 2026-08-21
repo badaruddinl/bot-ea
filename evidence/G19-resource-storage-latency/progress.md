@@ -29,6 +29,14 @@ Completed sub-batch:
 - a busy Windows producer handle fails compaction closed and restores the exact
   acknowledged offset for retry;
 - bridge suite: 24 passed; Ruff and mypy PASS.
+- strict stability analyzer now derives post-warm-up window trends from observed
+  noise instead of a fabricated RAM ceiling, fails on profile starvation or
+  idle storage growth, and requires all six latency stages;
+- Windows collector samples exact GOLDI/GOLDM executable paths plus the bridge,
+  heartbeats, DB/WAL, and both spools; it contains no order, restart, or network
+  action;
+- analyzer/collector focused tests: 7 passed; quality gate PASS with core
+  90.12% and strategy rules 82.66%.
 
 The VM scheduled-task launchers used for G18 are temporary interactive-logon
 probes. Unattended `At startup` operation without desktop login is a locked G20
