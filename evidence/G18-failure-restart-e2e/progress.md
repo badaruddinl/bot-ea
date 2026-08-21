@@ -30,6 +30,11 @@ Current sub-batch:
 - lease namespace test also holds GOLDM alive while GOLDI is released and
   reacquired, proving one-profile restart does not evict or overwrite the other
   profile's lock.
+- actual dual-terminal process probe PASS: GOLDI DEMO and GOLDm REAL-read-only
+  terminals ran concurrently with exact account/server/fingerprint heartbeats;
+  GOLDI restarted while GOLDm generation advanced with stable identity, then
+  both terminals restarted and produced new identities. Both probes contain no
+  order API and reported authority DISABLED.
 - broker ambiguous-result handling now performs no blind retry. Only timeout,
   connection, or generic ambiguous retcodes enter exact symbol+magic+signal
   comment reconciliation, and exactly one matching position is required.
@@ -50,7 +55,7 @@ Remaining matrix:
 
 - explicit disconnect/reconnect transition capture;
 - manual close and magic-collision aggregation into G18 certification;
-- actual dual-terminal/process concurrency beyond the Common Files lease proof;
+- actual Windows/VM boot-cycle evidence (strict verifier keeps this required);
 - final compile/regression/resource-independent G18 sealing.
 
 REAL orders: **DISABLED**
