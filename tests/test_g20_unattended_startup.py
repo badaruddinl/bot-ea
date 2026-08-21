@@ -18,6 +18,7 @@ CHAT_INSPECTOR = ROOT / "scripts/inspect-g20-telegram-chats.ps1"
 INTERACTIVE_INSTALLER = ROOT / "scripts/install-g20-interactive-tasks.ps1"
 LOCK_SCRIPT = ROOT / "scripts/g20-lock-workstation.ps1"
 AUTOLOGON_VERIFIER = ROOT / "scripts/verify-g20-autologon-tool.ps1"
+CHART_REPAIR = ROOT / "scripts/repair-g20-startup-chart.ps1"
 RUNTIME = ROOT / "mt5/Include/bot-ea/GoldEngineRuntime.mqh"
 EVENTS = ROOT / "src/gold_event_bridge/events.py"
 
@@ -181,3 +182,17 @@ def test_real_disabled_profile_has_only_the_manual_intervention_boot_exception()
     assert (
         "Postboot ENGINE_ERROR exceptions require GOLDM REAL with authority DISABLED" in supervisor
     )
+
+
+def test_chart_profile_repair_is_explicit_recoverable_and_terminal_safe() -> None:
+    value = CHART_REPAIR.read_text(encoding="utf-8")
+
+    assert "AcknowledgeProfileRepair" in value
+    assert "terminal must be stopped before chart-profile repair" in value
+    assert "STARTUP_CHART_OPEN_FAILED" in value
+    assert "BACKED_UP_FOR_REGENERATION" in value
+    assert "[Security.Cryptography.SHA256]::Create()" in value
+    assert "backup hash mismatch" in value
+    assert "Move-Item -LiteralPath $chartPath -Destination $backupPath" in value
+    assert "Remove-Item" not in value
+    assert "production_real_orders = 'DISABLED'" in value
