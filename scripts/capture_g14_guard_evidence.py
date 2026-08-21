@@ -5,13 +5,24 @@ import hashlib
 import json
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import TypedDict
 
 
 class EvidenceError(RuntimeError):
     """Raised when a tester log cannot prove the native G14 guard matrix."""
 
 
-PROOFS = {
+class ProofSpecification(TypedDict):
+    expert: str
+    stem: str
+    required: tuple[str, ...]
+    authority: str
+    profiles: list[str]
+    balance: str
+    allow_mutation: bool
+
+
+PROOFS: dict[str, ProofSpecification] = {
     "guard": {
         "expert": "GoldEngineExecutionGuardHarness.ex5",
         "stem": "goldi-execution-guard-tester",
@@ -19,6 +30,10 @@ PROOFS = {
             "G14_EXECUTION_GUARD passed=true goldi=true goldm=true ",
             "structural_geometry=true reasons=18 order_authority=DISABLED",
         ),
+        "authority": "DISABLED",
+        "profiles": ["GOLDI", "GOLDM"],
+        "balance": "final balance 100.00 USD",
+        "allow_mutation": False,
     },
     "broker": {
         "expert": "GoldEngineBrokerContextHarness.ex5",
@@ -28,6 +43,10 @@ PROOFS = {
             "order_check=true",
             "order_authority=DISABLED reason=OK",
         ),
+        "authority": "DISABLED",
+        "profiles": ["GOLDI", "GOLDM"],
+        "balance": "final balance 100.00 USD",
+        "allow_mutation": False,
     },
     "disabled": {
         "expert": "GoldEngineExecutionDisabledHarness.ex5",
@@ -37,6 +56,25 @@ PROOFS = {
             "validation=true positions_before=0 positions_after=0",
             "order_authority=DISABLED reason=ORDER_AUTHORITY_DISABLED",
         ),
+        "authority": "DISABLED",
+        "profiles": ["GOLDI", "GOLDM"],
+        "balance": "final balance 100.00 USD",
+        "allow_mutation": False,
+    },
+    "lifecycle": {
+        "expert": "GoldEngineExecutionLifecycleHarness.ex5",
+        "stem": "goldi-execution-lifecycle-tester",
+        "required": (
+            "G14_EXECUTION_LIFECYCLE passed=true initialized=true opened=true ",
+            "discovered=true modified=true restarted=true closed=true",
+            "positions_before=0 positions_after=0",
+            "open_retcode=10009 modify_retcode=10009 close_retcode=10009",
+            "magic=26081911 order_authority=TESTER_ONLY reason=POSITION_CLOSED",
+        ),
+        "authority": "TESTER_ONLY",
+        "profiles": ["GOLDI"],
+        "balance": "final balance ",
+        "allow_mutation": True,
     },
 }
 
@@ -98,20 +136,15 @@ def validate_block(
     required = (
         f"{symbol},{timeframe} ({server}):",
         *specification["required"],
-        "final balance 100.00 USD",
+        specification["balance"],
         "OnTester result 1",
     )
     missing = [item for item in required if item not in block]
     if missing:
         raise EvidenceError(f"native G14 guard proof is incomplete: {missing}")
-    forbidden = (
-        "passed=false",
-        "OnTester result 0",
-        "order placed",
-        "deal performed",
-        "buy market",
-        "sell market",
-    )
+    forbidden = ["passed=false", "OnTester result 0"]
+    if not specification["allow_mutation"]:
+        forbidden.extend(("order placed", "deal performed", "buy market", "sell market"))
     folded = block.casefold()
     present = [item for item in forbidden if item.casefold() in folded]
     if present:
@@ -146,8 +179,8 @@ def write_evidence(
         "captured_at_utc": datetime.now(UTC).isoformat(),
         "captured_log": log_path.name,
         "captured_log_sha256": digest,
-        "order_authority": "DISABLED",
-        "profile_matrix": ["GOLDI", "GOLDM"],
+        "order_authority": specification["authority"],
+        "profile_matrix": specification["profiles"],
         "proof": proof,
         "server": server,
         "source_log": str(source.resolve()),

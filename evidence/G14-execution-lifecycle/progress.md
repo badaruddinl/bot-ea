@@ -66,6 +66,25 @@ Current sub-batch:
   `635ab0672704beb9be754f8ae1b53201e424b4ebaeedfa827d9c3fda93245423`;
 - focused CTrade interlock/capture regression: 8 passed; harness compile 0
   errors and 0 warnings.
+- position lifecycle is ticket-scoped and refuses wrong symbol, magic, or
+  profile comment before modify/close; discovery distinguishes foreign-symbol
+  positions and comment-level manual intervention;
+- initial lifecycle probe correctly exposed a harness timing bug: order at
+  00:00 server was rejected as market closed (`10018`). The harness now waits
+  for a closed-market-safe execution time (first tick at/after 02:00 server)
+  and has an `OnDeinit` cleanup path;
+- fixed Strategy Tester lifecycle PASS: open, ownership discovery, SL modify,
+  reconstructed broker object, restart rediscovery, and close all true;
+  positions `0 -> 0`, open/modify/close retcodes all `10009`, magic
+  `26081911`, `OnTester result 1`;
+- lifecycle log SHA-256:
+  `969db269a0d8f1f6b363758a83da3198735d50f3dac143e1f9a9c884bbe4744e`;
+- lifecycle harness binary SHA-256:
+  `e35c001d6f7865a6180830a0efedc8f0202cf1ec98ed4f368dcb13ba7e4f1564`;
+- lifecycle tester balance ended at 99.62 USD solely from simulated spread on
+  the immediate open/close round trip; no external account was touched;
+- focused lifecycle/capture regression: 11 passed; compile 0 errors and 0
+  warnings.
 
 Next sub-batch:
 

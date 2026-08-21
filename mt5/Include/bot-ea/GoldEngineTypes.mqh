@@ -151,6 +151,7 @@ struct ManagedPosition
    double     entry_price;
    double     stop_loss;
    double     take_profit;
+   string     comment;
    bool       owned;
   };
 

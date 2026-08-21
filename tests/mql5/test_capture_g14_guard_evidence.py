@@ -17,7 +17,16 @@ SPEC.loader.exec_module(MODULE)
 
 def log(*, passed: bool = True, proof: str = "guard") -> str:
     status = "true" if passed else "false"
-    if proof == "disabled":
+    if proof == "lifecycle":
+        expert = "GoldEngineExecutionLifecycleHarness.ex5"
+        marker = (
+            f"G14_EXECUTION_LIFECYCLE passed={status} initialized=true opened=true "
+            "discovered=true modified=true restarted=true closed=true "
+            "positions_before=0 positions_after=0 open_retcode=10009 "
+            "modify_retcode=10009 close_retcode=10009 magic=26081911 "
+            "order_authority=TESTER_ONLY reason=POSITION_CLOSED"
+        )
+    elif proof == "disabled":
         expert = "GoldEngineExecutionDisabledHarness.ex5"
         marker = (
             f"G14_EXECUTION_DISABLED passed={status} initialized=true submitted=false "
@@ -42,7 +51,7 @@ def log(*, passed: bool = True, proof: str = "guard") -> str:
         "AA\tCore 1\tGOLD.i#,M15: testing of "
         f"Experts\\bot-ea\\{expert} from x started\n"
         f"AA\tCore 1\t{marker}\n"
-        "AA\tCore 1\tfinal balance 100.00 USD\n"
+        f"AA\tCore 1\tfinal balance {'99.62' if proof == 'lifecycle' else '100.00'} USD\n"
         "AA\tCore 1\tOnTester result 1\n"
         "AA\tCore 1\tconnection closed\n"
     )
@@ -98,6 +107,23 @@ def test_capture_supports_disabled_authority_proof(tmp_path: Path) -> None:
     )
     assert metadata["proof"] == "disabled"
     assert (output / "goldi-execution-disabled-tester.log").is_file()
+
+
+def test_capture_supports_tester_only_lifecycle_mutations(tmp_path: Path) -> None:
+    source = tmp_path / "tester.log"
+    source.write_text(log(proof="lifecycle") + "AA\tCore 1\tdeal performed\n", encoding="utf-8")
+    output = tmp_path / "evidence"
+    metadata = MODULE.write_evidence(
+        source=source,
+        output_directory=output,
+        symbol="GOLD.i#",
+        timeframe="M15",
+        server="XMGlobal-MT5 5",
+        proof="lifecycle",
+    )
+    assert metadata["proof"] == "lifecycle"
+    assert metadata["order_authority"] == "TESTER_ONLY"
+    assert metadata["profile_matrix"] == ["GOLDI"]
 
 
 @pytest.mark.parametrize("text", (log(passed=False), "unrelated\n"))
