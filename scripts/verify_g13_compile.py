@@ -40,7 +40,7 @@ def decode_log(path: Path) -> str:
 
 def verify_harness(evidence_root: Path) -> dict[str, object]:
     source = REPOSITORY_ROOT / "mt5" / "Experts" / "bot-ea" / "GoldEngineBearParityHarness.mq5"
-    binary = source.with_suffix(".ex5")
+    binary = evidence_root / "GoldEngineBearParityHarness.ex5"
     compile_log = evidence_root / "GoldEngineBearParityHarness.compile.log"
     for label, path in (("source", source), ("binary", binary), ("compile log", compile_log)):
         if not path.is_file():
