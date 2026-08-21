@@ -23,8 +23,8 @@ Completed sub-batch:
 - runtime-owned bounded history, warm-up seeding, BUY/SELL evaluation,
   termination, consume, and entry-ready transition;
 - deterministic native parity harness for the Python range-entry vector;
-- canonical hashed Python corpus with eight GOLDI/GOLDM vectors covering
-  no-setup, range entry, sub-1R obstacle watch, and momentum entry;
+- canonical hashed Python corpus with ten GOLDI/GOLDM vectors covering
+  no-setup, BUY/SELL range entry, sub-1R obstacle watch, and momentum entry;
 - typed nested range/M1/momentum/risk/Fibonacci decision evidence;
 - dual-profile compile: 0 errors, 0 warnings;
 - G11 runtime invariants remain intact;

@@ -77,6 +77,38 @@ void BuildRangeVector(CRevisedSnapshot &snapshot)
    snapshot.has_invalidation=false;
   }
 
+void BuildSellRangeVector(CRevisedSnapshot &snapshot)
+  {
+   BuildRangeVector(snapshot);
+   const datetime base=D'2026.08.18 12:00:00';
+   const double values[][4]=
+     {
+      {4402.0,4404.0,4401.0,4402.5},
+      {4402.0,4404.0,4401.0,4402.5},
+      {4402.0,4404.0,4401.0,4402.5},
+      {4402.0,4404.0,4401.0,4402.5},
+      {4404.0,4405.0,4401.0,4401.5},
+      {4401.5,4403.0,4400.5,4401.8},
+      {4401.8,4403.5,4400.8,4402.0},
+      {4402.0,4405.0,4401.0,4401.6},
+      {4401.6,4403.0,4400.5,4401.9},
+      {4401.9,4403.5,4400.8,4402.1},
+      {4402.1,4405.0,4401.0,4401.7},
+      {4401.7,4403.0,4400.5,4401.9},
+      {4401.9,4403.5,4400.8,4402.0},
+      {4402.0,4405.0,4401.0,4401.8},
+      {4401.8,4403.0,4400.5,4401.7},
+      {4401.7,4402.0,4398.5,4399.0}
+     };
+   for(int index=0;index<16;index++)
+      SetHarnessBar(
+         snapshot.m1_bars[index],PERIOD_M1,base+index*60,
+         values[index][0],values[index][1],values[index][2],values[index][3],index);
+   snapshot.side=ENGINE_SIDE_SELL;
+   snapshot.current_time=snapshot.m1_bars[15].open_time;
+   snapshot.m5_pattern="BEAR_ENGULFING";
+  }
+
 bool CloseEnough(const double actual,const double expected,const double tolerance)
   {
    return MathAbs(actual-expected)<=tolerance;
@@ -121,6 +153,30 @@ bool EvaluateNoSetupCase(CRevisedEngine &engine)
           decision.action==REVISED_ACTION_OBSERVE &&
           decision.reason=="M5_SETUP_UNAVAILABLE" &&
           CloseEnough(decision.confidence,59.99,1.0e-9);
+  }
+
+bool EvaluateSellRangeCase(CRevisedEngine &engine)
+  {
+   CRevisedSnapshot snapshot;
+   BuildSellRangeVector(snapshot);
+   RevisedDecision decision;
+   string error="";
+   return engine.Evaluate(snapshot,decision,error) &&
+          error=="OK" &&
+          decision.state==REVISED_STATE_ENTRY_READY &&
+          decision.action==REVISED_ACTION_ENTER &&
+          decision.reason=="STRONG_FIRST_CONFIRMATION" &&
+          decision.mode==REVISED_MODE_RANGE &&
+          decision.observation_only &&
+          decision.entry_profile=="CORE" &&
+          decision.touch_count==4 &&
+          decision.rejection_count==4 &&
+          decision.m1_votes==3 &&
+          CloseEnough(decision.entry,4399.0,0.01) &&
+          CloseEnough(decision.stop,4399.4,0.01) &&
+          CloseEnough(decision.target,4390.24,0.01) &&
+          CloseEnough(decision.first_obstacle,4390.0,0.01) &&
+          decision.first_obstacle_kind=="PSYCH_10";
   }
 
 bool EvaluateObstacleCase(CRevisedEngine &engine)
@@ -179,16 +235,19 @@ int OnInit(void)
    CRevisedEngine engine;
    engine.Initialize(_Symbol);
    const bool range_passed=EvaluateRangeCase(engine);
+   const bool sell_range_passed=EvaluateSellRangeCase(engine);
    const bool no_setup_passed=EvaluateNoSetupCase(engine);
    const bool obstacle_passed=EvaluateObstacleCase(engine);
    const bool momentum_passed=EvaluateMomentumCase(engine);
    HarnessPassed=range_passed &&
+                 sell_range_passed &&
                  no_setup_passed &&
                  obstacle_passed &&
                  momentum_passed;
    Print("G12_REVISED_PARITY profile=",_Symbol,
          " passed=",(HarnessPassed ? "true" : "false"),
          " range=",(range_passed ? "true" : "false"),
+         " sell_range=",(sell_range_passed ? "true" : "false"),
          " no_setup=",(no_setup_passed ? "true" : "false"),
          " obstacle=",(obstacle_passed ? "true" : "false"),
          " momentum=",(momentum_passed ? "true" : "false"));

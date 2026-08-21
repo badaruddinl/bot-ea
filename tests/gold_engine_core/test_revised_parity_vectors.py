@@ -18,12 +18,13 @@ def test_revised_parity_vectors_are_complete_profile_symmetric_and_hashed() -> N
     checksum = VECTOR_PATH.with_suffix(".sha256").read_text(encoding="ascii").split()
 
     assert checksum == [hashlib.sha256(raw).hexdigest(), VECTOR_PATH.name]
-    assert len(payload) == 8
+    assert len(payload) == 10
     assert {(item["profile_id"], item["case_id"]) for item in payload} == {
         (profile_id, case_id)
         for profile_id in ("GOLDI", "GOLDM")
         for case_id in (
             "range_entry",
+            "sell_range_entry",
             "no_setup",
             "sub_one_r_obstacle",
             "momentum_entry",

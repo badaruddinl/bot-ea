@@ -205,6 +205,9 @@ def test_native_parity_harness_locks_python_range_vector() -> None:
     assert "return HarnessPassed ? INIT_SUCCEEDED : INIT_FAILED" in value
     assert "OrderSend" not in value
     assert "EvaluateNoSetupCase" in value
+    assert "EvaluateSellRangeCase" in value
+    assert "decision.observation_only" in value
+    assert "CloseEnough(decision.target,4390.24,0.01)" in value
     assert '"M5_SETUP_UNAVAILABLE"' in value
     assert "EvaluateObstacleCase" in value
     assert '"SOFT_FAIL_FIRST_OBSTACLE_ROOM"' in value
