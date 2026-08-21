@@ -136,6 +136,8 @@ def test_capture_classifies_script_and_module_bridge_names() -> None:
     capture = (ROOT / "scripts/capture-g20-unattended-evidence.ps1").read_text(encoding="utf-8")
 
     assert "gold_event_bridge|run-gold-event-bridge" in capture
+    assert "last_task_result = [long]$info.LastTaskResult" in capture
+    assert "last_task_result = [int]$info.LastTaskResult" not in capture
 
 
 def test_chat_inspector_never_accepts_or_prints_plaintext_token() -> None:

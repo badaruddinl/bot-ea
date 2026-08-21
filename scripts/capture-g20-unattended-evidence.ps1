@@ -85,7 +85,10 @@ function Get-TaskEvidence {
         last_run_time_utc = if ($info.LastRunTime.Year -gt 1900) {
             $info.LastRunTime.ToUniversalTime().ToString('o')
         } else { $null }
-        last_task_result = [int]$info.LastTaskResult
+        # Task Scheduler exposes HRESULT/NTSTATUS values as unsigned 32-bit
+        # numbers.  Values with the high bit set (for example 3221225786)
+        # overflow System.Int32, so preserve the full value in JSON.
+        last_task_result = [long]$info.LastTaskResult
     }
 }
 
