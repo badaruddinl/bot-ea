@@ -41,10 +41,25 @@ Current sub-batch:
   instead of silently defaulting to `GOLD.i#`; GOLDI/GOLDM regression proves
   exact `GOLD.i#`/`GOLDm#` binding without changing strategy parameters;
 - focused profile-binding/reference regression: 48 passed.
+- profile-cost binding corrected in the same adapter: the M15 scanner now uses
+  the exact BearV4 spread floor (`0.20` GOLD.i, `0.24` GOLDm), proven by the
+  same dual-profile regression without changing any decision threshold;
+- read-only MT5 oracle captured from `GOLDm#` at 18 Aug 2026 17:00 server time,
+  normalized per profile floor and frozen as two hashed 50-bar vectors;
+- complete standalone M15 confluence-v1 port: regime, swing/psychological
+  resistance and support, rejection, Fibonacci, RSI7, Stochastic, supply,
+  momentum, exhaustion, structural stop, nearest barrier, continuation, and
+  two targets;
+- deterministic generator produces the 50-bar MQL5 harness fixture from the
+  hashed oracle, preventing hand-edited parity samples;
+- native GOLDm chart harness PASS:
+  `h1_m5_m1=true incremental=true m15=true`;
+- current harness binary SHA-256:
+  `70b1c546c67091586849f3bfbf2227fdff72ca1c8c2ccdacd5084ab4076769b8`;
+- focused oracle/contract suite: 9 passed.
 
 Remaining before PASS:
 
-- M15 confluence setup scanner port;
 - runtime integration and explicit proof that live code cannot full-replay;
 - all cancellation/restart vectors in the native harness;
 - dual-profile Strategy Tester, compile, regression, and final verifier.

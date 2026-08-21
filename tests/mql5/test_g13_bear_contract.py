@@ -6,6 +6,7 @@ INDICATORS = REPOSITORY_ROOT / "mt5" / "Include" / "bot-ea" / "GoldEngineBearInd
 VALIDATION = REPOSITORY_ROOT / "mt5" / "Include" / "bot-ea" / "GoldEngineBearValidation.mqh"
 HARNESS = REPOSITORY_ROOT / "mt5" / "Experts" / "bot-ea" / "GoldEngineBearParityHarness.mq5"
 INCREMENTAL = REPOSITORY_ROOT / "mt5" / "Include" / "bot-ea" / "GoldEngineBearIncremental.mqh"
+SETUP = REPOSITORY_ROOT / "mt5" / "Include" / "bot-ea" / "GoldEngineBearSetup.mqh"
 
 
 def test_bear_types_lock_incremental_phases_and_v4_profile_contract() -> None:
@@ -67,6 +68,11 @@ def test_native_bear_harness_locks_profile_specific_python_geometry() -> None:
     assert "const double expected_stop=(goldm ? 100.68 : 100.60)" in value
     assert "const double expected_target=(goldm ? 93.21 : 93.37)" in value
     assert "BearCloseEnough(plan.entry,98.19,0.01)" in value
+    assert "EvaluateBearM15Oracle" in value
+    assert "BuildG13BearM15Oracle" in value
+    assert "setup.confluence_votes==4" in value
+    assert "BearCloseEnough(setup.resistance,4398.52,0.01)" in value
+    assert "BearCloseEnough(setup.take_profit,4390.50,0.01)" in value
     assert "EvaluateBearIncrementalSequence" in value
     assert "machine.Sequence()!=68" in value
     assert 'profile_id+":BEAR:53:IDLE:WATCH_H1:M15_SETUP_ACCEPTED"' in value
@@ -103,3 +109,32 @@ def test_incremental_state_owner_is_bounded_idempotent_and_restart_safe() -> Non
     assert "BearEntryOnM1" in value
     assert "OrderSend" not in value
     assert "replay" not in value.casefold()
+
+
+def test_m15_scanner_ports_full_standalone_confluence_and_obstacle_geometry() -> None:
+    value = SETUP.read_text(encoding="utf-8")
+
+    for token in (
+        "BearAverageTrueRange",
+        "BearLinearSlope",
+        "BearSwingLevels",
+        "BearPsychologicalLevels",
+        "BearM15Confluence",
+        "fibonacci_retest",
+        "rsi_turn_down",
+        "stochastic_turn_down",
+        "supply_retest",
+        "momentum_restart",
+        "exhausted",
+        "no_resistance_retest",
+        "rejection_confirmed_waiting_confluence",
+        "target_capped_at_nearest_psychological_support",
+        "continuation_through_near_support",
+    ):
+        assert token in value
+    assert "if(n<50)" in value
+    assert "latest.spread_points*c.price_tick" in value
+    assert "setup.confluence_votes=conf.votes" in value
+    assert "OrderSend" not in value
+    assert "WebRequest" not in value
+    assert "GoldEngineRevised" not in value

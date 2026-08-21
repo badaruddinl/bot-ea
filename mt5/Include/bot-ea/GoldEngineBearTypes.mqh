@@ -49,10 +49,31 @@ struct BearSetup
    string   reason;
    int      score;
    double   resistance;
+   string   resistance_kind;
+   double   support;
    double   entry;
    double   stop;
    double   take_profit;
+   double   take_profit_2;
    double   reward_risk;
+   double   atr;
+   double   regime_slope_atr;
+   double   regime_drop_atr;
+   double   chase_distance_atr;
+   int      confluence_votes;
+   double   fibonacci_zone_low;
+   double   fibonacci_zone_high;
+   bool     fibonacci_retest;
+   double   rsi_value;
+   bool     rsi_turn_down;
+   double   stochastic_k;
+   double   stochastic_d;
+   bool     stochastic_turn_down;
+   double   supply_proximal;
+   double   supply_distal;
+   bool     supply_retest;
+   bool     momentum_restart;
+   bool     exhausted;
   };
 
 struct BearM5Result

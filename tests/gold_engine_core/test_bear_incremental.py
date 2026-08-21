@@ -420,3 +420,7 @@ def test_worker_binds_bear_setup_scanner_to_exact_profile_symbol(
 
     assert worker.config.symbol == symbol
     assert worker.bear_replay.setup_engine.config.symbol == symbol
+    assert (
+        worker.bear_replay.setup_engine.config.spread_floor
+        == worker.bear_replay.config.spread_floor
+    )

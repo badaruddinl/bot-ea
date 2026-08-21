@@ -2,6 +2,7 @@
 #define GOLD_ENGINE_BEAR_INCREMENTAL_MQH
 
 #include "GoldEngineBearValidation.mqh"
+#include "GoldEngineBearSetup.mqh"
 
 class CBearIncrementalSnapshot
   {

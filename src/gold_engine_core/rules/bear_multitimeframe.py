@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import bisect
 from collections.abc import Sequence
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timedelta
 from statistics import fmean
 from typing import cast
@@ -114,7 +114,12 @@ class BearMultiTimeframeReplay:
         symbol: str = "GOLD.i#",
     ) -> None:
         self.config = config or BearV4Config()
-        self.setup_engine = BearEngine(confluence_v1_config(symbol=symbol))
+        self.setup_engine = BearEngine(
+            replace(
+                confluence_v1_config(symbol=symbol),
+                spread_floor=self.config.spread_floor,
+            )
+        )
 
     def run(
         self,

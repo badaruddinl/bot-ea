@@ -26,6 +26,8 @@ void SetBearHarnessBar(EngineBar &bar,
    bar.spread_points=20;
   }
 
+#include "fixtures/G13BearM15Oracle.mqh"
+
 void BuildBearH1(EngineBar &bars[])
   {
    const datetime available=D'2026.01.02 00:15:00';
@@ -191,6 +193,46 @@ bool EvaluateBearHappyPath(void)
           BearCloseEnough(plan.structural_target,94.0,0.01);
   }
 
+bool EvaluateBearM15Oracle(void)
+  {
+   const bool goldm=_Symbol=="GOLDm#";
+   EngineBar bars[];
+   BuildG13BearM15Oracle(bars,goldm ? 24 : 20);
+   BearSetup setup;
+   string reason="";
+   if(!BearM15Setup(
+         bars,_Symbol,goldm ? 0.24 : 0.20,setup,reason))
+     {
+      Print("G13_M15_ORACLE_REJECT reason=",reason);
+      return false;
+     }
+   return setup.time==D'2026.08.18 17:00:00' &&
+          setup.reason==
+             "bear_pullback_rejected_at_swing_resistance_"+
+             "target_capped_at_nearest_psychological_support" &&
+          setup.score==57 && setup.resistance_kind=="swing" &&
+          setup.confluence_votes==4 && setup.rsi_turn_down &&
+          setup.stochastic_turn_down && setup.supply_retest &&
+          setup.momentum_restart && !setup.fibonacci_retest &&
+          !setup.exhausted &&
+          BearCloseEnough(setup.atr,6.155714285714047,1.0e-9) &&
+          BearCloseEnough(setup.resistance,4398.52,0.01) &&
+          BearCloseEnough(setup.support,4390.0,0.01) &&
+          BearCloseEnough(setup.entry,4393.49,0.01) &&
+          BearCloseEnough(setup.stop,4400.58,0.01) &&
+          BearCloseEnough(setup.take_profit,4390.50,0.01) &&
+          BearCloseEnough(setup.take_profit_2,4387.43,0.01) &&
+          BearCloseEnough(setup.reward_risk,0.421720733427323,1.0e-9) &&
+          BearCloseEnough(setup.regime_drop_atr,1.6358783940591104,1.0e-9) &&
+          BearCloseEnough(setup.regime_slope_atr,0.0004409630936818741,1.0e-9) &&
+          BearCloseEnough(setup.chase_distance_atr,0.8171269436065433,1.0e-9) &&
+          BearCloseEnough(setup.rsi_value,60.144230769228656,1.0e-9) &&
+          BearCloseEnough(setup.stochastic_k,42.35890932149386,1.0e-9) &&
+          BearCloseEnough(setup.stochastic_d,59.03505932606952,1.0e-9) &&
+          BearCloseEnough(setup.supply_proximal,4392.61,0.01) &&
+          BearCloseEnough(setup.supply_distal,4393.75,0.01);
+  }
+
 void AppendBearEvents(const BearIncrementalEvent &source[],
                       BearIncrementalEvent &target[])
   {
@@ -347,11 +389,13 @@ int OnInit(void)
   {
    const bool geometry_passed=EvaluateBearHappyPath();
    const bool incremental_passed=EvaluateBearIncrementalSequence();
-   BearHarnessPassed=geometry_passed && incremental_passed;
+   const bool m15_passed=EvaluateBearM15Oracle();
+   BearHarnessPassed=geometry_passed && incremental_passed && m15_passed;
    Print("G13_BEAR_PARITY profile=",_Symbol,
          " passed=",(BearHarnessPassed ? "true" : "false"),
          " h1_m5_m1=",(geometry_passed ? "true" : "false"),
-         " incremental=",(incremental_passed ? "true" : "false"));
+         " incremental=",(incremental_passed ? "true" : "false"),
+         " m15=",(m15_passed ? "true" : "false"));
    return BearHarnessPassed ? INIT_SUCCEEDED : INIT_FAILED;
   }
 
