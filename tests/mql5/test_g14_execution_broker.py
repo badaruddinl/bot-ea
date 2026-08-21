@@ -70,6 +70,8 @@ def test_lifecycle_harness_opens_modifies_recovers_and_closes_tester_position() 
     assert "positions_before=" in value
     assert "positions_after=" in value
     assert "order_authority=TESTER_ONLY" in value
+    assert "G17_E2E_SETUP" in value
+    assert "HarnessEventCount==6" in value
 
 
 def test_lifecycle_harness_has_thin_profile_locked_goldm_entrypoint() -> None:

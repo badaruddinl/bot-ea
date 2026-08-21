@@ -133,6 +133,35 @@ def test_routing_is_profile_isolated_and_watch_is_suppressed(tmp_path: Path) -> 
         store.close()
 
 
+def test_order_and_modify_diagnostics_are_db_only_not_telegram(tmp_path: Path) -> None:
+    spool = tmp_path / "events.jsonl"
+    append(
+        spool,
+        event("goldi:order", event_type="ORDER_SUBMITTED", audience="admin_only"),
+        event("goldi:modify", event_type="POSITION_MODIFIED", audience="admin_only"),
+    )
+    store = EventStore(tmp_path / "events.db")
+    sent: list[str] = []
+    bridge = EventBridge(
+        store,
+        RecipientPolicy(("admin",), ("subscriber",)),
+        lambda _chat_id, message: sent.append(message),
+    )
+    try:
+        store.ingest_spool(spool)
+        assert bridge.deliver_pending() == (0, 0)
+        assert not sent
+        states = {
+            row[0]
+            for row in store.connection.execute(
+                "SELECT delivery_state FROM engine_events ORDER BY event_id"
+            )
+        }
+        assert states == {"SUPPRESSED"}
+    finally:
+        store.close()
+
+
 def test_telegram_failure_retries_only_undelivered_recipient(tmp_path: Path) -> None:
     spool = tmp_path / "events.jsonl"
     append(spool, event("retry:1"))

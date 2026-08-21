@@ -1,0 +1,15 @@
+{
+  "account_mode": "STRATEGY_TESTER",
+  "captured_at_utc": "2026-08-21T06:57:34.953818+00:00",
+  "captured_log": "goldm_refusal-e2e.log",
+  "captured_log_sha256": "2700748b28abdca7e85135297bd92595e02e34b9c1985d850e0d20047d9481ff",
+  "demo_mode_refused": true,
+  "magic": 26081912,
+  "order_authority": "DISABLED",
+  "production_real_orders": "DISABLED",
+  "profile_id": "GOLDM_REFUSAL",
+  "server": "XMGlobal-MT5 14",
+  "symbol": "GOLDm#",
+  "wrong_account_refused": true,
+  "wrong_server_refused": true
+}
