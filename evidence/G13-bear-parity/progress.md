@@ -62,6 +62,20 @@ Current sub-batch:
   from WATCH_M1 to exact sequence-66 entry, duplicate no-op, old-bar rejection,
   and sequence-85 M1 expiry;
 - expanded native harness/fixture suite: 12 passed, compile 0 errors/warnings.
+- runtime persistence uses two alternating profile-specific binary slots; each
+  carries schema magic, profile fingerprint, symbol, semantic offset, complete
+  state/buffers/cursors, and bounded lengths. Load chooses the highest valid
+  sequence, rejects corrupt/foreign identity, and treats state older than 180
+  seconds as stale seed-only recovery;
+- native persistence round-trip PASS: WATCH_M1 slot B -> entry sequence 66 slot
+  A -> latest-slot recovery, plus stale and wrong-fingerprint rejection;
+- final focused persistence/runtime matrix: 42 passed;
+- final warning-clean binaries: GOLDI
+  `eb50d61f1b5b8601ee3dba926c448a133368b775998cc7de44c33126ed7aa3e2`,
+  GOLDM
+  `4e321b578f53d270e7a82631be4b6fc7e2fb05fe5433b6ac51bca6b5838e951f`,
+  harness
+  `ab321e1987a630797bce578700ee5a357d0fd244cc62a8664f6661e432bde91e`.
 - shared runtime now seeds bounded Bear history without promotion, evaluates
   only the newest 50-bar M15 window, feeds each H1/M15/M5/M1 closed bar once,
   exposes the last Bear signal/phase, and emits ENTRY_READY without order API;

@@ -207,6 +207,9 @@ private:
       m_has_setup=false;
       m_has_arm=false;
       m_has_signal=false;
+      ZeroMemory(m_setup);
+      ZeroMemory(m_arm);
+      ZeroMemory(m_signal);
       m_touches=0;
       m_rejections=0;
       m_acceptance=false;

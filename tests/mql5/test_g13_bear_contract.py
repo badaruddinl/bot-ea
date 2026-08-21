@@ -8,6 +8,7 @@ HARNESS = REPOSITORY_ROOT / "mt5" / "Experts" / "bot-ea" / "GoldEngineBearParity
 INCREMENTAL = REPOSITORY_ROOT / "mt5" / "Include" / "bot-ea" / "GoldEngineBearIncremental.mqh"
 SETUP = REPOSITORY_ROOT / "mt5" / "Include" / "bot-ea" / "GoldEngineBearSetup.mqh"
 RUNTIME = REPOSITORY_ROOT / "mt5" / "Include" / "bot-ea" / "GoldEngineRuntime.mqh"
+PERSISTENCE = REPOSITORY_ROOT / "mt5" / "Include" / "bot-ea" / "GoldEngineBearPersistence.mqh"
 
 
 def test_bear_types_lock_incremental_phases_and_v4_profile_contract() -> None:
@@ -153,12 +154,17 @@ def test_m15_scanner_ports_full_standalone_confluence_and_obstacle_geometry() ->
 def test_live_runtime_wires_only_bounded_incremental_bear_path() -> None:
     value = RUNTIME.read_text(encoding="utf-8")
 
-    assert '#include "GoldEngineBearIncremental.mqh"' in value
+    assert '#include "GoldEngineBearPersistence.mqh"' in value
     assert "CBearIncrementalMachine m_bear_machine" in value
     assert "CopyLatestBars(m_m15_history,50,scanner_bars)" in value
     assert "BearM15Setup" in value
     assert "m_bear_machine.OnBarClose" in value
     assert "m_bear_machine.SeedClosedHistory" in value
+    assert "CBearStateStore      m_bear_store" in value
+    assert "m_bear_store.Load" in value
+    assert "m_bear_store.Save" in value
+    assert "bear_load==BEAR_STATE_INVALID" in value
+    assert "BEAR_STATE_SAVE_FAILED" in value
     assert "bar.timeframe==PERIOD_H1 ||" in value
     assert "bar.timeframe==PERIOD_M15 ||" in value
     assert "bar.timeframe==PERIOD_M5" in value
@@ -168,3 +174,27 @@ def test_live_runtime_wires_only_bounded_incremental_bear_path() -> None:
     assert "bear_replay" not in value.casefold()
     assert "lookback_days" not in value.casefold()
     assert "OrderSend" not in value
+
+
+def test_bear_persistence_is_dual_slot_profile_bound_and_corruption_fail_closed() -> None:
+    value = PERSISTENCE.read_text(encoding="utf-8")
+
+    assert "class CBearStateStore" in value
+    assert '"bot-ea-state-"+profile_id+"-bear"+suffix+"-"' in value
+    assert 'first ? "a" : "b"' in value
+    assert 'WriteString(handle,"G13_BEAR_STATE")' in value
+    assert "StringLen(fingerprint)!=64" in value
+    assert "first.sequence>=second.sequence" in value
+    assert "bool SetNamespace" in value
+    assert "BEAR_STATE_MISSING" in value
+    assert "BEAR_STATE_LOADED" in value
+    assert "BEAR_STATE_STALE" in value
+    assert "BEAR_STATE_INVALID" in value
+    assert "current_time-as_of>maximum_age_seconds" in value
+    assert "ReadBars(handle,value.m1_bars,45)" in value
+    assert "ReadBars(handle,value.m15_bars,128)" in value
+    assert "FileTell(handle)==FileSize(handle)" in value
+    assert "FileDelete" not in value
+    assert "FileMove" not in value
+    assert "OrderSend" not in value
+    assert "WebRequest" not in value

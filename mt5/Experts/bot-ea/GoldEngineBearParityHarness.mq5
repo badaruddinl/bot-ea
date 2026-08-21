@@ -2,7 +2,7 @@
 #property version "1.130"
 #property description "Deterministic native incremental Bear parity harness"
 
-#include "../../Include/bot-ea/GoldEngineBearIncremental.mqh"
+#include "../../Include/bot-ea/GoldEngineBearPersistence.mqh"
 
 bool BearHarnessPassed=false;
 
@@ -130,6 +130,7 @@ void BuildBearM15(EngineBar &bars[])
 BearSetup BearFixtureSetup(void)
   {
    BearSetup setup;
+   ZeroMemory(setup);
    setup.time=D'2026.01.02 00:00:00';
    setup.symbol=_Symbol;
    setup.reason="v4_incremental_fixture";
@@ -491,6 +492,72 @@ bool EvaluateBearRestartAndExpiry(void)
           expiry_events[0].available_at==D'2026.01.02 00:45:00';
   }
 
+bool EvaluateBearPersistenceRoundTrip(void)
+  {
+   const bool goldm=_Symbol=="GOLDm#";
+   const string profile_id=(goldm ? "GOLDM" : "GOLDI");
+   const string fingerprint=
+      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+   CBearIncrementalMachine watching;
+   BearIncrementalEvent setup_events[];
+   if(!BuildBearWatchM1State(watching,setup_events))
+      return false;
+   CBearStateStore store;
+   if(!store.SetNamespace("harness") ||
+      !store.Save(profile_id,fingerprint,watching))
+      return false;
+   CBearIncrementalSnapshot watch_snapshot;
+   watching.Snapshot(watch_snapshot);
+   CBearIncrementalMachine loaded;
+   if(!loaded.Initialize(
+         profile_id,_Symbol,goldm ? 0.24 : 0.20,
+         watch_snapshot.as_of,180) ||
+      store.Load(
+         profile_id,_Symbol,fingerprint,
+         watch_snapshot.as_of+60,180,loaded)!=BEAR_STATE_LOADED ||
+      loaded.Phase()!=BEAR_PHASE_WATCH_M1 || loaded.Sequence()!=65)
+      return false;
+   EngineBar m1[];
+   BuildBearM1All(m1);
+   BearIncrementalEvent entry_events[];
+   BearEntryPlan entry_signal;
+   bool emitted=false;
+   if(!FeedBearHarnessBar(
+         loaded,m1[20],false,entry_events,entry_signal,emitted) ||
+      !emitted || loaded.Sequence()!=66 ||
+      !store.Save(profile_id,fingerprint,loaded))
+      return false;
+   CBearIncrementalSnapshot entry_snapshot;
+   loaded.Snapshot(entry_snapshot);
+   CBearIncrementalMachine recovered;
+   if(!recovered.Initialize(
+         profile_id,_Symbol,goldm ? 0.24 : 0.20,
+         entry_snapshot.as_of,180) ||
+      store.Load(
+         profile_id,_Symbol,fingerprint,
+         entry_snapshot.as_of+60,180,recovered)!=BEAR_STATE_LOADED ||
+      recovered.Phase()!=BEAR_PHASE_ENTRY_READY ||
+      recovered.Sequence()!=66)
+      return false;
+   CBearIncrementalMachine stale;
+   if(!stale.Initialize(
+         profile_id,_Symbol,goldm ? 0.24 : 0.20,
+         entry_snapshot.as_of,180) ||
+      store.Load(
+         profile_id,_Symbol,fingerprint,
+         entry_snapshot.as_of+181,180,stale)!=BEAR_STATE_STALE)
+      return false;
+   CBearIncrementalMachine wrong_fingerprint;
+   return wrong_fingerprint.Initialize(
+             profile_id,_Symbol,goldm ? 0.24 : 0.20,
+             entry_snapshot.as_of,180) &&
+          store.Load(
+             profile_id,_Symbol,
+             "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+             entry_snapshot.as_of+60,180,
+             wrong_fingerprint)==BEAR_STATE_INVALID;
+  }
+
 bool EvaluateBearIncrementalSequence(void)
   {
    const bool goldm=_Symbol=="GOLDm#";
@@ -642,9 +709,10 @@ int OnInit(void)
    const bool h1_reject_passed=EvaluateBearH1Rejection();
    const bool m5_acceptance_passed=EvaluateBearM5Acceptance();
    const bool restart_expiry_passed=EvaluateBearRestartAndExpiry();
+   const bool persistence_passed=EvaluateBearPersistenceRoundTrip();
    BearHarnessPassed=geometry_passed && incremental_passed && m15_passed &&
                      h1_reject_passed && m5_acceptance_passed &&
-                     restart_expiry_passed;
+                     restart_expiry_passed && persistence_passed;
    Print("G13_BEAR_PARITY profile=",_Symbol,
          " passed=",(BearHarnessPassed ? "true" : "false"),
          " h1_m5_m1=",(geometry_passed ? "true" : "false"),
@@ -652,7 +720,8 @@ int OnInit(void)
          " m15=",(m15_passed ? "true" : "false"),
          " h1_reject=",(h1_reject_passed ? "true" : "false"),
          " m5_acceptance=",(m5_acceptance_passed ? "true" : "false"),
-         " restart_expiry=",(restart_expiry_passed ? "true" : "false"));
+         " restart_expiry=",(restart_expiry_passed ? "true" : "false"),
+         " persistence=",(persistence_passed ? "true" : "false"));
    return BearHarnessPassed ? INIT_SUCCEEDED : INIT_FAILED;
   }
 

@@ -5,7 +5,7 @@
 #include "GoldEngineRevisedGeometry.mqh"
 #include "GoldEngineRevised.mqh"
 #include "GoldEngineRevisedSetup.mqh"
-#include "GoldEngineBearIncremental.mqh"
+#include "GoldEngineBearPersistence.mqh"
 #include "GoldEngineScheduler.mqh"
 
 class CGoldEngineRuntime
@@ -20,6 +20,7 @@ private:
    RevisedDecision     m_last_revised_decision;
    bool                m_has_revised_decision;
    CBearIncrementalMachine m_bear_machine;
+   CBearStateStore      m_bear_store;
    BearEntryPlan       m_last_bear_signal;
    bool                m_has_bear_signal;
    EngineBar           m_d1_history[];
@@ -225,6 +226,13 @@ private:
          const BearIncrementalEvent latest=events[ArraySize(events)-1];
          SetEvent(ENGINE_EVENT_BAR_CLOSED,latest.available_at,latest.reason);
         }
+      if(!m_bear_store.Save(
+            m_profile.profile_id,m_profile.profile_fingerprint,m_bear_machine))
+        {
+         m_data_healthy=false;
+         SetEvent(
+            ENGINE_EVENT_ERROR,bar.close_time,"BEAR_STATE_SAVE_FAILED");
+        }
      }
 
    void DispatchClosedBar(const EngineBar &bar)
@@ -311,7 +319,22 @@ public:
       if(!m_bear_machine.Initialize(
             m_profile.profile_id,m_profile.symbol,
             m_profile.profile_id=="GOLDM" ? 0.24 : 0.20,
-            bear_as_of,BearBrokerUtcOffsetMinutes(TimeCurrent())) ||
+            bear_as_of,BearBrokerUtcOffsetMinutes(TimeCurrent())))
+        {
+         Print("GOLD_ENGINE_INIT_REJECT profile=",m_profile.profile_id,
+               " reason=BEAR_MACHINE_INIT_FAILED");
+         return INIT_FAILED;
+        }
+      const BearStateLoadStatus bear_load=m_bear_store.Load(
+         m_profile.profile_id,m_profile.symbol,m_profile.profile_fingerprint,
+         TimeCurrent(),180,m_bear_machine);
+      if(bear_load==BEAR_STATE_INVALID)
+        {
+         Print("GOLD_ENGINE_INIT_REJECT profile=",m_profile.profile_id,
+               " reason=BEAR_STATE_INVALID");
+         return INIT_FAILED;
+        }
+      if((bear_load==BEAR_STATE_MISSING || bear_load==BEAR_STATE_STALE) &&
          !m_bear_machine.SeedClosedHistory(
             m_m1_history,m_m5_history,m_m15_history,m_h1_history))
         {
@@ -377,6 +400,9 @@ public:
 
    void Deinitialize(const int reason)
      {
+      if(m_initialized)
+         m_bear_store.Save(
+            m_profile.profile_id,m_profile.profile_fingerprint,m_bear_machine);
       m_initialized=false;
       m_data_healthy=false;
       Print("GOLD_ENGINE_STOP profile=",m_profile.profile_id,
