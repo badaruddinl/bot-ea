@@ -135,7 +135,7 @@ function Get-PythonRoles {
     )
     foreach ($process in $processes) {
         $command = [string]$process.CommandLine
-        $role = if ($command -match '(?i)gold_event_bridge') {
+        $role = if ($command -match '(?i)(gold_event_bridge|run-gold-event-bridge)') {
             'EVENT_BRIDGE'
         }
         elseif ($command -match '(?i)(gold_orchestrator|run-final-portfolio-worker|goldm_revised|goldm_bear)') {

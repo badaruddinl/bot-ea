@@ -127,6 +127,12 @@ def test_bridge_token_uses_current_user_dpapi_and_never_enters_process_arguments
     assert "Token=" not in secret_installer
 
 
+def test_capture_classifies_script_and_module_bridge_names() -> None:
+    capture = (ROOT / "scripts/capture-g20-unattended-evidence.ps1").read_text(encoding="utf-8")
+
+    assert "gold_event_bridge|run-gold-event-bridge" in capture
+
+
 def test_chat_inspector_never_accepts_or_prints_plaintext_token() -> None:
     value = CHAT_INSPECTOR.read_text(encoding="utf-8")
 

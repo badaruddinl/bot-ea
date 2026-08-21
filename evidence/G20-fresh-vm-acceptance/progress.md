@@ -90,8 +90,15 @@ Actual VM deployment batch:
 - final regression after the G20 changes: 809 fast tests plus 77 subtests PASS;
   154 slow tests plus 64 subtests PASS.
 
-Postboot capture and strict verification remain pending until the operator logs
-in after the unattended window; this is required only to read the evidence that
-was already written before login, not to start the system.
+Postboot capture disproved the Session 0 design. The task started before login,
+but MT5 did not execute either EA or append any postboot event. Details and the
+strict FAIL result are retained in `session0-failure.md`. The experiment task is
+disabled and all experiment processes are stopped.
+
+G20 remains IN_PROGRESS pending explicit operator authorization (or rejection)
+of automatic console sign-in plus immediate workstation lock. This is the only
+remaining design that supplies the interactive Windows session required by MT5
+without manual login, but it stores the Windows credential as an LSA secret and
+therefore changes the security contract.
 
 REAL orders: **DISABLED**
