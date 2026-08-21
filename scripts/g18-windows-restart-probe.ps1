@@ -53,6 +53,9 @@ function Read-Heartbeat {
     if ($heartbeat.order_authority -ne "DISABLED") {
         throw "$ProfileId heartbeat order authority is unsafe"
     }
+    if ([string]$heartbeat.runtime_id -notmatch "^[0-9]+-[0-9]+-[0-9]+$") {
+        throw "$ProfileId heartbeat runtime identity is invalid"
+    }
     return [ordered]@{
         profile_id = [string]$heartbeat.profile_id
         profile_fingerprint = [string]$heartbeat.profile_fingerprint
@@ -61,6 +64,7 @@ function Read-Heartbeat {
         generation = [long]$heartbeat.generation
         server_time = [long]$heartbeat.server_time
         chart_id = [long]$heartbeat.chart_id
+        runtime_id = [string]$heartbeat.runtime_id
         last_write_utc = (Get-Item -LiteralPath $Path).LastWriteTimeUtc.ToString("O")
         order_authority = "DISABLED"
     }
@@ -138,7 +142,7 @@ foreach ($profile in @($goldi, $goldm)) {
         $profile.server -ne [string]$before.server) {
         throw "$($profile.profile_id) binding changed across reboot"
     }
-    if ($profile.chart_id -eq [long]$before.chart_id) {
+    if ($profile.runtime_id -eq [string]$before.runtime_id) {
         throw "$($profile.profile_id) process identity did not change across reboot"
     }
 }

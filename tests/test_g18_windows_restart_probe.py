@@ -15,6 +15,9 @@ def test_probe_requires_real_boot_change_and_post_boot_heartbeats() -> None:
     assert 'throw "Windows/VM boot ID did not change"' in source
     assert "heartbeat was not written after reboot" in source
     assert "process identity did not change across reboot" in source
+    assert "runtime_id" in source
+    assert "$profile.runtime_id -eq [string]$before.runtime_id" in source
+    assert "$profile.chart_id -eq [long]$before.chart_id" not in source
     assert "fingerprint changed across reboot" in source
     assert "binding changed across reboot" in source
 

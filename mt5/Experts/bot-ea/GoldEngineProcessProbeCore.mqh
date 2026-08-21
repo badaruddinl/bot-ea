@@ -4,6 +4,7 @@
 ProfileConfig ProbeProfile;
 CEngineInstanceLease ProbeLease;
 string ProbePath="";
+string ProbeRuntimeId="";
 ulong ProbeGeneration=0;
 
 bool ProbeExpectedBinding(long &login,string &server)
@@ -32,10 +33,11 @@ bool WriteProbeHeartbeat(void)
       "{\"profile_id\":\"%s\",\"profile_fingerprint\":\"%s\","
       "\"account_login\":%I64d,\"server\":\"%s\",\"generation\":%I64u,"
       "\"server_time\":%I64d,\"chart_id\":%I64d,"
+      "\"runtime_id\":\"%s\","
       "\"order_authority\":\"DISABLED\"}\r\n",
       ProbeProfile.profile_id,ProbeProfile.profile_fingerprint,
       AccountInfoInteger(ACCOUNT_LOGIN),AccountInfoString(ACCOUNT_SERVER),
-      ProbeGeneration,(long)TimeCurrent(),ChartID()));
+      ProbeGeneration,(long)TimeCurrent(),ChartID(),ProbeRuntimeId));
    FileFlush(handle);
    FileClose(handle);
    return true;
@@ -62,6 +64,8 @@ int OnInit(void)
       return INIT_FAILED;
      }
    ProbePath="bot-ea\\probe\\"+ProbeProfile.profile_id+".json";
+   ProbeRuntimeId=StringFormat(
+      "%I64d-%I64u-%I64d",(long)TimeLocal(),GetTickCount64(),ChartID());
    if(!WriteProbeHeartbeat())
       return INIT_FAILED;
    EventSetTimer(1);
