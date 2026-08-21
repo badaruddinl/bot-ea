@@ -132,9 +132,17 @@ def test_final_goldi_is_tag_pinned_demo_execution(monkeypatch: pytest.MonkeyPatc
     assert config.demo_execution
     assert config.orders_enabled
     assert config.terminal.expected_trade_mode == "demo"
-    assert config.balance_tiers == ((0.0, 0.01), (100.0, 0.02))
+    assert config.balance_tiers == (
+        (0.0, 0.01),
+        (100.0, 0.02),
+        (200.0, 0.05),
+        (1000.0, 0.1),
+        (2000.0, 0.2),
+        (10000.0, 1.0),
+        (20000.0, 2.0),
+    )
     assert config.maximum_positions == 2
-    assert config.maximum_total_lot == 0.04
+    assert config.maximum_total_lot == 4.0
     assert config.telegram.audience == "goldi_approved"
     assert config.revised["source_tag"] == "goldi-profit-v1-research-20260819"
     assert config.bear["source_tag"] == "goldi-profit-v1-research-20260819"
@@ -156,9 +164,52 @@ def test_final_goldm_is_composite_real_and_uses_aggressive_tiers(
         (30.0, 0.5),
         (50.0, 1.0),
         (100.0, 2.0),
+        (200.0, 5.0),
+        (1000.0, 10.0),
+        (2000.0, 20.0),
+        (10000.0, 100.0),
     )
+    assert config.maximum_total_lot == 200.0
     assert config.revised["component"] == "revised"
     assert config.bear["component"] == "bear"
+
+
+@pytest.mark.parametrize(
+    ("group", "balance", "expected"),
+    [
+        ("goldi", 0.0, 0.01),
+        ("goldi", 99.99, 0.01),
+        ("goldi", 100.0, 0.02),
+        ("goldi", 199.99, 0.02),
+        ("goldi", 200.0, 0.05),
+        ("goldi", 999.99, 0.05),
+        ("goldi", 1000.0, 0.1),
+        ("goldi", 2000.0, 0.2),
+        ("goldi", 10000.0, 1.0),
+        ("goldi", 20000.0, 2.0),
+        ("goldm", 0.0, 0.1),
+        ("goldm", 9.99, 0.1),
+        ("goldm", 10.0, 0.2),
+        ("goldm", 30.0, 0.5),
+        ("goldm", 50.0, 1.0),
+        ("goldm", 100.0, 2.0),
+        ("goldm", 200.0, 5.0),
+        ("goldm", 1000.0, 10.0),
+        ("goldm", 2000.0, 20.0),
+        ("goldm", 9999.99, 20.0),
+        ("goldm", 10000.0, 100.0),
+    ],
+)
+def test_balance_tier_boundaries_are_continuous(
+    monkeypatch: pytest.MonkeyPatch,
+    group: str,
+    balance: float,
+    expected: float,
+) -> None:
+    _bind_env(monkeypatch)
+    config = load_worker_config(ROOT / f"config/final/{group}/worker.json")
+
+    assert config.lot_for_balance(balance) == expected
 
 
 class FakeMt5:
@@ -356,7 +407,7 @@ def test_goldi_demo_executor_places_order_at_locked_adaptive_lot(
     result = session.execute(signal)
 
     assert result["status"] == "EXECUTED"
-    assert result["volume"] == 0.02
+    assert result["volume"] == 0.1
     assert len(module.sent) == 1
     assert module.sent[0]["symbol"] == "GOLD.i#"
     assert module.sent[0]["magic"] == 26081911
@@ -418,7 +469,7 @@ def test_executor_rejects_stale_drift_broker_check_and_duplicate_without_send(
 @pytest.mark.parametrize(
     ("group", "module", "side", "volume"),
     [
-        ("goldi", DemoFakeMt5, Side.BUY, Decimal("0.02")),
+        ("goldi", DemoFakeMt5, Side.BUY, Decimal("0.1")),
         ("goldm", FakeMt5, Side.SELL, Decimal("1.0")),
     ],
 )

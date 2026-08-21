@@ -13,6 +13,9 @@ def write_fixture(root: Path, profile: str, *, result: str) -> None:
     evidence_root = root / "evidence"
     source_root.mkdir(parents=True, exist_ok=True)
     evidence_root.mkdir(parents=True, exist_ok=True)
+    include_root = root / "mt5" / "Include" / "bot-ea"
+    include_root.mkdir(parents=True, exist_ok=True)
+    (include_root / "Shared.mqh").write_text("// shared\n", encoding="utf-8")
     (source_root / f"{stem}.mq5").write_text(f"// {profile}\n", encoding="utf-8")
     (source_root / f"{stem}.ex5").write_bytes((profile.encode("ascii") * 1024)[:2048])
     (evidence_root / f"{stem}.compile.log").write_text(
@@ -31,6 +34,7 @@ def test_g11_compile_artifacts_are_profile_distinct_and_warning_clean(
 
     assert [artifact.profile_id for artifact in artifacts] == ["GOLDI", "GOLDM"]
     assert artifacts[0].binary_sha256 != artifacts[1].binary_sha256
+    assert artifacts[0].include_bundle_sha256 == artifacts[1].include_bundle_sha256
     assert all(artifact.binary_size >= 1024 for artifact in artifacts)
 
 

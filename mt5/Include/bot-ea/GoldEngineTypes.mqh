@@ -70,6 +70,9 @@ struct ProfileConfig
    long                    magic;
    ENUM_ACCOUNT_TRADE_MODE expected_trade_mode;
    bool                    order_authority_default;
+   int                     sizing_tier_count;
+   double                  sizing_minimum_balance[9];
+   double                  sizing_lot[9];
    int                     max_positions;
    double                  max_total_lot;
    int                     deviation_points;

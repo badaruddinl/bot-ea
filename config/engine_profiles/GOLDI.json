@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "profile_id": "GOLDI",
-  "profile_version": "1.0.0",
+  "profile_version": "1.1.0",
   "strategy_version": "revised-bear-baseline-b042d51",
   "symbol": "GOLD.i#",
   "expected_trade_mode": "demo",
@@ -17,10 +17,15 @@
   "magic": 26081911,
   "sizing_tiers": [
     {"minimum_balance": "0.0", "lot": "0.01"},
-    {"minimum_balance": "100.0", "lot": "0.02"}
+    {"minimum_balance": "100.0", "lot": "0.02"},
+    {"minimum_balance": "200.0", "lot": "0.05"},
+    {"minimum_balance": "1000.0", "lot": "0.1"},
+    {"minimum_balance": "2000.0", "lot": "0.2"},
+    {"minimum_balance": "10000.0", "lot": "1.0"},
+    {"minimum_balance": "20000.0", "lot": "2.0"}
   ],
   "max_positions": 2,
-  "max_total_lot": "0.04",
+  "max_total_lot": "4.0",
   "deviation_points": 30,
   "revised_config": {
     "path": "config/final/goldi/revised.json",

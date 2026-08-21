@@ -11,6 +11,7 @@ from pathlib import Path
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPOSITORY_ROOT / "src"))
 
+from gold_engine_core import load_named_profile  # noqa: E402
 from gold_engine_core.rules.revised import (  # noqa: E402
     RevisedBar,
     RevisedEngine,
@@ -163,6 +164,7 @@ def serialize_decision(value) -> dict[str, object]:
 def build_vectors() -> list[dict[str, object]]:
     result: list[dict[str, object]] = []
     for profile_id, symbol in (("GOLDI", "GOLD.i#"), ("GOLDM", "GOLDm#")):
+        profile_fingerprint = load_named_profile(REPOSITORY_ROOT, profile_id).fingerprint
         base = base_snapshot(symbol)
         cases = (
             ("range_entry", base),
@@ -187,6 +189,7 @@ def build_vectors() -> list[dict[str, object]]:
                     "case_id": case_id,
                     "expected": serialize_decision(decision),
                     "profile_id": profile_id,
+                    "profile_fingerprint": profile_fingerprint,
                     "schema_version": 1,
                     "snapshot": serialize_snapshot(snapshot),
                 }

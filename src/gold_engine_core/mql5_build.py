@@ -13,6 +13,7 @@ class Mql5BuildError(ValueError):
 class Mql5CompileArtifact:
     profile_id: str
     source_sha256: str
+    include_bundle_sha256: str
     binary_sha256: str
     compile_log_sha256: str
     binary_size: int
@@ -24,6 +25,7 @@ class Mql5CompileArtifact:
             "binary_size": self.binary_size,
             "compile_log_sha256": self.compile_log_sha256,
             "compile_result": self.compile_result,
+            "include_bundle_sha256": self.include_bundle_sha256,
             "profile_id": self.profile_id,
             "source_sha256": self.source_sha256,
         }
@@ -34,6 +36,11 @@ def verify_g11_compile_artifacts(
     evidence_root: Path,
 ) -> tuple[Mql5CompileArtifact, ...]:
     artifacts: list[Mql5CompileArtifact] = []
+    include_root = repository_root / "mt5" / "Include" / "bot-ea"
+    include_paths = tuple(sorted(include_root.glob("*.mqh"), key=lambda path: path.name))
+    if not include_paths:
+        raise Mql5BuildError(f"shared include bundle is missing: {include_root}")
+    include_bundle_sha256 = _bundle_sha256(include_paths)
     for profile_id, stem in (
         ("GOLDI", "GoldEngine-GOLDi"),
         ("GOLDM", "GoldEngine-GOLDm"),
@@ -63,6 +70,7 @@ def verify_g11_compile_artifacts(
             Mql5CompileArtifact(
                 profile_id=profile_id,
                 source_sha256=_sha256(source_path),
+                include_bundle_sha256=include_bundle_sha256,
                 binary_sha256=_sha256(binary_path),
                 compile_log_sha256=_sha256(log_path),
                 binary_size=binary_size,
@@ -89,4 +97,14 @@ def _sha256(path: Path) -> str:
     with path.open("rb") as handle:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _bundle_sha256(paths: tuple[Path, ...]) -> str:
+    digest = hashlib.sha256()
+    for path in paths:
+        digest.update(path.name.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(path.read_bytes().replace(b"\r\n", b"\n"))
+        digest.update(b"\0")
     return digest.hexdigest()

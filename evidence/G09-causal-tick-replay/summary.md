@@ -26,8 +26,8 @@ When ticks exist, BUY outcomes use bid and SELL outcomes use ask in timestamp or
 
 | Profile | Symbol | Closed bars | Ticks | Decisions | Warm-up suppressed | Event hash | Report SHA-256 |
 |---|---|---:|---:|---:|---:|---|---|
-| GOLDI | `GOLD.i#` | 4 | 2 | 4 | 4 | `9361ba19a8bdc596207733fd1abfd722477dc4e8569f0ede8c4440beaa46b04c` | `75dd1328624c31336dff42e0bf0fcc0d8dfe3a0f4df3ed4a83c75d3912e238d8` |
-| GOLDM | `GOLDm#` | 4 | 2 | 4 | 4 | `3a0ed11ad35d46e6a05e8cac67b77e38940505dc3a5856abe1fc0a430e6c5c0f` | `e43f447f3ef89a4b9bf09a8c2ffcebff346f8b36339d6809646a2a182c70346d` |
+| GOLDI | `GOLD.i#` | 4 | 2 | 4 | 4 | `9361ba19a8bdc596207733fd1abfd722477dc4e8569f0ede8c4440beaa46b04c` | `5292a8b21047812db8d7d4ba2f0ff7dd0417ff0c61ba3ab06f5e423cb82426f6` |
+| GOLDM | `GOLDm#` | 4 | 2 | 4 | 4 | `3a0ed11ad35d46e6a05e8cac67b77e38940505dc3a5856abe1fc0a430e6c5c0f` | `0218dbb0c0ba48920cca34cd688c6f12056b0697792ea0f76ab1078542c9c617` |
 
 The evidence builder reproduces both report files byte-identically.
 

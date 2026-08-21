@@ -8,12 +8,14 @@ Scope: GOLDI, GOLDM, CROSS_PROFILE. REAL order authority remains disabled.
 
 | Profile | Manifest | Canonical SHA-256 |
 |---|---|---|
-| GOLDI | `config/engine_profiles/GOLDI.json` | `23598f01c472aebafd36cb15358178d40b76fab382cd0487ba3158c8421ead64` |
-| GOLDM | `config/engine_profiles/GOLDM.json` | `c2e513cb100da86c814d9d65566c835da96f3ea1fd79d35602f2c34fd7b6dac6` |
+| GOLDI | `config/engine_profiles/GOLDI.json` | `7af1d75e1be54ba4505b32cedcf53f4317dea0a90a2a0636510884d0d408c5b5` |
+| GOLDM | `config/engine_profiles/GOLDM.json` | `704b383f959298c8a1b1dd5c21665ffb7a022dc9831c7498e68cc37f607d4c24` |
 
 The manifests are strict, immutable typed contracts. Unknown keys, non-canonical values, checksum mismatch, component hash swap, cross-profile symbol/magic/path/audience reuse, unsafe relative paths, and invalid runtime identity fail closed.
 
 GOLDM records its production identity as REAL but sets `order_authority_default=disabled`; engineering DEMO acceptance requires an explicit call-site flag and does not authorize orders.
+
+The canonical fingerprints were reissued after the explicit 2026-08-21 balance-tier sizing amendment. Strategy/component hashes, symbols, magic values, and disabled REAL authority are unchanged.
 
 ## Focused verification
 

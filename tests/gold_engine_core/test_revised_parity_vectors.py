@@ -6,6 +6,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from gold_engine_core import load_named_profile
+
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 VECTOR_PATH = REPOSITORY_ROOT / "corpus" / "revised_parity" / "vectors.json"
 
@@ -29,6 +31,10 @@ def test_revised_parity_vectors_are_complete_profile_symmetric_and_hashed() -> N
     }
     by_case: dict[str, list[dict[str, object]]] = {}
     for item in payload:
+        assert (
+            item["profile_fingerprint"]
+            == load_named_profile(REPOSITORY_ROOT, item["profile_id"]).fingerprint
+        )
         by_case.setdefault(item["case_id"], []).append(item["expected"])
     assert all(values[0] == values[1] for values in by_case.values())
 

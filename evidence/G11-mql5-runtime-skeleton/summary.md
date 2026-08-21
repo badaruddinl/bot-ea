@@ -26,22 +26,24 @@ MetaEditor build 6090:
 
 \`\`\`text
 GOLDI Result: 0 errors, 0 warnings
-binary_sha256=6142b2b840e400d11fb5c6c1a3bb8eb553d15c56f4c5119642f6697724713fb2
+binary_sha256=040fbdcda5c6c34961147255bd643bba0e33d17e04bf632cddf56c8c6f62a703
 
 GOLDM Result: 0 errors, 0 warnings
-binary_sha256=86acaf6bf47d80532575c32255089efa9dbf44eb8973c48582a4a2c03aa95f56
+binary_sha256=f78d03b6e5c18b6406639208a2528a0930d2a2b3792bfd13eb5373c0121e03b9
 \`\`\`
 
 The binaries are intentionally distinct. Raw compile logs and generated EX5
 files remain local/ignored; \`compile-evidence.json\` records their hashes,
 sizes, source hashes, build, and clean result.
 
+\`include_bundle_sha256=7ae182c7e63338c38f3965dcbe37059d903c8be0e495da63ffae1d5ed7435efe\`
+
 ## Tests
 
 \`\`\`text
 9 passed
 pytest_junit_sha256=7b2835cd21a6c4e250ffe0d3c1f85919681f08f499db5f96d8fbbdf10066d060
-compile_evidence_sha256=470e90b78d1e289af4822986cf9689279ee7159c11d086a3402605c03aa64d16
+compile_evidence_sha256=1068d09f3de07b6466c23a979ff6a6318828e964ccced4cf9362fb5f0f33cb0e
 \`\`\`
 
 Strategy semantics and executable order authority are not part of G11. They

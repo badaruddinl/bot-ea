@@ -17,29 +17,77 @@ void LoadBuildProfile(ProfileConfig &config)
   {
 #ifdef BUILD_PROFILE_GOLDI
    config.profile_id="GOLDI";
-   config.profile_version="1.0.0";
-   config.profile_fingerprint="23598f01c472aebafd36cb15358178d40b76fab382cd0487ba3158c8421ead64";
+   config.profile_version="1.1.0";
+   config.profile_fingerprint="7af1d75e1be54ba4505b32cedcf53f4317dea0a90a2a0636510884d0d408c5b5";
    config.strategy_version="revised-bear-baseline-b042d51";
    config.symbol="GOLD.i#";
    config.terminal_identity="GOLDI_DEDICATED_TERMINAL";
    config.magic=26081911;
    config.expected_trade_mode=ACCOUNT_TRADE_MODE_DEMO;
+   config.sizing_tier_count=7;
+   config.sizing_minimum_balance[0]=0.0;
+   config.sizing_lot[0]=0.01;
+   config.sizing_minimum_balance[1]=100.0;
+   config.sizing_lot[1]=0.02;
+   config.sizing_minimum_balance[2]=200.0;
+   config.sizing_lot[2]=0.05;
+   config.sizing_minimum_balance[3]=1000.0;
+   config.sizing_lot[3]=0.1;
+   config.sizing_minimum_balance[4]=2000.0;
+   config.sizing_lot[4]=0.2;
+   config.sizing_minimum_balance[5]=10000.0;
+   config.sizing_lot[5]=1.0;
+   config.sizing_minimum_balance[6]=20000.0;
+   config.sizing_lot[6]=2.0;
    config.max_positions=2;
-   config.max_total_lot=0.04;
+   config.max_total_lot=4.0;
 #else
    config.profile_id="GOLDM";
-   config.profile_version="1.0.0";
-   config.profile_fingerprint="c2e513cb100da86c814d9d65566c835da96f3ea1fd79d35602f2c34fd7b6dac6";
+   config.profile_version="1.1.0";
+   config.profile_fingerprint="704b383f959298c8a1b1dd5c21665ffb7a022dc9831c7498e68cc37f607d4c24";
    config.strategy_version="revised-bear-baseline-b042d51";
    config.symbol="GOLDm#";
    config.terminal_identity="GOLDM_DEDICATED_TERMINAL";
    config.magic=26081912;
    config.expected_trade_mode=ACCOUNT_TRADE_MODE_REAL;
+   config.sizing_tier_count=9;
+   config.sizing_minimum_balance[0]=0.0;
+   config.sizing_lot[0]=0.1;
+   config.sizing_minimum_balance[1]=10.0;
+   config.sizing_lot[1]=0.2;
+   config.sizing_minimum_balance[2]=30.0;
+   config.sizing_lot[2]=0.5;
+   config.sizing_minimum_balance[3]=50.0;
+   config.sizing_lot[3]=1.0;
+   config.sizing_minimum_balance[4]=100.0;
+   config.sizing_lot[4]=2.0;
+   config.sizing_minimum_balance[5]=200.0;
+   config.sizing_lot[5]=5.0;
+   config.sizing_minimum_balance[6]=1000.0;
+   config.sizing_lot[6]=10.0;
+   config.sizing_minimum_balance[7]=2000.0;
+   config.sizing_lot[7]=20.0;
+   config.sizing_minimum_balance[8]=10000.0;
+   config.sizing_lot[8]=100.0;
    config.max_positions=2;
-   config.max_total_lot=2.0;
+   config.max_total_lot=200.0;
 #endif
    config.order_authority_default=false;
    config.deviation_points=30;
+  }
+
+double ResolveProfileLot(const ProfileConfig &config,const double balance)
+  {
+   if(config.sizing_tier_count<=0 || balance<0.0)
+      return 0.0;
+   double selected=config.sizing_lot[0];
+   for(int index=1;index<config.sizing_tier_count;index++)
+     {
+      if(balance<config.sizing_minimum_balance[index])
+         break;
+      selected=config.sizing_lot[index];
+     }
+   return selected;
   }
 
 bool ValidateBuildProfile(const ProfileConfig &config,

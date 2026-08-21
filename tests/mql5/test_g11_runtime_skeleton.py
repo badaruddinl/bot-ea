@@ -54,6 +54,26 @@ def test_embedded_profiles_match_canonical_manifests() -> None:
         assert "config.order_authority_default=false" in profile_source
 
 
+def test_embedded_balance_tiers_and_resolver_match_profile_contracts() -> None:
+    value = source(INCLUDE_ROOT / "GoldEngineProfile.mqh")
+    for profile_id in ("GOLDI", "GOLDM"):
+        manifest = json.loads(
+            (REPOSITORY_ROOT / "config" / "engine_profiles" / f"{profile_id}.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        for index, tier in enumerate(manifest["sizing_tiers"]):
+            assert (
+                f"config.sizing_minimum_balance[{index}]={float(tier['minimum_balance'])};"
+            ) in value
+            assert f"config.sizing_lot[{index}]={float(tier['lot'])};" in value
+        assert f"config.sizing_tier_count={len(manifest['sizing_tiers'])};" in value
+        assert f"config.max_total_lot={float(manifest['max_total_lot'])};" in value
+
+    assert "double ResolveProfileLot" in value
+    assert "balance<config.sizing_minimum_balance[index]" in value
+
+
 def test_runtime_declares_all_required_g11_contract_types() -> None:
     value = source(INCLUDE_ROOT / "GoldEngineTypes.mqh")
     for contract in (
