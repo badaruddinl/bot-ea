@@ -34,6 +34,19 @@ def test_success_retcode_contract_is_explicit_and_fail_closed() -> None:
     assert "profile.order_authority_default" in value
 
 
+def test_ambiguous_result_is_reconciled_by_exact_signal_identity_without_retry() -> None:
+    value = BROKER.read_text(encoding="utf-8")
+
+    assert "ExecutionRetcodeAmbiguous" in value
+    assert "TRADE_RETCODE_TIMEOUT" in value
+    assert "TRADE_RETCODE_CONNECTION" in value
+    assert "ReconcileSignalPosition" in value
+    assert "ExecutionSignalComment(plan.profile_id,plan.signal_id)" in value
+    assert "matches!=1" in value
+    assert "EXECUTION_SUBMIT_RECONCILED" in value
+    assert "ORDER_RECONCILED_AFTER_AMBIGUOUS_RESULT" in value
+
+
 def test_disabled_harness_proves_no_position_mutation() -> None:
     value = HARNESS.read_text(encoding="utf-8")
     assert "broker.Initialize(profile,false,reason)" in value

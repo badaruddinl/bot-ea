@@ -10,7 +10,8 @@ enum ExecutionSubmitState
    EXECUTION_SUBMIT_DISABLED=1,
    EXECUTION_SUBMIT_REJECTED=2,
    EXECUTION_SUBMIT_SENT=3,
-   EXECUTION_SUBMIT_FAILED=4
+   EXECUTION_SUBMIT_FAILED=4,
+   EXECUTION_SUBMIT_RECONCILED=5
   };
 
 struct ExecutionReceipt
@@ -68,6 +69,14 @@ bool ExecutionRetcodeSuccess(const uint retcode)
           retcode==TRADE_RETCODE_DONE_PARTIAL;
   }
 
+bool ExecutionRetcodeAmbiguous(const uint retcode)
+  {
+   return retcode==0 ||
+          retcode==TRADE_RETCODE_ERROR ||
+          retcode==TRADE_RETCODE_TIMEOUT ||
+          retcode==TRADE_RETCODE_CONNECTION;
+  }
+
 void ExecutionResetPositionReceipt(PositionActionReceipt &receipt)
   {
    receipt.state=POSITION_ACTION_NONE;
@@ -84,6 +93,47 @@ private:
    CTrade        m_trade;
    bool          m_initialized;
    bool          m_authority_enabled;
+
+   bool ReconcileSignalPosition(const SignalPlan &plan,
+                                ExecutionReceipt &receipt,
+                                string &reason)
+     {
+      const string expected_comment=ExecutionSignalComment(
+         plan.profile_id,plan.signal_id);
+      int matches=0;
+      ulong matched_ticket=0;
+      double matched_price=0.0;
+      double matched_volume=0.0;
+      const int total=PositionsTotal();
+      for(int index=0;index<total;index++)
+        {
+         const ulong ticket=PositionGetTicket(index);
+         if(ticket==0 || !PositionSelectByTicket(ticket))
+            continue;
+         if(PositionGetString(POSITION_SYMBOL)!=m_profile.symbol ||
+            PositionGetInteger(POSITION_MAGIC)!=m_profile.magic ||
+            PositionGetString(POSITION_COMMENT)!=expected_comment)
+            continue;
+         matches++;
+         matched_ticket=ticket;
+         matched_price=PositionGetDouble(POSITION_PRICE_OPEN);
+         matched_volume=PositionGetDouble(POSITION_VOLUME);
+        }
+      if(matches!=1)
+        {
+         reason=(matches==0 ? "AMBIGUOUS_RESULT_NO_POSITION" :
+                 "AMBIGUOUS_RESULT_MULTIPLE_POSITIONS");
+         return false;
+        }
+      receipt.state=EXECUTION_SUBMIT_RECONCILED;
+      receipt.sent=true;
+      receipt.order_ticket=matched_ticket;
+      receipt.executed_price=matched_price;
+      receipt.executed_volume=matched_volume;
+      receipt.reason="ORDER_RECONCILED_AFTER_AMBIGUOUS_RESULT";
+      reason=receipt.reason;
+      return true;
+     }
 
    bool SelectOwnedPosition(const ulong ticket,string &reason)
      {
@@ -224,6 +274,9 @@ public:
          reason=receipt.reason;
          return true;
         }
+      if(ExecutionRetcodeAmbiguous(receipt.retcode) &&
+         ReconcileSignalPosition(plan,receipt,reason))
+         return true;
       receipt.state=EXECUTION_SUBMIT_FAILED;
       receipt.reason="ORDER_SEND_FAILED:"+m_trade.ResultRetcodeDescription();
       reason=receipt.reason;
