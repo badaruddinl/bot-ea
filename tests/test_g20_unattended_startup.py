@@ -14,6 +14,7 @@ GOLDM_PRESET = ROOT / "config/mql5/presets/G20-GOLDM.set"
 PREPARE = ROOT / "scripts/prepare-g20-vm.ps1"
 BRIDGE_RUNNER = ROOT / "scripts/run-gold-event-bridge.py"
 SECRET_INSTALLER = ROOT / "scripts/set-g20-telegram-secret.ps1"
+CHAT_INSPECTOR = ROOT / "scripts/inspect-g20-telegram-chats.ps1"
 RUNTIME = ROOT / "mt5/Include/bot-ea/GoldEngineRuntime.mqh"
 EVENTS = ROOT / "src/gold_event_bridge/events.py"
 
@@ -124,3 +125,15 @@ def test_bridge_token_uses_current_user_dpapi_and_never_enters_process_arguments
     assert "ConvertFrom-SecureString" in secret_installer
     assert "SetAccessRuleProtection" in secret_installer
     assert "Token=" not in secret_installer
+
+
+def test_chat_inspector_never_accepts_or_prints_plaintext_token() -> None:
+    value = CHAT_INSPECTOR.read_text(encoding="utf-8")
+
+    assert "token_secret_path" not in value
+    assert "ConvertTo-SecureString" in value
+    assert "ZeroFreeBSTR" in value
+    assert "getUpdates" in value
+    assert "chat_id" in value
+    assert "Write-Output $token" not in value
+    assert "param(\n    [string]$SecretPath" in value
