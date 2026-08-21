@@ -615,7 +615,7 @@ Goal hanya selesai bila seluruh required cell PASS.
 | G16 Event outbox/bridge | PASS | PASS | PASS | PASS | `evidence/G16-event-bridge/` |
 | G17 Happy-path E2E | PASS | PASS | PASS | PASS | `evidence/G17-happy-path-e2e/` |
 | G18 Failure/restart E2E | PASS | PASS | PASS | PASS | `evidence/G18-failure-restart-e2e/` |
-| G19 Resource/storage/latency | NOT_STARTED | NOT_STARTED | NOT_STARTED | NOT_STARTED | |
+| G19 Resource/storage/latency | IN_PROGRESS | IN_PROGRESS | IN_PROGRESS | IN_PROGRESS | `evidence/G19-resource-storage-latency/` |
 | G20 Fresh VM acceptance | NOT_STARTED | NOT_STARTED | NOT_STARTED | NOT_STARTED | |
 | G21 Final release evidence | NOT_STARTED | NOT_STARTED | NOT_STARTED | NOT_STARTED | |
 

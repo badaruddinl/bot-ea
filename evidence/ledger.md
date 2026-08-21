@@ -32,6 +32,7 @@ REAL order authority: **DISABLED**
 | G16 | PASS | SHARED, GOLDI, GOLDM, CROSS_PROFILE | `evidence/G16-event-bridge/` | Profile-specific append-only EA spool, atomic idempotent SQLite ingest/ACK, recipient-level retry, GOLDI-approved/GOLDM-admin isolation, WATCH suppression, native tester, warning-clean compile, 820 fast tests, 218 slow tests, and quality gate passed. |
 | G17 | PASS | SHARED, GOLDI, GOLDM, CROSS_PROFILE | `evidence/G17-happy-path-e2e/` | GOLDI actual DEMO and GOLDM isolated tester chains completed through order/position/close/spool/SQLite/actual Telegram, exact GOLDM refusal passed, cross-profile leakage stayed zero, compile/regression/quality passed, and REAL authority remained disabled. |
 | G18 | PASS | SHARED, GOLDI, GOLDM, CROSS_PROFILE | `evidence/G18-failure-restart-e2e/` | Strict failure/restart certification passed, including an actual Windows Server VM boot-ID change, fresh GOLDI/GOLDM runtime identities, recovery/isolation, and disabled REAL authority. |
+| G19 | IN_PROGRESS | SHARED, GOLDI, GOLDM, CROSS_PROFILE | `evidence/G19-resource-storage-latency/` | Measuring per-profile MT5/EA, bridge, DB, spool, and latency trends; no PASS claimed yet. |
 
 Raw or large evidence is stored outside Git under:
 
