@@ -242,6 +242,255 @@ void AppendBearEvents(const BearIncrementalEvent &source[],
       target[start+index]=source[index];
   }
 
+bool FeedBearHarnessBar(CBearIncrementalMachine &machine,
+                        const EngineBar &bar,
+                        const bool has_setup,
+                        BearIncrementalEvent &all_events[],
+                        BearEntryPlan &last_signal,
+                        bool &has_signal)
+  {
+   const BearSetup setup=BearFixtureSetup();
+   BearIncrementalEvent events[];
+   BearEntryPlan signal;
+   bool emitted=false;
+   string error="";
+   if(!machine.OnBarClose(
+         bar.timeframe,bar,has_setup,setup,
+         events,signal,emitted,error) || error!="OK")
+      return false;
+   AppendBearEvents(events,all_events);
+   if(emitted)
+     {
+      last_signal=signal;
+      has_signal=true;
+     }
+   return true;
+  }
+
+void BuildBearFlatH1(EngineBar &bars[])
+  {
+   BuildBearH1(bars);
+   for(int index=0;index<ArraySize(bars);index++)
+     {
+      bars[index].open=100.0;
+      bars[index].high=100.2;
+      bars[index].low=99.8;
+      bars[index].close=100.0;
+     }
+  }
+
+void BuildBearAcceptedM5All(EngineBar &bars[])
+  {
+   BuildBearM5All(bars);
+   SetBearHarnessBar(
+      bars[20],PERIOD_M5,D'2026.01.02 00:15:00',
+      100.2,100.8,100.1,100.6,20);
+   SetBearHarnessBar(
+      bars[21],PERIOD_M5,D'2026.01.02 00:20:00',
+      100.6,101.0,100.4,100.8,21);
+  }
+
+bool EvaluateBearH1Rejection(void)
+  {
+   const bool goldm=_Symbol=="GOLDm#";
+   const string profile_id=(goldm ? "GOLDM" : "GOLDI");
+   EngineBar h1[];
+   EngineBar m15[];
+   BuildBearFlatH1(h1);
+   BuildBearM15(m15);
+   CBearIncrementalMachine machine;
+   if(!machine.Initialize(
+         profile_id,_Symbol,goldm ? 0.24 : 0.20,
+         h1[0].open_time,180))
+      return false;
+   BearIncrementalEvent events[];
+   BearEntryPlan signal;
+   bool has_signal=false;
+   for(int index=0;index<ArraySize(h1);index++)
+      if(!FeedBearHarnessBar(
+            machine,h1[index],false,events,signal,has_signal))
+         return false;
+   if(!FeedBearHarnessBar(machine,m15[0],true,events,signal,has_signal))
+      return false;
+   return machine.Phase()==BEAR_PHASE_CANCELLED &&
+          machine.Sequence()==23 && !has_signal &&
+          ArraySize(events)==2 &&
+          events[0].event_id==profile_id+
+             ":BEAR:23:IDLE:WATCH_H1:M15_SETUP_ACCEPTED" &&
+          events[1].event_id==profile_id+
+             ":BEAR:23:WATCH_H1:CANCELLED:H1_BEARISH_CONTEXT_REJECTED" &&
+          events[1].available_at==D'2026.01.02 00:15:00';
+  }
+
+bool EvaluateBearM5Acceptance(void)
+  {
+   const bool goldm=_Symbol=="GOLDm#";
+   const string profile_id=(goldm ? "GOLDM" : "GOLDI");
+   EngineBar h1[];
+   EngineBar m5[];
+   EngineBar m15[];
+   BuildBearH1(h1);
+   BuildBearAcceptedM5All(m5);
+   BuildBearM15(m15);
+   CBearIncrementalMachine machine;
+   if(!machine.Initialize(
+         profile_id,_Symbol,goldm ? 0.24 : 0.20,
+         h1[0].open_time,180))
+      return false;
+   BearIncrementalEvent events[];
+   BearEntryPlan signal;
+   bool has_signal=false;
+   for(int index=0;index<ArraySize(h1);index++)
+      if(!FeedBearHarnessBar(
+            machine,h1[index],false,events,signal,has_signal))
+         return false;
+   for(int index=0;index<20;index++)
+      if(!FeedBearHarnessBar(
+            machine,m5[index],false,events,signal,has_signal))
+         return false;
+   if(!FeedBearHarnessBar(machine,m15[0],true,events,signal,has_signal))
+      return false;
+   for(int index=20;index<22;index++)
+      if(!FeedBearHarnessBar(
+            machine,m5[index],false,events,signal,has_signal))
+         return false;
+   return machine.Phase()==BEAR_PHASE_CANCELLED &&
+          machine.Sequence()==45 && !has_signal &&
+          ArraySize(events)==3 &&
+          events[2].event_id==profile_id+
+             ":BEAR:45:WATCH_M5:CANCELLED:M5_ACCEPTANCE" &&
+          events[2].available_at==D'2026.01.02 00:25:00';
+  }
+
+bool BuildBearWatchM1State(CBearIncrementalMachine &machine,
+                           BearIncrementalEvent &events[])
+  {
+   const bool goldm=_Symbol=="GOLDm#";
+   const string profile_id=(goldm ? "GOLDM" : "GOLDI");
+   EngineBar h1[];
+   EngineBar m5[];
+   EngineBar m1[];
+   EngineBar m15[];
+   BuildBearH1(h1);
+   BuildBearM5All(m5);
+   BuildBearM1All(m1);
+   BuildBearM15(m15);
+   if(!machine.Initialize(
+         profile_id,_Symbol,goldm ? 0.24 : 0.20,
+         h1[0].open_time,180))
+      return false;
+   BearEntryPlan signal;
+   bool has_signal=false;
+   for(int index=0;index<22;index++)
+      if(!FeedBearHarnessBar(
+            machine,h1[index],false,events,signal,has_signal))
+         return false;
+   for(int index=0;index<20;index++)
+      if(!FeedBearHarnessBar(
+            machine,m5[index],false,events,signal,has_signal))
+         return false;
+   for(int index=0;index<10;index++)
+      if(!FeedBearHarnessBar(
+            machine,m1[index],false,events,signal,has_signal))
+         return false;
+   if(!FeedBearHarnessBar(machine,m15[0],true,events,signal,has_signal))
+      return false;
+   for(int index=10;index<=13;index++)
+      if(!FeedBearHarnessBar(
+            machine,m1[index],false,events,signal,has_signal))
+         return false;
+   if(!FeedBearHarnessBar(machine,m5[20],false,events,signal,has_signal) ||
+      !FeedBearHarnessBar(machine,m1[14],false,events,signal,has_signal))
+      return false;
+   for(int index=15;index<=18;index++)
+      if(!FeedBearHarnessBar(
+            machine,m1[index],false,events,signal,has_signal))
+         return false;
+   if(!FeedBearHarnessBar(machine,m5[21],false,events,signal,has_signal) ||
+      !FeedBearHarnessBar(machine,m1[19],false,events,signal,has_signal))
+      return false;
+   return machine.Phase()==BEAR_PHASE_WATCH_M1 &&
+          machine.Sequence()==65 && !has_signal &&
+          ArraySize(events)==3;
+  }
+
+bool EvaluateBearRestartAndExpiry(void)
+  {
+   const bool goldm=_Symbol=="GOLDm#";
+   const string profile_id=(goldm ? "GOLDM" : "GOLDI");
+   CBearIncrementalMachine original;
+   BearIncrementalEvent setup_events[];
+   if(!BuildBearWatchM1State(original,setup_events))
+      return false;
+   CBearIncrementalSnapshot persisted;
+   original.Snapshot(persisted);
+   CBearIncrementalMachine resumed;
+   if(!resumed.Initialize(
+         profile_id,_Symbol,goldm ? 0.24 : 0.20,
+         persisted.as_of,180) || !resumed.Restore(persisted))
+      return false;
+   EngineBar m1[];
+   BuildBearM1All(m1);
+   BearIncrementalEvent entry_events[];
+   BearEntryPlan signal;
+   bool has_signal=false;
+   if(!FeedBearHarnessBar(
+         resumed,m1[20],false,entry_events,signal,has_signal))
+      return false;
+   if(!has_signal || resumed.Sequence()!=66 ||
+      resumed.Phase()!=BEAR_PHASE_ENTRY_READY ||
+      ArraySize(entry_events)!=1 ||
+      entry_events[0].event_id!=profile_id+
+         ":BEAR:66:WATCH_M1:ENTRY_READY:M1_ENTRY_CONFIRMATION_READY")
+      return false;
+   BearIncrementalEvent duplicate_events[];
+   BearEntryPlan duplicate_signal;
+   bool duplicate_emitted=false;
+   if(!FeedBearHarnessBar(
+         resumed,m1[20],false,duplicate_events,
+         duplicate_signal,duplicate_emitted) ||
+      resumed.Sequence()!=66 || ArraySize(duplicate_events)!=0 ||
+      duplicate_emitted)
+      return false;
+   BearIncrementalEvent old_events[];
+   BearEntryPlan old_signal;
+   bool old_emitted=false;
+   string old_error="";
+   const BearSetup setup=BearFixtureSetup();
+   if(resumed.OnBarClose(
+         PERIOD_M1,m1[19],false,setup,
+         old_events,old_signal,old_emitted,old_error) ||
+      old_error!="BAR_BEFORE_PROCESSED_CURSOR")
+      return false;
+
+   CBearIncrementalMachine expiring;
+   if(!expiring.Initialize(
+         profile_id,_Symbol,goldm ? 0.24 : 0.20,
+         persisted.as_of,180) || !expiring.Restore(persisted))
+      return false;
+   BearIncrementalEvent expiry_events[];
+   BearEntryPlan expiry_signal;
+   bool expiry_emitted=false;
+   for(int index=0;index<20;index++)
+     {
+      EngineBar flat;
+      SetBearHarnessBar(
+         flat,PERIOD_M1,D'2026.01.02 00:25:00'+index*60,
+         98.5,98.8,98.0,98.4,index);
+      if(!FeedBearHarnessBar(
+            expiring,flat,false,expiry_events,
+            expiry_signal,expiry_emitted))
+         return false;
+     }
+   return expiring.Phase()==BEAR_PHASE_CANCELLED &&
+          expiring.Sequence()==85 && !expiry_emitted &&
+          ArraySize(expiry_events)==1 &&
+          expiry_events[0].event_id==profile_id+
+             ":BEAR:85:WATCH_M1:CANCELLED:"+
+             "M1_WATCH_WINDOW_EXPIRED_OR_INVALIDATED" &&
+          expiry_events[0].available_at==D'2026.01.02 00:45:00';
+  }
+
 bool EvaluateBearIncrementalSequence(void)
   {
    const bool goldm=_Symbol=="GOLDm#";
@@ -390,12 +639,20 @@ int OnInit(void)
    const bool geometry_passed=EvaluateBearHappyPath();
    const bool incremental_passed=EvaluateBearIncrementalSequence();
    const bool m15_passed=EvaluateBearM15Oracle();
-   BearHarnessPassed=geometry_passed && incremental_passed && m15_passed;
+   const bool h1_reject_passed=EvaluateBearH1Rejection();
+   const bool m5_acceptance_passed=EvaluateBearM5Acceptance();
+   const bool restart_expiry_passed=EvaluateBearRestartAndExpiry();
+   BearHarnessPassed=geometry_passed && incremental_passed && m15_passed &&
+                     h1_reject_passed && m5_acceptance_passed &&
+                     restart_expiry_passed;
    Print("G13_BEAR_PARITY profile=",_Symbol,
          " passed=",(BearHarnessPassed ? "true" : "false"),
          " h1_m5_m1=",(geometry_passed ? "true" : "false"),
          " incremental=",(incremental_passed ? "true" : "false"),
-         " m15=",(m15_passed ? "true" : "false"));
+         " m15=",(m15_passed ? "true" : "false"),
+         " h1_reject=",(h1_reject_passed ? "true" : "false"),
+         " m5_acceptance=",(m5_acceptance_passed ? "true" : "false"),
+         " restart_expiry=",(restart_expiry_passed ? "true" : "false"));
    return BearHarnessPassed ? INIT_SUCCEEDED : INIT_FAILED;
   }
 

@@ -55,8 +55,13 @@ Current sub-batch:
 - native GOLDm chart harness PASS:
   `h1_m5_m1=true incremental=true m15=true`;
 - current harness binary SHA-256:
-  `70b1c546c67091586849f3bfbf2227fdff72ca1c8c2ccdacd5084ab4076769b8`;
+  `c6ecd83f855407cc83bed3ab885b5cf25c9d18ed88df8d3c19088a842500c954`;
 - focused oracle/contract suite: 9 passed.
+- native GOLDm terminal matrix extended and PASS:
+  `h1_reject=true m5_acceptance=true restart_expiry=true`, including restart
+  from WATCH_M1 to exact sequence-66 entry, duplicate no-op, old-bar rejection,
+  and sequence-85 M1 expiry;
+- expanded native harness/fixture suite: 12 passed, compile 0 errors/warnings.
 - shared runtime now seeds bounded Bear history without promotion, evaluates
   only the newest 50-bar M15 window, feeds each H1/M15/M5/M1 closed bar once,
   exposes the last Bear signal/phase, and emits ENTRY_READY without order API;
@@ -71,7 +76,6 @@ Current sub-batch:
 
 Remaining before PASS:
 
-- all cancellation/restart vectors in the native harness;
 - dual-profile Strategy Tester, compile, regression, and final verifier.
 
 REAL orders: **DISABLED**

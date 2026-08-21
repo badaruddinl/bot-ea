@@ -74,6 +74,15 @@ def test_native_bear_harness_locks_profile_specific_python_geometry() -> None:
     assert "setup.confluence_votes==4" in value
     assert "BearCloseEnough(setup.resistance,4398.52,0.01)" in value
     assert "BearCloseEnough(setup.take_profit,4390.50,0.01)" in value
+    assert "EvaluateBearH1Rejection" in value
+    assert "EvaluateBearM5Acceptance" in value
+    assert "EvaluateBearRestartAndExpiry" in value
+    assert "machine.Sequence()==23" in value
+    assert "machine.Sequence()==45" in value
+    assert "machine.Sequence()==65" in value
+    assert "resumed.Sequence()!=66" in value
+    assert 'old_error!="BAR_BEFORE_PROCESSED_CURSOR"' in value
+    assert "expiring.Sequence()==85" in value
     assert "EvaluateBearIncrementalSequence" in value
     assert "machine.Sequence()!=68" in value
     assert 'profile_id+":BEAR:53:IDLE:WATCH_H1:M15_SETUP_ACCEPTED"' in value
