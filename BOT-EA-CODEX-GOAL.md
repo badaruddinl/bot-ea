@@ -614,7 +614,7 @@ Goal hanya selesai bila seluruh required cell PASS.
 | G15 Full parity certification | PASS | PASS | PASS | PASS | `evidence/G15-full-parity/` |
 | G16 Event outbox/bridge | PASS | PASS | PASS | PASS | `evidence/G16-event-bridge/` |
 | G17 Happy-path E2E | PASS | PASS | PASS | PASS | `evidence/G17-happy-path-e2e/` |
-| G18 Failure/restart E2E | IN_PROGRESS | IN_PROGRESS | IN_PROGRESS | IN_PROGRESS | `evidence/G18-failure-restart-e2e/` |
+| G18 Failure/restart E2E | PASS | PASS | PASS | PASS | `evidence/G18-failure-restart-e2e/` |
 | G19 Resource/storage/latency | NOT_STARTED | NOT_STARTED | NOT_STARTED | NOT_STARTED | |
 | G20 Fresh VM acceptance | NOT_STARTED | NOT_STARTED | NOT_STARTED | NOT_STARTED | |
 | G21 Final release evidence | NOT_STARTED | NOT_STARTED | NOT_STARTED | NOT_STARTED | |
@@ -1529,9 +1529,25 @@ external strategy JSON
 
 Bridge may be separate and optional for trading continuity.
 
+## Unattended boot and scheduled power cycle
+
+- MT5 profile terminals and the optional bridge must start after VM boot without
+  requiring an interactive desktop login.
+- Windows Scheduled Tasks use `At startup` and `Run whether user is logged on
+  or not` under the Windows account that owns the MT5 profiles. The operator
+  enters that Windows credential once directly into Task Scheduler; it is never
+  written to Git, config, Telegram, logs, or release evidence.
+- `SYSTEM` and S4U are rejected for broker terminals because they do not provide
+  the required user profile and/or broker network credential context.
+- A scheduled cloud power-off/on cycle must recover both profile terminals,
+  bridge delivery, open-position ownership, and bounded spools without manual
+  login.
+
 ## PASS
 
-Each VM needs only the relevant `.ex5` for engine operation and wrong-profile installation fails closed.
+Each VM needs only the relevant `.ex5` for engine operation, wrong-profile
+installation fails closed, and scheduled cold boot reaches healthy profile
+heartbeats without interactive login.
 
 ---
 

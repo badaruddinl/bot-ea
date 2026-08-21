@@ -1,6 +1,6 @@
 # G18 Failure and Restart E2E
 
-Status: **IN_PROGRESS**
+Status: **PASS**
 
 Locked scope:
 
@@ -56,12 +56,17 @@ Current sub-batch:
   reconstructs delimiter-containing signal IDs; native round-trip/corruption/
   fallback/manual-change harness remains PASS.
 
-Deferred final evidence:
+Final certification:
 
-- **only remaining evidence:** actual Windows/VM boot cycle. The strict verifier
-  requires `native/windows-restart.json` with a changed OS boot ID and fresh
-  post-boot GOLDI/GOLDM heartbeats. Final compile/regression sealing runs only
-  after this evidence exists.
-- G18 remains `IN_PROGRESS`; G19-G21 are not started while this item is waiting.
+- actual Windows Server VM reboot PASS with changed boot ID;
+- both profile fingerprints, accounts, and servers remained exact;
+- both profile runtime identities changed and heartbeats were written after the
+  new boot;
+- strict `verify_g18_evidence.py` certification PASS with no duplicate, lost
+  ownership, or cross-profile management;
+- fast regression: 776 passed, 154 deselected, 77 subtests;
+- slow regression: 154 passed, 776 deselected, 64 subtests;
+- incremental quality gate PASS: core 90.12%, strategy rules 82.66%;
+- VM process probe compile: GOLDI/GOLDM each 0 errors and 0 warnings.
 
 REAL orders: **DISABLED**
