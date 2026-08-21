@@ -16,4 +16,8 @@ assertions. Therefore this preliminary run is historical evidence only and
 **cannot** satisfy final G12 parity. The current capture verifier intentionally
 rejects it because the expanded state/restart marker is absent.
 
+Raw tester and compile logs are stored outside Git at:
+
+`E:\luthfi\project\bot-ea-evidence\BOT-EA-LIVE-ENGINE-MQL5-DUAL-PROFILE-E2E\b042d51cfc3b2ea1f9aa048054af03d79d79726e\G12-revised-parity\preliminary`
+
 REAL order authority remained **DISABLED** and final balance stayed 100.00 USD.
