@@ -76,6 +76,10 @@ struct ProfileConfig
    int                     max_positions;
    double                  max_total_lot;
    int                     deviation_points;
+   double                  tick_size;
+   double                  maximum_drift_r;
+   double                  maximum_spread;
+   int                     maximum_signal_age_seconds;
   };
 
 struct StrategyState
@@ -100,13 +104,25 @@ struct StrategyDecision
 struct SignalPlan
   {
    string     profile_id;
+   string     profile_version;
+   string     profile_fingerprint;
    string     strategy_version;
    string     setup_id;
    string     signal_id;
+   string     symbol;
    EngineSide side;
+   long       account_login;
+   string     account_server;
+   ENUM_ACCOUNT_TRADE_MODE trade_mode;
+   string     terminal_identity;
+   long       magic;
    datetime   setup_created_at;
    datetime   entry_ready_at;
    datetime   valid_until;
+   double     volume;
+   double     tick_size;
+   double     maximum_drift_r;
+   double     maximum_spread;
    double     planned_entry;
    double     stop_loss;
    double     take_profit;
