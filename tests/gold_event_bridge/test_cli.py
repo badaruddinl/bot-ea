@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from gold_event_bridge import cli
+from gold_event_bridge.store import EventStore
 
 
 def test_subscriber_state_is_normalized_and_invalid_values_are_ignored(tmp_path: Path) -> None:
@@ -63,3 +64,19 @@ def test_cli_rejects_nonpositive_spool_compaction_threshold() -> None:
                 "0",
             ]
         )
+
+
+def test_bridge_health_receipt_is_atomic_and_fail_closed(tmp_path: Path) -> None:
+    store = EventStore(tmp_path / "events.db")
+    health = tmp_path / "health.json"
+    try:
+        cli._write_health(health, store, delivered=0, failed=0)
+    finally:
+        store.close()
+
+    payload = json.loads(health.read_text(encoding="utf-8"))
+    assert payload["event_count"] == 0
+    assert payload["pending_event_count"] == 0
+    assert payload["failed_last_loop"] == 0
+    assert payload["production_real_orders"] == "DISABLED"
+    assert not list(tmp_path.glob("health.json.*.tmp"))

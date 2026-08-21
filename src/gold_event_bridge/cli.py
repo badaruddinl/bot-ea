@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 import time
+from datetime import UTC, datetime
 from importlib import import_module
 from pathlib import Path
 
@@ -28,6 +29,52 @@ def _positive_int(value: str) -> int:
     return parsed
 
 
+def _write_health(path: Path, store: EventStore, delivered: int, failed: int) -> None:
+    states = {
+        str(row["delivery_state"]): int(row["count"])
+        for row in store.connection.execute(
+            "SELECT delivery_state, COUNT(*) AS count FROM engine_events GROUP BY delivery_state"
+        )
+    }
+    profiles = {
+        str(row["profile_id"]): int(row["count"])
+        for row in store.connection.execute(
+            "SELECT profile_id, COUNT(*) AS count FROM engine_events GROUP BY profile_id"
+        )
+    }
+    latest = [
+        {
+            "delivery_state": str(row["delivery_state"]),
+            "event_id": str(row["event_id"]),
+            "event_type": str(row["event_type"]),
+            "profile_id": str(row["profile_id"]),
+        }
+        for row in store.connection.execute(
+            """
+            SELECT event_id, profile_id, event_type, delivery_state
+            FROM engine_events ORDER BY inserted_at DESC, event_id DESC LIMIT 24
+            """
+        )
+    ]
+    payload = {
+        "schema_version": 1,
+        "pid": os.getpid(),
+        "observed_at_utc": datetime.now(UTC).isoformat(),
+        "event_count": store.event_count(),
+        "profile_event_counts": profiles,
+        "delivery_state_counts": states,
+        "pending_event_count": len(store.pending_events()),
+        "delivered_last_loop": delivered,
+        "failed_last_loop": failed,
+        "latest_events": latest,
+        "production_real_orders": "DISABLED",
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+    temporary.write_text(json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n")
+    os.replace(temporary, path)
+
+
 def load_goldi_subscribers(path: Path | None) -> tuple[str, ...]:
     if path is None:
         return ()
@@ -48,6 +95,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--once", action="store_true")
     parser.add_argument("--poll-seconds", type=float, default=2.0)
     parser.add_argument("--spool-compact-bytes", type=_positive_int, default=16 * 1024 * 1024)
+    parser.add_argument("--health-path", type=Path)
+    parser.add_argument("--health-seconds", type=_positive_int, default=30)
     return parser
 
 
@@ -66,6 +115,7 @@ def main() -> int:
         client.send_message(chat_id=chat_id, text=message)
 
     store = EventStore(args.database)
+    next_health = 0.0
     try:
         while True:
             subscribers = load_goldi_subscribers(args.subscriber_state)
@@ -78,7 +128,11 @@ def main() -> int:
                 store.recover_rotated_spools(spool)
                 store.ingest_spool(spool)
                 store.compact_ingested_spool(spool, minimum_bytes=args.spool_compact_bytes)
-            bridge.deliver_pending()
+            delivered, failed = bridge.deliver_pending()
+            now = time.monotonic()
+            if args.health_path is not None and now >= next_health:
+                _write_health(args.health_path, store, delivered, failed)
+                next_health = now + args.health_seconds
             if args.once:
                 return 0
             time.sleep(max(args.poll_seconds, 0.25))

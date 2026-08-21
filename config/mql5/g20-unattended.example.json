@@ -43,6 +43,7 @@
     "executable_path": "%LocalAppData%\\Programs\\Python\\Python314\\pythonw.exe",
     "arguments": "-m gold_event_bridge.cli --goldi-spool REPLACE --goldm-spool REPLACE --database REPLACE",
     "token_secret_path": "%ProgramData%\\bot-ea\\g20\\telegram-token.dpapi",
-    "admin_chat_ids": []
+    "admin_chat_ids": [],
+    "health_path": "%ProgramData%\\bot-ea\\bridge\\health.json"
   }
 }

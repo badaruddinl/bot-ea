@@ -33,6 +33,7 @@ def _terminal(profile_id: str) -> dict[str, object]:
 
 def _event(profile: dict[str, object], event_type: str) -> dict[str, object]:
     return {
+        "event_id": f"{profile['profile_id']}:{event_type}",
         "profile_id": profile["profile_id"],
         "profile_fingerprint": profile["expected_profile_fingerprint"],
         "symbol": profile["expected_symbol"],
@@ -102,6 +103,22 @@ def _evidence() -> tuple[dict[str, object], dict[str, object], dict[str, object]
             ]
             for profile in (goldi, goldm)
         },
+    }
+    postboot["bridge_health"] = {
+        "pid": 30,
+        "production_real_orders": "DISABLED",
+        "pending_event_count": 0,
+        "failed_last_loop": 0,
+        "latest_events": [
+            {
+                "event_id": event["event_id"],
+                "delivery_state": (
+                    "SUPPRESSED" if event["event_type"] == "ENGINE_HEARTBEAT" else "DELIVERED"
+                ),
+            }
+            for profile_events in postboot["new_events"].values()
+            for event in profile_events
+        ],
     }
     return config, preboot, postboot
 

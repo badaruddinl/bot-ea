@@ -225,6 +225,13 @@ $result = [ordered]@{
     } else { $null }
     task = Get-TaskEvidence -Name $TaskName
     supervisor_health = Get-Content -LiteralPath $healthPath -Raw | ConvertFrom-Json
+    bridge_health = if ([bool]$config.bridge.enabled) {
+        $bridgeHealthPath = Resolve-ConfiguredPath ([string]$config.bridge.health_path)
+        if (-not (Test-Path -LiteralPath $bridgeHealthPath -PathType Leaf)) {
+            throw "Bridge health file is missing: $bridgeHealthPath"
+        }
+        Get-Content -LiteralPath $bridgeHealthPath -Raw | ConvertFrom-Json
+    } else { $null }
     terminal_processes = Get-TerminalProcesses -Terminals $config.terminals
     python_roles = Get-PythonRoles
     legacy_tasks = Get-LegacyTaskEvidence -Names $config.forbidden_task_names

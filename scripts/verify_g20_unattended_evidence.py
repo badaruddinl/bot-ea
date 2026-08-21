@@ -136,6 +136,33 @@ def verify(config: dict[str, Any], preboot: dict[str, Any], postboot: dict[str, 
         violations.append("a forbidden Python strategy/orchestrator process is running")
     if bridge_required and sum(item.get("role") == "EVENT_BRIDGE" for item in roles) != 1:
         violations.append("bridge process classification is not exactly one")
+    bridge_health = postboot.get("bridge_health") or {}
+    if bridge_required:
+        if bridge_health.get("production_real_orders") != "DISABLED":
+            violations.append("bridge health does not disable production REAL orders")
+        if bridge_health.get("pid") != bridge.get("pid"):
+            violations.append("bridge health PID differs from supervisor bridge PID")
+        if int(bridge_health.get("pending_event_count", -1)) != 0:
+            violations.append("bridge still has pending engine events")
+        if int(bridge_health.get("failed_last_loop", -1)) != 0:
+            violations.append("bridge latest delivery loop contains failures")
+        latest_states = {
+            str(item.get("event_id")): str(item.get("delivery_state"))
+            for item in bridge_health.get("latest_events") or []
+        }
+        for profile_id in ("GOLDI", "GOLDM"):
+            for event in new_events.get(profile_id, []):
+                expected_state = (
+                    "SUPPRESSED" if event.get("event_type") == "ENGINE_HEARTBEAT" else "DELIVERED"
+                )
+                if event.get("event_type") in {
+                    "ENGINE_STARTED",
+                    "PROFILE_VALIDATED",
+                    "ENGINE_HEARTBEAT",
+                } and latest_states.get(str(event.get("event_id"))) != expected_state:
+                    violations.append(
+                        f"bridge state mismatch for postboot event {event.get('event_id')}"
+                    )
 
     for task_evidence in postboot.get("legacy_tasks") or []:
         if task_evidence.get("enabled") or task_evidence.get("state") == "Running":

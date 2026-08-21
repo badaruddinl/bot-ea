@@ -121,11 +121,13 @@ if ($BridgeEnabled) {
 $bridgeRoot = Join-Path $env:ProgramData "bot-ea\bridge"
 New-Item -ItemType Directory -Path $bridgeRoot -Force | Out-Null
 $bridgeRunner = Join-Path $PSScriptRoot "run-gold-event-bridge.py"
-$bridgeArguments = '"{0}" --goldi-spool "{1}" --goldm-spool "{2}" --database "{3}"' -f `
+$bridgeHealth = Join-Path $bridgeRoot "health.json"
+$bridgeArguments = '"{0}" --goldi-spool "{1}" --goldm-spool "{2}" --database "{3}" --health-path "{4}"' -f `
     $bridgeRunner,
     (Join-Path $commonSpool "GOLDI.jsonl"),
     (Join-Path $commonSpool "GOLDM.jsonl"),
-    (Join-Path $bridgeRoot "events.db")
+    (Join-Path $bridgeRoot "events.db"),
+    $bridgeHealth
 
 $config = [ordered]@{
     schema_version = 1
@@ -146,6 +148,7 @@ $config = [ordered]@{
         arguments = $bridgeArguments
         token_secret_path = $TelegramSecretPath
         admin_chat_ids = $TelegramAdminChatIds
+        health_path = $bridgeHealth
     }
 }
 $configPath = Join-Path $OutputRoot "g20-unattended.json"
