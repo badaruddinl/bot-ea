@@ -11,6 +11,8 @@ GOLDI_STARTUP = ROOT / "config/mql5/startup/GOLDI.ini"
 GOLDM_STARTUP = ROOT / "config/mql5/startup/GOLDM.ini"
 GOLDI_PRESET = ROOT / "config/mql5/presets/G20-GOLDI.set"
 GOLDM_PRESET = ROOT / "config/mql5/presets/G20-GOLDM.set"
+PREPARE = ROOT / "scripts/prepare-g20-vm.ps1"
+BRIDGE_RUNNER = ROOT / "scripts/run-gold-event-bridge.py"
 RUNTIME = ROOT / "mt5/Include/bot-ea/GoldEngineRuntime.mqh"
 EVENTS = ROOT / "src/gold_event_bridge/events.py"
 
@@ -88,3 +90,19 @@ def test_startup_configs_enable_demo_execution_only_and_keep_real_disabled() -> 
     assert "InpEnableOrderAuthority=false" in goldm_preset
     assert "Expert=bot-ea\\GoldEngine-GOLDi" in goldi
     assert "Expert=bot-ea\\GoldEngine-GOLDm" in goldm
+
+
+def test_vm_preparer_installs_only_native_engines_and_optional_bridge() -> None:
+    value = PREPARE.read_text(encoding="utf-8")
+    runner = BRIDGE_RUNNER.read_text(encoding="utf-8")
+
+    assert "GoldEngine-GOLDi.ex5" in value
+    assert "GoldEngine-GOLDm.ex5" in value
+    assert 'order_authority = "ENABLED"' in value
+    assert 'order_authority = "DISABLED"' in value
+    assert "TELEGRAM_BOT_TOKEN" in value
+    assert "run-gold-event-bridge.py" in value
+    assert "gold_orchestrator" not in value
+    assert "goldm_revised" not in value
+    assert "goldm_bear" not in value
+    assert "from gold_event_bridge.cli import main" in runner
