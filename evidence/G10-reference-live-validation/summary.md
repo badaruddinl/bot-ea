@@ -8,7 +8,7 @@ disabled.
 ## Amended validation contract
 
 - \`GOLDI_DEMO_VALIDATION\` remains the guarded live-DEMO validation profile.
-- \`GOLDM_REAL_READ_ONLY\` derives from the unchanged GOLDM production
+- \`GOLDM_REAL_READ_ONLY\` derives from the current canonical GOLDM production
   fingerprint and permits only account/terminal/symbol metadata, tick, spread,
   and closed-bar reads.
 - The GOLDm probe contains no order/check/send/position mutation API and records
@@ -24,7 +24,7 @@ disabled.
 The sanitized preflight was executed on 2026-08-21 and returned \`ready=false\`
 only because both profiles currently resolve to the same terminal path:
 
-\`prerequisites_sha256=70e499537d90bdbb2ad372e6420742c828922eca70cf12e3a9b8657fffe799d2\`
+\`prerequisites_sha256=90adb9f56ad946e0d36fa20fa2fdcab919b4b4d730f174f10fe2ac36eb3ace7a\`
 
 Both account bindings are otherwise valid and the isolated validation
 interpreter contains \`MetaTrader5==5.0.6090\`.
@@ -39,7 +39,7 @@ account_trade_mode=real
 access_mode=read_only
 orders_sent=0
 order_api_calls=0
-latency_ms=377.474
+latency_ms=6.736
 \`\`\`
 
 The probe contains only a hash of the login and terminal path. Its artifact

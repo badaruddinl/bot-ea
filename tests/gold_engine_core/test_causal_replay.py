@@ -322,8 +322,8 @@ def test_profile_reports_rebuild_byte_identically(tmp_path: Path) -> None:
     expected_root = REPOSITORY_ROOT / "evidence" / "G09-causal-tick-replay"
 
     assert hashes == {
-        "GOLDI": "75dd1328624c31336dff42e0bf0fcc0d8dfe3a0f4df3ed4a83c75d3912e238d8",
-        "GOLDM": "e43f447f3ef89a4b9bf09a8c2ffcebff346f8b36339d6809646a2a182c70346d",
+        "GOLDI": "5292a8b21047812db8d7d4ba2f0ff7dd0417ff0c61ba3ab06f5e423cb82426f6",
+        "GOLDM": "0218dbb0c0ba48920cca34cd688c6f12056b0697792ea0f76ab1078542c9c617",
     }
     for profile_id in ("GOLDI", "GOLDM"):
         assert (tmp_path / f"{profile_id}-report.json").read_bytes() == (

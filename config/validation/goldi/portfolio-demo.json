@@ -14,13 +14,18 @@
   "sizing": {
     "balance_tiers": [
       {"minimum_balance": 0.0, "lot": 0.01},
-      {"minimum_balance": 100.0, "lot": 0.02}
+      {"minimum_balance": 100.0, "lot": 0.02},
+      {"minimum_balance": 200.0, "lot": 0.05},
+      {"minimum_balance": 1000.0, "lot": 0.1},
+      {"minimum_balance": 2000.0, "lot": 0.2},
+      {"minimum_balance": 10000.0, "lot": 1.0},
+      {"minimum_balance": 20000.0, "lot": 2.0}
     ],
     "downgrade_enabled": true
   },
   "magic": 26081911,
   "deviation_points": 30,
   "maximum_positions": 2,
-  "maximum_total_lot": 0.04,
+  "maximum_total_lot": 4.0,
   "orders_enabled": true
 }

@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import json
 import os
-from hashlib import sha256
+from collections.abc import Mapping
 from dataclasses import dataclass
+from hashlib import sha256
 from pathlib import Path
-from typing import Any, Mapping
-
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -81,6 +81,16 @@ class PortfolioWorkerConfig:
     def order_execution(self) -> bool:
         return self.execution_mode in {"demo", "real"} and self.orders_enabled
 
+    def lot_for_balance(self, balance: float) -> float:
+        if balance < 0 or not self.balance_tiers:
+            return 0.0
+        selected = self.balance_tiers[0][1]
+        for minimum_balance, lot in self.balance_tiers[1:]:
+            if balance + 1e-12 < minimum_balance:
+                break
+            selected = lot
+        return selected
+
 
 def load_worker_config(path: str | Path) -> PortfolioWorkerConfig:
     worker_path = _repo_path(path)
@@ -115,11 +125,11 @@ def load_worker_config(path: str | Path) -> PortfolioWorkerConfig:
     token = _environment(str(telegram_values.get("bot_token_env") or "TELEGRAM_BOT_TOKEN"))
     chat_value = _environment(str(telegram_values.get("chat_ids_env") or "TELEGRAM_ADMIN_CHAT_IDS"))
     if not chat_value:
-        chat_value = _environment(str(telegram_values.get("fallback_chat_id_env") or "TELEGRAM_CHAT_ID"))
+        chat_value = _environment(
+            str(telegram_values.get("fallback_chat_id_env") or "TELEGRAM_CHAT_ID")
+        )
     chat_ids = tuple(
-        item.strip()
-        for item in chat_value.replace(";", ",").split(",")
-        if item.strip()
+        item.strip() for item in chat_value.replace(";", ",").split(",") if item.strip()
     )
     tiers = tuple(
         sorted(
@@ -134,25 +144,19 @@ def load_worker_config(path: str | Path) -> PortfolioWorkerConfig:
     if mode not in {"signal_only", "demo", "real"}:
         raise ValueError(f"unsupported execution mode: {mode}")
     if mode in {"demo", "real"} and (not terminal_path or not login or not server):
-        raise ValueError(
-            f"{mode} execution requires terminal path, login, and server binding"
-        )
+        raise ValueError(f"{mode} execution requires terminal path, login, and server binding")
     if bool(terminal_values.get("require_account_binding", False)) and (
         not terminal_path or not login or not server
     ):
         raise ValueError("required terminal binding is incomplete")
     if mode in {"demo", "real"} and (not tiers or tiers[0][0] != 0.0):
-        raise ValueError(
-            f"{mode} execution requires balance tiers beginning at zero"
-        )
+        raise ValueError(f"{mode} execution requires balance tiers beginning at zero")
     audience = str(telegram_values.get("audience") or "admin_only").strip().lower()
     if audience not in {"admin_only", "goldi_approved"}:
         raise ValueError(f"unsupported Telegram audience: {audience}")
     subscriber_state_path = None
     if telegram_values.get("subscriber_state_path"):
-        subscriber_state_path = _repo_path(
-            str(telegram_values["subscriber_state_path"])
-        )
+        subscriber_state_path = _repo_path(str(telegram_values["subscriber_state_path"]))
     if audience == "goldi_approved" and subscriber_state_path is None:
         raise ValueError("goldi_approved audience requires subscriber_state_path")
     return PortfolioWorkerConfig(

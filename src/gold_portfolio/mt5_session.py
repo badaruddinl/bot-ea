@@ -177,14 +177,7 @@ class BoundMt5Session:
 
     def select_lot(self) -> float:
         balance = float(self.account_info().balance)
-        if not self.config.balance_tiers:
-            return 0.0
-        selected = self.config.balance_tiers[0][1]
-        for minimum_balance, lot in self.config.balance_tiers:
-            if balance + 1e-12 < minimum_balance:
-                break
-            selected = lot
-        return self.normalize_volume(selected)
+        return self.normalize_volume(self.config.lot_for_balance(balance))
 
     def normalize_volume(self, volume: float) -> float:
         info = self.mt5.symbol_info(self.config.symbol)

@@ -24,6 +24,8 @@ REAL order authority: **DISABLED**
 | G10C | DEFERRED_TO_G15 | GOLDM | `evidence/G10-reference-live-validation/` | GOLDm execution evidence uses the profile-locked binary in isolated Strategy Tester, never live REAL engineering orders. |
 | G10D | PASS | SHARED | `evidence/G10D-remove-app-surfaces/` | Desktop UI, application runtime, WebSocket service, dependencies, launchers, tests, and stale docs were removed; fast and release suites passed. |
 | G11 | PASS | SHARED, GOLDI, GOLDM, CROSS_PROFILE | `evidence/G11-mql5-runtime-skeleton/` | Profile-locked strict binaries compile with zero errors/warnings; scheduler, warm-up, identity failure, bounded tick path, and no-order invariants passed. |
+| G12S | PASS | GOLDI, GOLDM, CROSS_PROFILE | `evidence/G12S-sizing-contract/` | User-authorized adaptive balance tiers were propagated through canonical manifests, final/validation configs, Python/MQL5 resolvers, regenerated fingerprints/corpora, and full fast/slow regression. |
+| G12 | PASS | SHARED, GOLDI, GOLDM, CROSS_PROFILE | `evidence/G12-revised-parity/` | Native Revised decision/runtime and setup/restart parity certified on GOLD.i/XMGlobal-MT5 5 and GOLDm/XMGlobal-MT5 14. Exact state/reason/timestamps and one-tick geometry passed; compile, fast/slow regression, profile isolation, hashes, and disabled REAL authority verified. |
 
 Raw or large evidence is stored outside Git under:
 

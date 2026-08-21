@@ -8,8 +8,8 @@ Scope: GOLDI and GOLDM current Python semantics. REAL order authority remains di
 
 | Profile | Records | Corpus SHA-256 |
 |---|---:|---|
-| GOLDI | 34 | `73df973f03258b3f96c52a22103bf1c5a98467ee9416a4a786cc789bf01f4106` |
-| GOLDM | 34 | `bc4450049bc8d1d370a229dd9509220ee8adf46ea822c343e0868b377b63da70` |
+| GOLDI | 34 | `74182e79084cbf3dbef9680e313cd7de8397c50df00ac7a5d6007c59a61471f1` |
+| GOLDM | 34 | `0e3c5f5d3b898999115f2e601fb9e18f22bbc4af96b382fb3b263fec0598e58a` |
 
 Each record contains profile and input fingerprints, a fixed offset-aware semantic `available_at`, profile-namespaced setup ID, causal state transitions, decision, planned geometry, reason, execution outcome, source reference, and source SHA-256. Strategy records require closed bars.
 
@@ -45,8 +45,8 @@ exit=0
 
 python scripts/build-current-behavior-corpus.py
 exit=0
-GOLDI=73df973f03258b3f96c52a22103bf1c5a98467ee9416a4a786cc789bf01f4106
-GOLDM=bc4450049bc8d1d370a229dd9509220ee8adf46ea822c343e0868b377b63da70
+GOLDI=74182e79084cbf3dbef9680e313cd7de8397c50df00ac7a5d6007c59a61471f1
+GOLDM=0e3c5f5d3b898999115f2e601fb9e18f22bbc4af96b382fb3b263fec0598e58a
 
 python -m pytest -q --basetemp=<external>/G02-current-behavior-corpus/pytest-temp-run4 --cov=gold_engine_core --cov-branch --cov-report=term-missing --cov-report=xml:<external>/G02-current-behavior-corpus/coverage-run4.xml --cov-fail-under=90 tests/gold_engine_core
 exit=0

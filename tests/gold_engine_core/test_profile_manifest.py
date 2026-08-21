@@ -217,7 +217,7 @@ def test_profile_specific_and_sizing_invariants_are_fail_closed(profiles) -> Non
         (
             {
                 **goldi_payload,
-                "sizing_tiers": [{"minimum_balance": "0", "lot": "0.05"}],
+                "sizing_tiers": [{"minimum_balance": "0", "lot": "5.0"}],
             },
             "exceeds max_total_lot",
         ),

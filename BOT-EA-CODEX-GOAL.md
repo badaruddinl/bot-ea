@@ -229,8 +229,8 @@ server env            = GOLDI_MT5_SERVER
 magic                 = 26081911
 deviation points      = 30
 maximum positions     = 2
-maximum total lot     = 0.04
-sizing tiers          = 0.01 / 0.02 sesuai balance tier
+maximum total lot     = 4.0
+sizing tiers          = 0.01 / 0.02 / 0.05 / 0.1 / 0.2 / 1.0 / 2.0
 Telegram audience     = goldi_approved
 state/audit namespace = runtime_data/final/goldi/*
 Revised side          = BUY
@@ -262,8 +262,8 @@ server env            = GOLDM_REAL_MT5_SERVER
 magic                 = 26081912
 deviation points      = 30
 maximum positions     = 2
-maximum total lot     = 2.0
-sizing tiers          = 0.1 / 0.2 / 0.5 / 1.0 / 2.0
+maximum total lot     = 200.0
+sizing tiers          = 0.1 / 0.2 / 0.5 / 1.0 / 2.0 / 5.0 / 10.0 / 20.0 / 100.0
 Telegram audience     = admin_only
 state/audit namespace = runtime_data/final/goldm/*
 Revised side          = BUY
@@ -608,7 +608,7 @@ Goal hanya selesai bila seluruh required cell PASS.
 | G10B GOLD.i DEMO execution validation | PASS | IN_PROGRESS | N/A | N/A | `evidence/G10-reference-live-validation/` |
 | G10C GOLDm tester execution validation | PASS | N/A | DEFERRED_TO_G15 | N/A | `evidence/G10-reference-live-validation/` |
 | G11 MQL5 runtime skeleton | PASS | PASS | PASS | PASS | `evidence/G11-mql5-runtime-skeleton/` |
-| G12 Revised MQL5 parity | NOT_STARTED | NOT_STARTED | NOT_STARTED | N/A | |
+| G12 Revised MQL5 parity | PASS | PASS | PASS | PASS | `evidence/G12-revised-parity/` |
 | G13 Bear MQL5 parity | NOT_STARTED | NOT_STARTED | NOT_STARTED | N/A | |
 | G14 EA execution lifecycle | NOT_STARTED | NOT_STARTED | NOT_STARTED | NOT_STARTED | |
 | G15 Full parity certification | NOT_STARTED | NOT_STARTED | NOT_STARTED | NOT_STARTED | |
