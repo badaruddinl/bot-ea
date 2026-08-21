@@ -20,5 +20,34 @@ Current sub-batch:
   guard, G16 bridge store, and G17 correlated chain;
 - separating failures that can be proven in pure/native harnesses from actual
   terminal/process restart evidence.
+- dependency lab PASS on the actual G17 spools: DB unavailable fails closed,
+  12-event bridge backlog recovers, nine Telegram failures persist retry state,
+  recovery drains all nine, replay reports 12 duplicates without adding rows,
+  and source spools remain byte-identical.
+- new Common Files exclusive lease rejects a second profile/account/magic EA
+  instance across chart or terminal process. Native harness PASS: first owner,
+  duplicate refusal, release, then recovery acquisition; no trade mutation.
+- broker ambiguous-result handling now performs no blind retry. Only timeout,
+  connection, or generic ambiguous retcodes enter exact symbol+magic+signal
+  comment reconciliation, and exactly one matching position is required.
+  Partial success and hard funds/invalid rejects are classified explicitly.
+- captured expected broker failures: market closed `10018`, Algo Trading off
+  `10027`, positions unchanged, plus existing guard coverage for wrong identity,
+  extreme spread, margin, broker check, geometry, and duplicate signal.
+- actual GOLDI DEMO open-position process restart PASS: ticket `902911581` was
+  opened at `0.01`, terminal stopped with the position alive, the next process
+  synchronized with one position, loaded the profile-bound slot, closed the
+  same ticket with retcode `10009`, cleared state, and ended at zero positions.
+- restart testing exposed a delimiter bug when signal IDs contained `|`.
+  Persistence now parses fixed numeric fields from the record tail and safely
+  reconstructs delimiter-containing signal IDs; native round-trip/corruption/
+  fallback/manual-change harness remains PASS.
+
+Remaining matrix:
+
+- explicit disconnect/reconnect transition capture;
+- manual close and magic-collision aggregation into G18 certification;
+- dual-terminal restart and one-profile restart while the other remains alive;
+- final compile/regression/resource-independent G18 sealing.
 
 REAL orders: **DISABLED**
