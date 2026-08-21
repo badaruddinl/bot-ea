@@ -60,4 +60,38 @@ Implemented pre-deployment batch:
 G20 remains IN_PROGRESS until the password is entered directly on the VM and a
 real cold boot is captured without interactive login.
 
+Actual VM deployment batch:
+
+- exact VM worktree `c870b50` compiled both EAs with MetaEditor build 6090 at
+  0 errors/0 warnings and installed SHA-256
+  `7c9b68a41f16a4f6e930134badc61b60b90eb314bcd9d44c582f12ca2ff92ae6`
+  (GOLDI) and
+  `fe718009e75fda9dd3f15c04f07bc89b6b4ff48eb503c27cfd2d7f5df12a1579`
+  (GOLDM);
+- temporary G18 logon tasks and legacy Python orchestrator tasks are disabled;
+  the old saved charts were removed after the final EA correctly rejected the
+  first attempt as `DUPLICATE_EA_INSTANCE`;
+- clean config-driven restart produced exact `ENGINE_STARTED`,
+  `PROFILE_VALIDATED`, and internal `ENGINE_HEARTBEAT` events for both profiles:
+  GOLDI account `108098316`, server `XMGlobal-MT5 5`, DEMO mode, authority
+  enabled; GOLDM account `391425346`, server `XMGlobal-MT5 14`, REAL mode,
+  authority disabled;
+- password-backed task installation reported `LogonType=Password` and one
+  `AtStartup` trigger; no password was read or persisted by repository code;
+- Telegram dev token is stored with CurrentUser DPAPI and restrictive ACL. The
+  bridge routes to dev admin chat `-5481117256`, with no subscriber audience;
+- preboot bridge health: six events, four `DELIVERED`, two internal heartbeats
+  `SUPPRESSED`, zero pending, zero failed, REAL disabled;
+- preboot snapshot recorded the prior boot identity, task principal/trigger,
+  and exact three-line offsets/hashes for each profile spool;
+- the VM was cold-restarted and deliberately left at the Windows lock screen
+  from 09:00 through 09:02 local time. No Ctrl+Alt+Del or interactive login was
+  sent during the unattended startup window;
+- final regression after the G20 changes: 809 fast tests plus 77 subtests PASS;
+  154 slow tests plus 64 subtests PASS.
+
+Postboot capture and strict verification remain pending until the operator logs
+in after the unattended window; this is required only to read the evidence that
+was already written before login, not to start the system.
+
 REAL orders: **DISABLED**
