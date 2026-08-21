@@ -1,5 +1,13 @@
 corpus/current_behavior/*.jsonl text eol=lf
 corpus/current_behavior/*.sha256 text eol=lf
+corpus/revised_parity/*.json text eol=lf
+corpus/revised_parity/*.sha256 text eol=lf
+corpus/bear_parity/*.json text eol=lf
+corpus/bear_parity/*.sha256 text eol=lf
+evidence/G13-bear-parity/*.json text eol=lf
+evidence/G13-bear-parity/*.sha256 text eol=lf
+evidence/G13-bear-parity/native/*.json text eol=lf
+evidence/G13-bear-parity/native/*.sha256 text eol=lf
 evidence/G09-causal-tick-replay/*-report.json text eol=lf
 evidence/G09-causal-tick-replay/*-report.sha256 text eol=lf
 evidence/G10-reference-live-validation/prerequisites.json text eol=lf

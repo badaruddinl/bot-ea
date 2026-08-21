@@ -112,7 +112,8 @@ def machine(profile_id: str) -> BearIncrementalMachine:
     profile = ProfileConfig.from_manifest(manifest, tick_size=Decimal("0.01"))
     spread = 0.20 if profile_id == "GOLDI" else 0.24
     replay = BearMultiTimeframeReplay(
-        BearV4Config(price_tick=0.01, spread_floor=spread, fixed_target_r=2.0)
+        BearV4Config(price_tick=0.01, spread_floor=spread, fixed_target_r=2.0),
+        symbol=profile.symbol,
     )
     replay.setup_engine = FakeSetupEngine(setup_decision(profile.symbol))
     return BearIncrementalMachine(profile, replay)
@@ -386,3 +387,40 @@ def test_live_worker_uses_only_bounded_incremental_bear_path(monkeypatch) -> Non
         for _, start, end in session.calls
     )
     assert worker.bear_incremental.maximum_warmup_span < timedelta(days=2)
+
+
+@pytest.mark.parametrize(
+    ("group", "symbol"),
+    (("goldi", "GOLD.i#"), ("goldm", "GOLDm#")),
+)
+def test_worker_binds_bear_setup_scanner_to_exact_profile_symbol(
+    monkeypatch,
+    group: str,
+    symbol: str,
+) -> None:
+    monkeypatch.setenv("GOLDI_MT5_TERMINAL_PATH", "C:/Goldi/terminal64.exe")
+    monkeypatch.setenv("GOLDI_MT5_LOGIN", "108098316")
+    monkeypatch.setenv("GOLDI_MT5_SERVER", "XMGlobal-MT5 5")
+    monkeypatch.setenv("GOLDM_REAL_MT5_TERMINAL_PATH", "C:/Goldm/terminal64.exe")
+    monkeypatch.setenv("GOLDM_REAL_MT5_LOGIN", "391425346")
+    monkeypatch.setenv("GOLDM_REAL_MT5_SERVER", "XMGlobal-MT5 14")
+    config = load_worker_config(
+        Path(__file__).resolve().parents[2] / "config" / "final" / group / "worker.json"
+    )
+
+    class NoopTelegram:
+        def send(self, text: str, *, include_subscribers: bool = False) -> None:
+            del text, include_subscribers
+
+    worker = CompositePortfolioWorker(
+        config,
+        mt5_module=object(),
+        telegram=NoopTelegram(),
+    )
+
+    assert worker.config.symbol == symbol
+    assert worker.bear_replay.setup_engine.config.symbol == symbol
+    assert (
+        worker.bear_replay.setup_engine.config.spread_floor
+        == worker.bear_replay.config.spread_floor
+    )

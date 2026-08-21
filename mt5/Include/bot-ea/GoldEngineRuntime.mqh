@@ -5,6 +5,7 @@
 #include "GoldEngineRevisedGeometry.mqh"
 #include "GoldEngineRevised.mqh"
 #include "GoldEngineRevisedSetup.mqh"
+#include "GoldEngineBearPersistence.mqh"
 #include "GoldEngineScheduler.mqh"
 
 class CGoldEngineRuntime
@@ -18,6 +19,10 @@ private:
    CRevisedSetupDetector m_revised_detector;
    RevisedDecision     m_last_revised_decision;
    bool                m_has_revised_decision;
+   CBearIncrementalMachine m_bear_machine;
+   CBearStateStore      m_bear_store;
+   BearEntryPlan       m_last_bear_signal;
+   bool                m_has_bear_signal;
    EngineBar           m_d1_history[];
    EngineBar           m_h1_history[];
    EngineBar           m_m15_history[];
@@ -25,6 +30,17 @@ private:
    EngineBar           m_m1_history[];
    bool                m_initialized;
    bool                m_data_healthy;
+
+   void CopyLatestBars(const EngineBar &source[],
+                       const int maximum,
+                       EngineBar &result[])
+     {
+      const int count=ArraySize(source);
+      const int start=MathMax(0,count-maximum);
+      ArrayResize(result,count-start);
+      for(int index=start;index<count;index++)
+         result[index-start]=source[index];
+     }
 
    void SetEvent(const EngineEventType type,const datetime server_time,const string reason)
      {
@@ -170,6 +186,55 @@ private:
          m_revised_detector.Consume(side,setup.trigger_time);
      }
 
+   void EvaluateBearBar(const EngineBar &bar)
+     {
+      BearSetup candidate;
+      ZeroMemory(candidate);
+      bool has_candidate=false;
+      if(bar.timeframe==PERIOD_M15)
+        {
+         EngineBar scanner_bars[];
+         CopyLatestBars(m_m15_history,50,scanner_bars);
+         string scanner_reason="";
+         has_candidate=BearM15Setup(
+            scanner_bars,m_profile.symbol,
+            m_profile.profile_id=="GOLDM" ? 0.24 : 0.20,
+            candidate,scanner_reason);
+        }
+      BearIncrementalEvent events[];
+      BearEntryPlan signal;
+      bool has_signal=false;
+      string error="";
+      if(!m_bear_machine.OnBarClose(
+            bar.timeframe,bar,has_candidate,candidate,
+            events,signal,has_signal,error))
+        {
+         m_data_healthy=false;
+         SetEvent(ENGINE_EVENT_ERROR,bar.close_time,error);
+         return;
+        }
+      if(has_signal)
+        {
+         m_last_bear_signal=signal;
+         m_has_bear_signal=true;
+         SetEvent(
+            ENGINE_EVENT_ENTRY_READY,signal.opened_at,
+            "M1_ENTRY_CONFIRMATION_READY");
+        }
+      else if(ArraySize(events)>0)
+        {
+         const BearIncrementalEvent latest=events[ArraySize(events)-1];
+         SetEvent(ENGINE_EVENT_BAR_CLOSED,latest.available_at,latest.reason);
+        }
+      if(!m_bear_store.Save(
+            m_profile.profile_id,m_profile.profile_fingerprint,m_bear_machine))
+        {
+         m_data_healthy=false;
+         SetEvent(
+            ENGINE_EVENT_ERROR,bar.close_time,"BEAR_STATE_SAVE_FAILED");
+        }
+     }
+
    void DispatchClosedBar(const EngineBar &bar)
      {
       m_state.bars_processed++;
@@ -186,10 +251,19 @@ private:
       else if(bar.timeframe==PERIOD_M1)
         {
          AppendBounded(m_m1_history,bar,512);
+         EvaluateBearBar(bar);
+         if(!m_data_healthy)
+            return;
          EvaluateRevisedSide(ENGINE_SIDE_BUY);
          if(m_data_healthy)
             EvaluateRevisedSide(ENGINE_SIDE_SELL);
         }
+      else
+         return;
+      if(bar.timeframe==PERIOD_H1 ||
+         bar.timeframe==PERIOD_M15 ||
+         bar.timeframe==PERIOD_M5)
+         EvaluateBearBar(bar);
      }
 
    void CheckActiveSetupTick(const EngineTick &tick)
@@ -212,6 +286,7 @@ public:
       m_state.setup_id="";
       m_last_event.type=ENGINE_EVENT_NONE;
       m_has_revised_decision=false;
+      m_has_bear_signal=false;
      }
 
    int Initialize(const long expected_login,const string expected_server)
@@ -237,10 +312,38 @@ public:
          return INIT_FAILED;
         }
 
-      m_data_healthy=true;
-      m_initialized=true;
       m_revised_engine.Initialize(m_profile.symbol);
       m_revised_detector.SetMaximumAgeBars(60);
+      const datetime bear_as_of=(ArraySize(m_h1_history)>0 ?
+         m_h1_history[0].open_time : TimeCurrent());
+      if(!m_bear_machine.Initialize(
+            m_profile.profile_id,m_profile.symbol,
+            m_profile.profile_id=="GOLDM" ? 0.24 : 0.20,
+            bear_as_of,BearBrokerUtcOffsetMinutes(TimeCurrent())))
+        {
+         Print("GOLD_ENGINE_INIT_REJECT profile=",m_profile.profile_id,
+               " reason=BEAR_MACHINE_INIT_FAILED");
+         return INIT_FAILED;
+        }
+      const BearStateLoadStatus bear_load=m_bear_store.Load(
+         m_profile.profile_id,m_profile.symbol,m_profile.profile_fingerprint,
+         TimeCurrent(),180,m_bear_machine);
+      if(bear_load==BEAR_STATE_INVALID)
+        {
+         Print("GOLD_ENGINE_INIT_REJECT profile=",m_profile.profile_id,
+               " reason=BEAR_STATE_INVALID");
+         return INIT_FAILED;
+        }
+      if((bear_load==BEAR_STATE_MISSING || bear_load==BEAR_STATE_STALE) &&
+         !m_bear_machine.SeedClosedHistory(
+            m_m1_history,m_m5_history,m_m15_history,m_h1_history))
+        {
+         Print("GOLD_ENGINE_INIT_REJECT profile=",m_profile.profile_id,
+               " reason=BEAR_WARMUP_INCOMPLETE");
+         return INIT_FAILED;
+        }
+      m_data_healthy=true;
+      m_initialized=true;
       const int m5_count=ArraySize(m_m5_history);
       if(m5_count>0)
          m_revised_detector.SeedWarmup(
@@ -297,6 +400,9 @@ public:
 
    void Deinitialize(const int reason)
      {
+      if(m_initialized)
+         m_bear_store.Save(
+            m_profile.profile_id,m_profile.profile_fingerprint,m_bear_machine);
       m_initialized=false;
       m_data_healthy=false;
       Print("GOLD_ENGINE_STOP profile=",m_profile.profile_id,
@@ -321,6 +427,21 @@ public:
    RevisedDecision LastRevisedDecision(void) const
      {
       return m_last_revised_decision;
+     }
+
+   bool HasBearSignal(void) const
+     {
+      return m_has_bear_signal;
+     }
+
+   BearEntryPlan LastBearSignal(void) const
+     {
+      return m_last_bear_signal;
+     }
+
+   BearIncrementalPhase BearPhase(void) const
+     {
+      return m_bear_machine.Phase();
      }
   };
 

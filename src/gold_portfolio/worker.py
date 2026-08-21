@@ -117,7 +117,10 @@ class CompositePortfolioWorker:
             stop_multiplier=float(config.bear.get("stop_multiplier") or 1.0),
             target_multiplier=float(config.bear.get("target_multiplier") or 1.0),
         )
-        self.bear_replay = BearMultiTimeframeReplay(BearV4Config(**bear_values))
+        self.bear_replay = BearMultiTimeframeReplay(
+            BearV4Config(**bear_values),
+            symbol=config.symbol,
+        )
         profile_id = {"goldi": "GOLDI", "goldm": "GOLDM"}.get(config.group)
         if profile_id is None:
             raise ValueError(f"unsupported final worker group: {config.group!r}")
