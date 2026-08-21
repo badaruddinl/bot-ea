@@ -27,6 +27,9 @@ Current sub-batch:
 - new Common Files exclusive lease rejects a second profile/account/magic EA
   instance across chart or terminal process. Native harness PASS: first owner,
   duplicate refusal, release, then recovery acquisition; no trade mutation.
+- lease namespace test also holds GOLDM alive while GOLDI is released and
+  reacquired, proving one-profile restart does not evict or overwrite the other
+  profile's lock.
 - broker ambiguous-result handling now performs no blind retry. Only timeout,
   connection, or generic ambiguous retcodes enter exact symbol+magic+signal
   comment reconciliation, and exactly one matching position is required.
@@ -47,7 +50,7 @@ Remaining matrix:
 
 - explicit disconnect/reconnect transition capture;
 - manual close and magic-collision aggregation into G18 certification;
-- dual-terminal restart and one-profile restart while the other remains alive;
+- actual dual-terminal/process concurrency beyond the Common Files lease proof;
 - final compile/regression/resource-independent G18 sealing.
 
 REAL orders: **DISABLED**

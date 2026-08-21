@@ -33,5 +33,8 @@ def test_native_harness_proves_duplicate_refusal_and_recovery() -> None:
     assert "DUPLICATE_EA_INSTANCE" in source
     assert "first.Release()" in source
     assert "recovery_acquired" in source
+    assert "other_profile_alive" in source
+    assert "other_remained_alive" in source
+    assert "one_profile_restart=" in source
     assert "cross_terminal=FILE_COMMON_EXCLUSIVE" in source
     assert "order_authority=DISABLED" in source

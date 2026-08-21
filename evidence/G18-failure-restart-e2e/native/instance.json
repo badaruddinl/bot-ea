@@ -1,7 +1,7 @@
 {
-  "captured_at_utc": "2026-08-21T07:34:33.776534+00:00",
+  "captured_at_utc": "2026-08-21T07:43:13.292303+00:00",
   "captured_log": "instance.log",
-  "captured_log_sha256": "4e4b39e20de343b39609d39090aa28ad2c2aa4b2f2a1f281b96677e1e6a84e66",
+  "captured_log_sha256": "e187489f6eb0ecbf6c4bbb24943abb21262a77e2f32228c0a69fcf16c3005d5f",
   "order_authority": "DISABLED",
   "production_real_orders": "DISABLED",
   "proof": "instance",
