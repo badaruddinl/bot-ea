@@ -31,6 +31,7 @@ REAL order authority: **DISABLED**
 | G15 | PASS | SHARED, GOLDI, GOLDM, CROSS_PROFILE | `evidence/G15-full-parity/` | Canonical four-pipeline parity, exact fields, zero-tick observed geometry delta, zero cross-profile events, dual-profile lifecycle Strategy Tester, warning-clean compile, 805 fast tests, 218 slow tests, and quality gate passed; REAL authority remained disabled. |
 | G16 | PASS | SHARED, GOLDI, GOLDM, CROSS_PROFILE | `evidence/G16-event-bridge/` | Profile-specific append-only EA spool, atomic idempotent SQLite ingest/ACK, recipient-level retry, GOLDI-approved/GOLDM-admin isolation, WATCH suppression, native tester, warning-clean compile, 820 fast tests, 218 slow tests, and quality gate passed. |
 | G17 | PASS | SHARED, GOLDI, GOLDM, CROSS_PROFILE | `evidence/G17-happy-path-e2e/` | GOLDI actual DEMO and GOLDM isolated tester chains completed through order/position/close/spool/SQLite/actual Telegram, exact GOLDM refusal passed, cross-profile leakage stayed zero, compile/regression/quality passed, and REAL authority remained disabled. |
+| G18 | IN_PROGRESS | SHARED, GOLDI, GOLDM, CROSS_PROFILE | `evidence/G18-failure-restart-e2e/` | Exercising dependency, broker, ownership, duplicate/collision, and single/dual-terminal restart failures with safe recovery and no REAL authority. |
 
 Raw or large evidence is stored outside Git under:
 

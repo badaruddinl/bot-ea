@@ -614,7 +614,7 @@ Goal hanya selesai bila seluruh required cell PASS.
 | G15 Full parity certification | PASS | PASS | PASS | PASS | `evidence/G15-full-parity/` |
 | G16 Event outbox/bridge | PASS | PASS | PASS | PASS | `evidence/G16-event-bridge/` |
 | G17 Happy-path E2E | PASS | PASS | PASS | PASS | `evidence/G17-happy-path-e2e/` |
-| G18 Failure/restart E2E | NOT_STARTED | NOT_STARTED | NOT_STARTED | NOT_STARTED | |
+| G18 Failure/restart E2E | IN_PROGRESS | IN_PROGRESS | IN_PROGRESS | IN_PROGRESS | `evidence/G18-failure-restart-e2e/` |
 | G19 Resource/storage/latency | NOT_STARTED | NOT_STARTED | NOT_STARTED | NOT_STARTED | |
 | G20 Fresh VM acceptance | NOT_STARTED | NOT_STARTED | NOT_STARTED | NOT_STARTED | |
 | G21 Final release evidence | NOT_STARTED | NOT_STARTED | NOT_STARTED | NOT_STARTED | |
