@@ -200,9 +200,11 @@ bool ValidateExecution(const SignalPlan &plan,
 
    if(context.account_login!=plan.account_login)
       ExecutionReject(result.reject_mask,EXECUTION_REJECT_ACCOUNT);
+   const bool goldm_tester_mode=plan.engineering_tester &&
+      profile.profile_id=="GOLDM" && MQLInfoInteger(MQL_TESTER);
    if(context.account_server!=plan.account_server ||
       context.trade_mode!=plan.trade_mode ||
-      plan.trade_mode!=profile.expected_trade_mode)
+      (plan.trade_mode!=profile.expected_trade_mode && !goldm_tester_mode))
       ExecutionReject(result.reject_mask,EXECUTION_REJECT_SERVER_MODE);
    if(context.terminal_identity!=plan.terminal_identity ||
       plan.terminal_identity!=profile.terminal_identity)

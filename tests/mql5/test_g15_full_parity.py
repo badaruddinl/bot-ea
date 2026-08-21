@@ -24,6 +24,8 @@ def test_full_parity_report_covers_every_profile_pipeline_and_exact_field() -> N
     assert report["parity"]["cross_profile_event_count"] == 0
     assert report["parity"]["equity_curve_role"] == "SUPPLEMENTARY_ONLY"
     assert report["production_real_orders"] == "DISABLED"
+    assert "lifecycle_goldm" in report["native_proofs"]
+    assert "lifecycle_goldi" in report["native_proofs"]
     for profile in report["profiles"].values():
         assert profile["observed_price_delta_ticks"] <= profile["maximum_price_delta_ticks"]
 

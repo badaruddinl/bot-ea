@@ -41,6 +41,8 @@ INPUT_PATHS = (
     "evidence/G14-execution-lifecycle/native/goldi-execution-disabled-tester.json",
     "evidence/G14-execution-lifecycle/native/goldi-execution-lifecycle-tester.json",
     "evidence/G14-execution-lifecycle/native/goldi-position-persistence-tester.json",
+    "evidence/G15-full-parity/native/goldm-execution-lifecycle-tester.json",
+    "evidence/G15-full-parity/native/goldi-execution-lifecycle-g15-tester.json",
 )
 
 
@@ -165,6 +167,19 @@ def build_report(root: Path) -> dict[str, Any]:
         set(native) == {"guard", "broker", "disabled", "lifecycle", "position"},
         "G14 native proof matrix incomplete",
     )
+    for profile_id, stem in (
+        ("GOLDI", "goldi-execution-lifecycle-g15-tester.json"),
+        ("GOLDM", "goldm-execution-lifecycle-tester.json"),
+    ):
+        lifecycle = _json(root / "evidence/G15-full-parity/native" / stem)
+        proof = f"lifecycle_{profile_id.lower()}"
+        _require(
+            lifecycle.get("proof") == proof
+            and lifecycle.get("profile_matrix") == [profile_id]
+            and lifecycle.get("order_authority") == "TESTER_ONLY",
+            f"{profile_id} isolated tester lifecycle proof is invalid",
+        )
+        native[proof] = lifecycle
 
     oracle = _json(root / "corpus/bear_parity/m15_scanner_oracle.json")
     _require(len(oracle.get("vectors") or []) == 2, "Bear oracle profile matrix incomplete")

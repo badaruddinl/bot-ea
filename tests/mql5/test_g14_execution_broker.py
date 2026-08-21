@@ -3,7 +3,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 BROKER = ROOT / "mt5" / "Include" / "bot-ea" / "GoldEngineExecutionBroker.mqh"
 HARNESS = ROOT / "mt5" / "Experts" / "bot-ea" / "GoldEngineExecutionDisabledHarness.mq5"
-LIFECYCLE = ROOT / "mt5" / "Experts" / "bot-ea" / "GoldEngineExecutionLifecycleHarness.mq5"
+LIFECYCLE = ROOT / "mt5" / "Experts" / "bot-ea" / "GoldEngineExecutionLifecycleHarnessCore.mqh"
+GOLDM_LIFECYCLE = (
+    ROOT / "mt5" / "Experts" / "bot-ea" / "GoldEngineExecutionLifecycleGoldmHarness.mq5"
+)
 
 
 def test_broker_uses_ctrade_only_after_preflight_and_authority_gate() -> None:
@@ -62,8 +65,25 @@ def test_lifecycle_harness_opens_modifies_recovers_and_closes_tester_position() 
     assert "ModifyOwnedPosition" in value
     assert "CExecutionBroker restarted" in value
     assert "CloseOwnedPosition" in value
-    assert "if(now.hour<2 || now.hour>=23)" in value
+    assert "if(now.hour<8 || now.hour>=23)" in value
     assert "OnDeinit" in value
     assert "positions_before=" in value
     assert "positions_after=" in value
     assert "order_authority=TESTER_ONLY" in value
+
+
+def test_lifecycle_harness_has_thin_profile_locked_goldm_entrypoint() -> None:
+    value = GOLDM_LIFECYCLE.read_text(encoding="utf-8")
+
+    assert "#define BUILD_PROFILE_GOLDM" in value
+    assert '#include "GoldEngineExecutionLifecycleHarnessCore.mqh"' in value
+    core = LIFECYCLE.read_text(encoding="utf-8")
+    assert "plan.engineering_tester=true" in core
+
+
+def test_goldm_tester_mode_cannot_relax_live_server_mode_guard() -> None:
+    value = (ROOT / "mt5/Include/bot-ea/GoldEngineExecutionGuard.mqh").read_text(encoding="utf-8")
+
+    assert "plan.engineering_tester" in value
+    assert 'profile.profile_id=="GOLDM"' in value
+    assert "MQLInfoInteger(MQL_TESTER)" in value
