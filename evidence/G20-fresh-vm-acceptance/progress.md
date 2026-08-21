@@ -128,7 +128,24 @@ tests plus 64 subtests PASS. The incremental quality gate PASSes with core
 coverage 90.12% and strategy-rule coverage 82.66%.
 
 The second cold boot reached the workstation lock automatically and remained
-locked for more than two minutes while engines warmed up. G20 remains
-IN_PROGRESS pending authenticated postboot capture and strict verifier PASS.
+locked for more than two minutes while engines warmed up. Its postboot capture
+proved task, lock, bridge, exact terminal processes, GOLDM startup events, and
+disabled REAL authority, but the strict verifier remained FAIL because GOLDI
+had no new startup/profile/heartbeat events. Terminal journal evidence proved
+that `GOLDI.ini` was read and then failed to open
+`MQL5\Profiles\Charts\Default\chart01.chr`; the GOLDI MQL5 log remained stale,
+so no profile EA was attached after boot. This is retained in
+`autologon-second-failure.md` and is not promoted to PASS.
+
+The corrupt GOLDI startup chart was moved—not deleted—to a same-directory,
+timestamped backup while both terminal processes were stopped. Restarting the
+supervisor then attached `GoldEngine-GOLDi` successfully and increased the
+GOLDI spool from 1,571 to 3,584 bytes. Commit `820f977` adds an explicit,
+terminal-safe, hash-verified, recoverable repair tool plus runtime tests. The
+post-repair focused matrix is 29 PASS, incremental quality/coverage PASS, and
+fast regression is 826 tests plus 77 subtests PASS.
+
+G20 remains IN_PROGRESS pending source synchronization to the VM and a third
+clean cold boot with strict verifier PASS.
 
 REAL orders: **DISABLED**
