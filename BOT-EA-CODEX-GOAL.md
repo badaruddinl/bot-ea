@@ -612,7 +612,7 @@ Goal hanya selesai bila seluruh required cell PASS.
 | G13 Bear MQL5 parity | PASS | PASS | PASS | N/A | `evidence/G13-bear-parity/` |
 | G14 EA execution lifecycle | PASS | PASS | PASS | PASS | `evidence/G14-execution-lifecycle/` |
 | G15 Full parity certification | PASS | PASS | PASS | PASS | `evidence/G15-full-parity/` |
-| G16 Event outbox/bridge | IN_PROGRESS | IN_PROGRESS | IN_PROGRESS | IN_PROGRESS | `evidence/G16-event-bridge/` |
+| G16 Event outbox/bridge | PASS | PASS | PASS | PASS | `evidence/G16-event-bridge/` |
 | G17 Happy-path E2E | NOT_STARTED | NOT_STARTED | NOT_STARTED | NOT_STARTED | |
 | G18 Failure/restart E2E | NOT_STARTED | NOT_STARTED | NOT_STARTED | NOT_STARTED | |
 | G19 Resource/storage/latency | NOT_STARTED | NOT_STARTED | NOT_STARTED | NOT_STARTED | |
