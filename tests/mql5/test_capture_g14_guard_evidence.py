@@ -17,7 +17,23 @@ SPEC.loader.exec_module(MODULE)
 
 def log(*, passed: bool = True, proof: str = "guard") -> str:
     status = "true" if passed else "false"
-    if proof == "position":
+    if proof in {"lifecycle_goldi", "lifecycle_goldm"}:
+        is_goldm = proof == "lifecycle_goldm"
+        expert = (
+            "GoldEngineExecutionLifecycleGoldmHarness.ex5"
+            if is_goldm
+            else "GoldEngineExecutionLifecycleHarness.ex5"
+        )
+        magic = "26081912" if is_goldm else "26081911"
+        marker = (
+            f"G14_EXECUTION_LIFECYCLE passed={status} initialized=true opened=true "
+            "discovered=true modified=true restarted=true closed=true "
+            "positions_before=0 positions_after=0 open_retcode=10009 "
+            "reject_mask=0 submit_reason=ORDER_SENT modify_retcode=10009 "
+            f"close_retcode=10009 magic={magic} order_authority=TESTER_ONLY "
+            "reason=POSITION_CLOSED"
+        )
+    elif proof == "position":
         expert = "GoldEnginePositionPersistenceHarness.ex5"
         marker = (
             f"G14_POSITION_PERSISTENCE passed={status} missing=true saved=true "
@@ -148,6 +164,42 @@ def test_capture_supports_position_restart_proof(tmp_path: Path) -> None:
     assert metadata["proof"] == "position"
     assert metadata["order_authority"] == "DISABLED"
     assert metadata["profile_matrix"] == ["GOLDI", "GOLDM"]
+
+
+def test_capture_supports_goldm_tester_only_lifecycle(tmp_path: Path) -> None:
+    source = tmp_path / "tester.log"
+    source.write_text(
+        log(proof="lifecycle_goldm")
+        .replace("GOLD.i#", "GOLDm#")
+        .replace("XMGlobal-MT5 5", "XMGlobal-MT5 14"),
+        encoding="utf-8",
+    )
+    output = tmp_path / "evidence"
+    metadata = MODULE.write_evidence(
+        source=source,
+        output_directory=output,
+        symbol="GOLDm#",
+        timeframe="M15",
+        server="XMGlobal-MT5 14",
+        proof="lifecycle_goldm",
+    )
+    assert metadata["profile_matrix"] == ["GOLDM"]
+    assert metadata["order_authority"] == "TESTER_ONLY"
+
+
+def test_capture_supports_goldi_g15_lifecycle(tmp_path: Path) -> None:
+    source = tmp_path / "tester.log"
+    source.write_text(log(proof="lifecycle_goldi"), encoding="utf-8")
+    output = tmp_path / "evidence"
+    metadata = MODULE.write_evidence(
+        source=source,
+        output_directory=output,
+        symbol="GOLD.i#",
+        timeframe="M15",
+        server="XMGlobal-MT5 5",
+        proof="lifecycle_goldi",
+    )
+    assert metadata["profile_matrix"] == ["GOLDI"]
 
 
 @pytest.mark.parametrize("text", (log(passed=False), "unrelated\n"))

@@ -1,0 +1,15 @@
+{
+  "captured_at_utc": "2026-08-21T05:42:28.798274+00:00",
+  "captured_log": "goldi-execution-lifecycle-g15-tester.log",
+  "captured_log_sha256": "8393ac9f0b8bcbc333281ddac507dc388cfc7c7474e20f49ed5ca0976c602f6e",
+  "order_authority": "TESTER_ONLY",
+  "profile_matrix": [
+    "GOLDI"
+  ],
+  "proof": "lifecycle_goldi",
+  "server": "XMGlobal-MT5 5",
+  "source_log": "E:\\mnt\\e\\luthfi\\project\\bot-ea-mql5-integration\\.mt5-g12-portable\\Tester\\logs\\20260821.log",
+  "source_log_sha256": "a0f2714d307b234a546e67d115c50d09220e2ab335bb800652a9a3e5e8022639",
+  "symbol": "GOLD.i#",
+  "timeframe": "M15"
+}

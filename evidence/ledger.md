@@ -28,6 +28,7 @@ REAL order authority: **DISABLED**
 | G12 | PASS | SHARED, GOLDI, GOLDM, CROSS_PROFILE | `evidence/G12-revised-parity/` | Native Revised decision/runtime and setup/restart parity certified on GOLD.i/XMGlobal-MT5 5 and GOLDm/XMGlobal-MT5 14. Exact state/reason/timestamps and one-tick geometry passed; compile, fast/slow regression, profile isolation, hashes, and disabled REAL authority verified. |
 | G13 | PASS | SHARED, GOLDI, GOLDM | `evidence/G13-bear-parity/` | Incremental Bear state, M15 confluence, persistence/restart, exact event/reason/geometry parity, warning-clean compile, GOLD.i and GOLDm Strategy Tester, 685 fast tests, 154 slow tests, and quality gate are certified with REAL authority disabled. |
 | G14 | PASS | SHARED, GOLDI, GOLDM, CROSS_PROFILE | `evidence/G14-execution-lifecycle/` | Full guard/preflight/CTrade contract, Python authority removal, owned-position modify/close, dual-slot restart recovery, manual-intervention fail-closed behavior, warning-clean dual-profile compile, native tester proofs, 795 fast tests, 218 slow tests, and quality gate passed; REAL authority remained disabled. |
+| G15 | PASS | SHARED, GOLDI, GOLDM, CROSS_PROFILE | `evidence/G15-full-parity/` | Canonical four-pipeline parity, exact fields, zero-tick observed geometry delta, zero cross-profile events, dual-profile lifecycle Strategy Tester, warning-clean compile, 805 fast tests, 218 slow tests, and quality gate passed; REAL authority remained disabled. |
 
 Raw or large evidence is stored outside Git under:
 

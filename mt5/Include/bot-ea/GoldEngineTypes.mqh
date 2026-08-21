@@ -129,6 +129,7 @@ struct SignalPlan
    double     invalidation;
    double     risk_price;
    bool       executable;
+   bool       engineering_tester;
   };
 
 struct EngineEvent
