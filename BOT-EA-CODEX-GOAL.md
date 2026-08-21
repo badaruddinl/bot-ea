@@ -616,7 +616,7 @@ Goal hanya selesai bila seluruh required cell PASS.
 | G17 Happy-path E2E | PASS | PASS | PASS | PASS | `evidence/G17-happy-path-e2e/` |
 | G18 Failure/restart E2E | PASS | PASS | PASS | PASS | `evidence/G18-failure-restart-e2e/` |
 | G19 Resource/storage/latency | PASS | PASS | PASS | PASS | `evidence/G19-resource-storage-latency/` |
-| G20 Fresh VM acceptance | NOT_STARTED | NOT_STARTED | NOT_STARTED | NOT_STARTED | |
+| G20 Fresh VM acceptance | IN_PROGRESS | IN_PROGRESS | IN_PROGRESS | IN_PROGRESS | `evidence/G20-fresh-vm-acceptance/` |
 | G21 Final release evidence | NOT_STARTED | NOT_STARTED | NOT_STARTED | NOT_STARTED | |
 
 `N/A` hanya valid jika gate memang shared-only atau profile-only berdasarkan kontrak ini.
