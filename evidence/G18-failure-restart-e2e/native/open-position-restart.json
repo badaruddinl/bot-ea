@@ -1,0 +1,15 @@
+{
+  "account_mode": "DEMO",
+  "captured_at_utc": "2026-08-21T07:34:34.725035+00:00",
+  "captured_log": "open-position-restart.log",
+  "captured_log_sha256": "87d202ad4643c8b5f3d4ee3cb30ce4cf5ff68d0b7f4d7c1babc765d72a820da6",
+  "close_retcode": 10009,
+  "order_authority": "DEMO_E2E_ONLY",
+  "positions_after_recovery": 0,
+  "positions_seen_after_restart": 1,
+  "production_real_orders": "DISABLED",
+  "profile_id": "GOLDI",
+  "proof": "open_position_restart",
+  "result": "PASS",
+  "ticket": "902911581"
+}
