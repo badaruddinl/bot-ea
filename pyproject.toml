@@ -18,6 +18,7 @@ goldm-revised-replay = "goldm_revised.replay_cli:main"
 goldm-telegram-worker = "goldm_signal.notify.cli:main"
 gold-portfolio-worker = "gold_portfolio.cli:main"
 gold-global-orchestrator = "gold_orchestrator.cli:main"
+gold-event-bridge = "gold_event_bridge.cli:main"
 
 [project.optional-dependencies]
 live = [
@@ -71,4 +72,4 @@ package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["bot_ea*", "gold_engine_core*", "gold_orchestrator*", "gold_portfolio*", "goldm_bear*", "goldm_revised*", "goldm_signal*"]
+include = ["bot_ea*", "gold_engine_core*", "gold_event_bridge*", "gold_orchestrator*", "gold_portfolio*", "goldm_bear*", "goldm_revised*", "goldm_signal*"]

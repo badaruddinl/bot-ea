@@ -8,6 +8,7 @@
 #include "GoldEngineBearPersistence.mqh"
 #include "GoldEngineExecutionBroker.mqh"
 #include "GoldEnginePositionPersistence.mqh"
+#include "GoldEngineOutbox.mqh"
 #include "GoldEngineScheduler.mqh"
 
 class CGoldEngineRuntime
@@ -41,6 +42,20 @@ private:
    CPositionStateStore m_position_store;
    ExpectedPositionState m_expected_position;
    PositionStateLoadStatus m_position_state_status;
+   CEngineOutbox       m_outbox;
+   bool                m_outbox_initialized;
+
+   void EmitTransition(const string event_type,
+                       const string setup_id="",
+                       const string signal_id="",
+                       const string order_id="",
+                       const string position_id="",
+                       const string payload="{}")
+     {
+      if(m_outbox_initialized)
+         m_outbox.Emit(event_type,m_last_event,setup_id,signal_id,
+                       order_id,position_id,payload);
+     }
 
    bool PersistSubmittedPosition(const SignalPlan &plan,
                                  const datetime server_time)
@@ -140,6 +155,9 @@ private:
             return;
          m_state.phase=ENGINE_PHASE_POSITION_OPEN;
          SetEvent(ENGINE_EVENT_POSITION,server_time,"ORDER_SENT");
+         EmitTransition("POSITION_OPENED",plan.setup_id,plan.signal_id,
+            IntegerToString((long)m_last_execution_receipt.order_ticket),
+            IntegerToString((long)m_expected_position.ticket));
          return;
         }
       if(m_last_execution_receipt.state==EXECUTION_SUBMIT_DISABLED)
@@ -243,6 +261,22 @@ private:
       m_last_event.event_id=
          m_profile.profile_id+"-"+IntegerToString((long)type)+"-"+
          IntegerToString((long)server_time);
+      if(type==ENGINE_EVENT_RUNTIME_READY)
+        {
+         EmitTransition("ENGINE_STARTED");
+         EmitTransition("PROFILE_VALIDATED");
+        }
+      else if(type==ENGINE_EVENT_ENTRY_READY)
+         EmitTransition("ENTRY_READY",m_state.setup_id);
+      else if(type==ENGINE_EVENT_POSITION)
+        {
+         if(reason=="ORDER_SENT") EmitTransition("ORDER_SUBMITTED");
+         else if(reason=="POSITION_MODIFIED") EmitTransition("POSITION_MODIFIED");
+         else if(reason=="POSITION_CLOSED") EmitTransition("POSITION_CLOSED");
+         else if(reason=="POSITION_RECOVERED") EmitTransition("RECOVERY_COMPLETED");
+        }
+      else if(type==ENGINE_EVENT_ERROR)
+         EmitTransition("ENGINE_ERROR");
      }
 
    bool LoadHistory(const ENUM_TIMEFRAMES timeframe,
@@ -506,6 +540,7 @@ public:
       m_has_execution_receipt=false;
       m_foreign_symbol_position=false;
       m_manual_intervention=false;
+      m_outbox_initialized=false;
       m_position_state_status=POSITION_STATE_MISSING;
       PositionStateReset(m_expected_position);
      }
@@ -543,6 +578,7 @@ public:
         }
       m_position_store.Initialize(
          m_profile.profile_id,m_profile.profile_fingerprint);
+      m_outbox_initialized=m_outbox.Initialize(m_profile);
 
       m_revised_engine.Initialize(m_profile.symbol);
       m_revised_detector.SetMaximumAgeBars(60);
@@ -720,7 +756,12 @@ public:
 
    bool ManualInterventionDetected(void) const
      {
-      return m_manual_intervention;
+     return m_manual_intervention;
+     }
+
+   bool OutboxHealthy(void) const
+     {
+      return m_outbox_initialized && m_outbox.Healthy();
      }
 
    long BarsProcessed(void) const
