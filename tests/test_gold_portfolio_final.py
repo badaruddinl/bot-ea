@@ -125,12 +125,16 @@ def executable_signal(
     )
 
 
-def test_final_goldi_is_tag_pinned_demo_execution(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_final_goldi_is_tag_pinned_mql5_demo_profile(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     _bind_env(monkeypatch)
     config = load_worker_config(ROOT / "config/final/goldi/worker.json")
 
-    assert config.demo_execution
+    assert not config.demo_execution
+    assert not config.order_execution
     assert config.orders_enabled
+    assert config.order_authority == "mql5"
     assert config.terminal.expected_trade_mode == "demo"
     assert config.balance_tiers == (
         (0.0, 0.01),
@@ -155,7 +159,9 @@ def test_final_goldm_is_composite_real_and_uses_aggressive_tiers(
     _bind_env(monkeypatch)
     config = load_worker_config(ROOT / "config/final/goldm/worker.json")
 
-    assert config.real_execution
+    assert not config.real_execution
+    assert not config.order_execution
+    assert config.order_authority == "mql5"
     assert config.symbol == "GOLDm#"
     assert config.terminal.expected_login == 391425346
     assert config.balance_tiers == (
@@ -350,120 +356,46 @@ class DemoFakeMt5(FakeMt5):
         )
 
 
-def test_real_executor_reads_shared_balance_and_sends_one_checked_order(
+@pytest.mark.parametrize(
+    ("group", "module", "event_id", "symbol", "side"),
+    [
+        ("goldi", DemoFakeMt5, "goldi:1", "GOLD.i#", "SELL"),
+        ("goldm", FakeMt5, "goldm:1", "GOLDm#", "BUY"),
+    ],
+)
+def test_python_worker_is_signal_only_when_mql5_owns_order_authority(
     monkeypatch: pytest.MonkeyPatch,
+    group: str,
+    module,
+    event_id: str,
+    symbol: str,
+    side: str,
 ) -> None:
     _bind_env(monkeypatch)
-    config = load_worker_config(ROOT / "config/final/goldm/worker.json")
-    module = FakeMt5()
-    session = BoundMt5Session(config, mt5_module=module)
+    config = load_worker_config(ROOT / "config" / "final" / group / "worker.json")
+    mt5 = module()
+    session = BoundMt5Session(config, mt5_module=mt5)
     signal = executable_signal(
         session,
-        event_id="revised:1",
+        event_id=event_id,
         component="revised",
-        symbol="GOLDm#",
-        side="BUY",
+        symbol=symbol,
+        side=side,
         time=FAKE_SERVER_TIME,
         entry=4400.0,
-        stop=4390.0,
-        target=4420.0,
+        stop=4390.0 if side == "BUY" else 4410.0,
+        target=4420.0 if side == "BUY" else 4380.0,
         reason="test",
     )
 
     result = session.execute(signal)
 
-    assert result["status"] == "EXECUTED"
-    assert result["volume"] == 1.0
-    assert len(module.sent) == 1
-    assert module.sent[0]["magic"] == config.magic
-    assert module.sent[0]["sl"] == 4390.0
-    assert module.sent[0]["tp"] == 4420.0
-    assert result["signal_id"] == "revised:1"
-    assert result["request_id"] == 779
-    assert result["server_time"].endswith("+03:00")
-    assert result["vm_time"]
-
-
-def test_goldi_demo_executor_places_order_at_locked_adaptive_lot(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _bind_env(monkeypatch)
-    config = load_worker_config(ROOT / "config/final/goldi/worker.json")
-    module = DemoFakeMt5()
-    session = BoundMt5Session(config, mt5_module=module)
-    signal = executable_signal(
-        session,
-        event_id="goldi-demo:1",
-        component="bear",
-        symbol="GOLD.i#",
-        side="SELL",
-        time=FAKE_SERVER_TIME,
-        entry=4400.0,
-        stop=4410.0,
-        target=4380.0,
-        reason="test demo entry",
-    )
-
-    result = session.execute(signal)
-
-    assert result["status"] == "EXECUTED"
-    assert result["volume"] == 0.1
-    assert len(module.sent) == 1
-    assert module.sent[0]["symbol"] == "GOLD.i#"
-    assert module.sent[0]["magic"] == 26081911
-
-
-def test_executor_rejects_stale_drift_broker_check_and_duplicate_without_send(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _bind_env(monkeypatch)
-    config = load_worker_config(ROOT / "config/final/goldi/worker.json")
-    module = DemoFakeMt5()
-    session = BoundMt5Session(config, mt5_module=module)
-    signal = executable_signal(
-        session,
-        event_id="goldi-validity:1",
-        component="revised",
-        symbol="GOLD.i#",
-        side="BUY",
-        time=FAKE_SERVER_TIME,
-        entry=4400.0,
-        stop=4390.0,
-        target=4420.0,
-        reason="test validity",
-    )
-
-    stale = replace(
-        signal,
-        setup_created_at=FAKE_SERVER_TIME - timedelta(minutes=3),
-        entry_ready_at=FAKE_SERVER_TIME - timedelta(minutes=2),
-        valid_until=FAKE_SERVER_TIME - timedelta(minutes=1),
-    )
-    stale_result = session.execute(stale)
-    assert stale_result["status"] == "BLOCKED_VALIDITY"
-    assert "SIGNAL_AGE_INVALID" in stale_result["reasons"]
-    assert module.sent == []
-
-    module.ask = 4402.0
-    module.bid = 4401.9
-    drift_result = session.execute(signal)
-    assert "ENTRY_DRIFT_EXCEEDED" in drift_result["reasons"]
-    assert module.sent == []
-
-    module.ask = 4400.2
-    module.bid = 4399.9
-    module.check_retcode = 10030
-    check_result = session.execute(signal)
-    assert "BROKER_CHECK_REJECTED" in check_result["reasons"]
-    assert module.sent == []
-
-    module.check_retcode = 0
-    assert session.execute(signal)["status"] == "EXECUTED"
-    assert len(module.sent) == 1
-    duplicate = session.execute(signal)
-    assert duplicate["status"] == "BLOCKED_VALIDITY"
-    assert "DUPLICATE_SIGNAL" in duplicate["reasons"]
-    assert len(module.sent) == 1
+    assert result == {
+        "status": "SIGNAL_ONLY",
+        "order_authority": "MQL5",
+        "signal_id": event_id,
+    }
+    assert mt5.sent == []
 
 
 @pytest.mark.parametrize(
