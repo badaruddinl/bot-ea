@@ -1,6 +1,6 @@
 from .bridge import EventBridge, RecipientPolicy
 from .events import EngineEventEnvelope, EventSchemaError
-from .store import EventStore, IngestResult
+from .store import EventStore, IngestResult, SpoolCompactionResult, SpoolRecoveryResult
 
 __all__ = (
     "EngineEventEnvelope",
@@ -9,4 +9,6 @@ __all__ = (
     "EventStore",
     "IngestResult",
     "RecipientPolicy",
+    "SpoolCompactionResult",
+    "SpoolRecoveryResult",
 )

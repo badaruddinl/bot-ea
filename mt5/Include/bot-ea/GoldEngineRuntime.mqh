@@ -45,6 +45,9 @@ private:
    PositionStateLoadStatus m_position_state_status;
    CEngineOutbox       m_outbox;
    bool                m_outbox_initialized;
+   ulong               m_last_bar_close_to_detection_ms;
+   ulong               m_last_detection_to_decision_us;
+   ulong               m_last_entry_ready_to_submit_us;
    CEngineInstanceLease m_instance_lease;
 
    void EmitTransition(const string event_type,
@@ -135,9 +138,14 @@ private:
       plan.invalidation=stop_loss;
       plan.risk_price=MathAbs(entry-stop_loss);
       plan.executable=plan.volume>0.0 && plan.risk_price>0.0;
+      // The GOLDM engineering exception remains unreachable outside Strategy
+      // Tester: no input or persisted state can enable this flag live.
+      plan.engineering_tester=(bool)MQLInfoInteger(MQL_TESTER);
      }
 
-   void SubmitSignalPlan(const SignalPlan &plan,const datetime server_time)
+   void SubmitSignalPlan(const SignalPlan &plan,
+                         const datetime server_time,
+                         const ulong entry_ready_started_us)
      {
       if(!RecoverOwnedPositions(server_time))
          return;
@@ -148,6 +156,8 @@ private:
          return;
         }
       string reason="";
+      m_last_entry_ready_to_submit_us=
+         GetMicrosecondCount()-entry_ready_started_us;
       m_has_execution_receipt=true;
       const bool submitted=m_execution_broker.Submit(
          plan,m_last_execution_receipt,reason);
@@ -157,9 +167,18 @@ private:
             return;
          m_state.phase=ENGINE_PHASE_POSITION_OPEN;
          SetEvent(ENGINE_EVENT_POSITION,server_time,"ORDER_SENT");
+         const string latency_payload=StringFormat(
+            "{\"bar_close_to_detection_ms\":%I64u,"
+            "\"detection_to_decision_us\":%I64u,"
+            "\"entry_ready_to_submit_us\":%I64u,"
+            "\"submit_to_broker_ack_us\":%I64u}",
+            m_last_bar_close_to_detection_ms,
+            m_last_detection_to_decision_us,
+            m_last_entry_ready_to_submit_us,
+            m_last_execution_receipt.submit_to_broker_ack_us);
          EmitTransition("POSITION_OPENED",plan.setup_id,plan.signal_id,
             IntegerToString((long)m_last_execution_receipt.order_ticket),
-            IntegerToString((long)m_expected_position.ticket));
+            IntegerToString((long)m_expected_position.ticket),latency_payload);
          return;
         }
       if(m_last_execution_receipt.state==EXECUTION_SUBMIT_DISABLED)
@@ -414,6 +433,7 @@ private:
             m_last_revised_decision.has_stop &&
             m_last_revised_decision.has_target)
            {
+            const ulong entry_ready_started_us=GetMicrosecondCount();
             const string setup_id=m_profile.profile_id+":REVISED:"+
                IntegerToString((long)side)+":"+
                IntegerToString((long)setup.trigger_time);
@@ -423,7 +443,8 @@ private:
             BuildSignalPlan(side,setup_id,signal_id,setup.trigger_time,
                m_last_revised_decision.time,m_last_revised_decision.entry,
                m_last_revised_decision.stop,m_last_revised_decision.target,plan);
-            SubmitSignalPlan(plan,m_last_revised_decision.time);
+            SubmitSignalPlan(
+               plan,m_last_revised_decision.time,entry_ready_started_us);
            }
         }
       else if(m_last_revised_decision.state==REVISED_STATE_CANCELLED)
@@ -459,6 +480,7 @@ private:
         }
       if(has_signal)
         {
+         const ulong entry_ready_started_us=GetMicrosecondCount();
          m_last_bear_signal=signal;
          m_has_bear_signal=true;
          SetEvent(
@@ -471,7 +493,7 @@ private:
          BuildSignalPlan(ENGINE_SIDE_SELL,setup_id,signal_id,
             signal.armed_at,signal.opened_at,signal.entry,signal.stop,
             signal.target,plan);
-         SubmitSignalPlan(plan,signal.opened_at);
+         SubmitSignalPlan(plan,signal.opened_at,entry_ready_started_us);
         }
       else if(ArraySize(events)>0)
         {
@@ -543,6 +565,9 @@ public:
       m_foreign_symbol_position=false;
       m_manual_intervention=false;
       m_outbox_initialized=false;
+      m_last_bar_close_to_detection_ms=0;
+      m_last_detection_to_decision_us=0;
+      m_last_entry_ready_to_submit_us=0;
       m_position_state_status=POSITION_STATE_MISSING;
       PositionStateReset(m_expected_position);
      }
@@ -672,7 +697,16 @@ public:
         }
 
       for(int index=0;index<bar_count;index++)
+        {
+         const long closed_at_msc=(long)closed_bars[index].close_time*1000;
+         m_last_bar_close_to_detection_ms=
+            raw_tick.time_msc>closed_at_msc ?
+            (ulong)(raw_tick.time_msc-closed_at_msc) : 0;
+         const ulong decision_started_us=GetMicrosecondCount();
          DispatchClosedBar(closed_bars[index]);
+         m_last_detection_to_decision_us=
+            GetMicrosecondCount()-decision_started_us;
+        }
 
       if(m_state.active_setup)
          CheckActiveSetupTick(tick);
@@ -807,6 +841,21 @@ public:
    BearIncrementalPhase BearPhase(void) const
      {
       return m_bear_machine.Phase();
+     }
+
+   ulong LastBarCloseToDetectionMs(void) const
+     {
+      return m_last_bar_close_to_detection_ms;
+     }
+
+   ulong LastDetectionToDecisionUs(void) const
+     {
+      return m_last_detection_to_decision_us;
+     }
+
+   ulong LastEntryReadyToSubmitUs(void) const
+     {
+      return m_last_entry_ready_to_submit_us;
      }
   };
 

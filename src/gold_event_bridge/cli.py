@@ -21,6 +21,13 @@ def _chat_ids(value: str) -> tuple[str, ...]:
     return tuple(dict.fromkeys(result))
 
 
+def _positive_int(value: str) -> int:
+    parsed = int(value)
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("must be a positive integer")
+    return parsed
+
+
 def load_goldi_subscribers(path: Path | None) -> tuple[str, ...]:
     if path is None:
         return ()
@@ -40,6 +47,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--subscriber-state", type=Path)
     parser.add_argument("--once", action="store_true")
     parser.add_argument("--poll-seconds", type=float, default=2.0)
+    parser.add_argument("--spool-compact-bytes", type=_positive_int, default=16 * 1024 * 1024)
     return parser
 
 
@@ -67,7 +75,9 @@ def main() -> int:
                 send,
             )
             for spool in (args.goldi_spool, args.goldm_spool):
+                store.recover_rotated_spools(spool)
                 store.ingest_spool(spool)
+                store.compact_ingested_spool(spool, minimum_bytes=args.spool_compact_bytes)
             bridge.deliver_pending()
             if args.once:
                 return 0
