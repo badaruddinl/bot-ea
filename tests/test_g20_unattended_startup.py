@@ -177,4 +177,5 @@ def test_real_disabled_profile_has_only_the_manual_intervention_boot_exception()
     supervisor = SUPERVISOR.read_text(encoding="utf-8")
 
     assert 'allowed_postboot_engine_error_reasons = @("MANUAL_INTERVENTION_DETECTED")' in preparer
+    assert "PSObject.Properties['allowed_postboot_engine_error_reasons']" in supervisor
     assert "Postboot ENGINE_ERROR exceptions require GOLDM REAL with authority DISABLED" in supervisor

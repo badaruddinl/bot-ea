@@ -121,7 +121,10 @@ function Read-G20Config {
         if ($terminal.profile_id -eq 'GOLDM' -and $terminal.expected_order_authority -ne 'DISABLED') {
             throw "GOLDM REAL order authority must remain DISABLED"
         }
-        $allowedErrors = @($terminal.allowed_postboot_engine_error_reasons)
+        $allowedErrors = @()
+        if ($null -ne $terminal.PSObject.Properties['allowed_postboot_engine_error_reasons']) {
+            $allowedErrors = @($terminal.allowed_postboot_engine_error_reasons)
+        }
         if (@($allowedErrors | Where-Object {
                     [string]$_ -notin @('MANUAL_INTERVENTION_DETECTED')
                 }).Count -gt 0) {
