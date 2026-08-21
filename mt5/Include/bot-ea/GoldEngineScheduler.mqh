@@ -79,8 +79,13 @@ public:
          if(current<m_last_forming_open[index])
             return false;
 
-         const int seconds=PeriodSeconds(timeframe);
-         if(seconds<=0 || current>m_last_forming_open[index]+seconds)
+         // Wall-clock distance is not a data-gap signal: overnight/weekend
+         // closures legitimately have no broker bars. The exact previous bar
+         // must become shift 1. A larger shift proves one or more actual broker
+         // candles were skipped while the runtime was alive.
+         const int previous_shift=iBarShift(
+            m_symbol,timeframe,m_last_forming_open[index],true);
+         if(previous_shift!=1)
             gap_detected=true;
 
          EngineBar bar;

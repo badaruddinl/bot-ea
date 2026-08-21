@@ -10,6 +10,7 @@ param(
     [Parameter(Mandatory = $true)][string]$GoldiSpoolPath,
     [Parameter(Mandatory = $true)][string]$GoldmSpoolPath,
     [Parameter(Mandatory = $true)][string]$LatencyPath,
+    [ValidateSet("ProfileFile", "ProcessCpu")][string]$LivenessMode = "ProfileFile",
     [ValidateRange(12, 86400)][int]$SampleCount = 120,
     [ValidateRange(1, 3600)][int]$IntervalSeconds = 5
 )
@@ -30,6 +31,20 @@ function Get-FileLength {
         return 0L
     }
     return [long](Get-Item -LiteralPath $Path).Length
+}
+
+function Get-SpoolEventCount {
+    param([Parameter(Mandatory = $true)][string[]]$Paths)
+    [long]$count = 0
+    foreach ($path in $Paths) {
+        if (Test-Path -LiteralPath $path -PathType Leaf) {
+            $count += @(
+                Get-Content -LiteralPath $path |
+                    Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+            ).Count
+        }
+    }
+    return $count
 }
 
 function Resolve-ExactProcess {
@@ -58,6 +73,20 @@ function Read-HeartbeatGeneration {
         throw "$ProfileId heartbeat is invalid or unsafe"
     }
     return [long]$heartbeat.generation
+}
+
+function Get-LivenessGeneration {
+    param(
+        [Parameter(Mandatory = $true)]$Process,
+        [Parameter(Mandatory = $true)][string]$HeartbeatPath,
+        [Parameter(Mandatory = $true)][string]$ProfileId,
+        [Parameter(Mandatory = $true)][string]$Mode
+    )
+    if ($Mode -eq "ProfileFile") {
+        return Read-HeartbeatGeneration -Path $HeartbeatPath -ProfileId $ProfileId
+    }
+    $Process.Refresh()
+    return [long]([Math]::Floor([double]$Process.CPU * 1000.0))
 }
 
 function Get-ProcessMetrics {
@@ -110,15 +139,17 @@ for ($index = 0; $index -lt $SampleCount; $index++) {
         observed_at_utc = [DateTimeOffset]::UtcNow.ToString("O")
         components = [ordered]@{
             GOLDI = Get-ProcessMetrics -Process $goldi -HeartbeatGeneration (
-                Read-HeartbeatGeneration -Path $GoldiHeartbeatPath -ProfileId "GOLDI"
+                Get-LivenessGeneration -Process $goldi -HeartbeatPath $GoldiHeartbeatPath `
+                    -ProfileId "GOLDI" -Mode $LivenessMode
             )
             GOLDM = Get-ProcessMetrics -Process $goldm -HeartbeatGeneration (
-                Read-HeartbeatGeneration -Path $GoldmHeartbeatPath -ProfileId "GOLDM"
+                Get-LivenessGeneration -Process $goldm -HeartbeatPath $GoldmHeartbeatPath `
+                    -ProfileId "GOLDM" -Mode $LivenessMode
             )
             BRIDGE = Get-ProcessMetrics -Process $bridge
         }
         storage = [ordered]@{
-            event_count = 0
+            event_count = Get-SpoolEventCount -Paths @($GoldiSpoolPath, $GoldmSpoolPath)
             database_bytes = Get-FileLength -Path $DatabasePath
             wal_bytes = Get-FileLength -Path "$DatabasePath-wal"
             goldi_spool_bytes = Get-FileLength -Path $GoldiSpoolPath

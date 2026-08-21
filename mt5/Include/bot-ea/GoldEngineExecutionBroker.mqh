@@ -26,6 +26,7 @@ struct ExecutionReceipt
    ulong                deal_ticket;
    double               executed_price;
    double               executed_volume;
+   ulong                submit_to_broker_ack_us;
    string               reason;
   };
 
@@ -82,6 +83,7 @@ void ExecutionResetReceipt(ExecutionReceipt &receipt)
    receipt.deal_ticket=0;
    receipt.executed_price=0.0;
    receipt.executed_volume=0.0;
+   receipt.submit_to_broker_ack_us=0;
    receipt.reason="";
   }
 
@@ -276,6 +278,7 @@ public:
         }
 
       const string comment=ExecutionSignalComment(plan.profile_id,plan.signal_id);
+      const ulong submit_started_us=GetMicrosecondCount();
       const bool sent=m_trade.PositionOpen(
          validation.order.symbol,
          validation.order.side==ENGINE_SIDE_BUY ? ORDER_TYPE_BUY : ORDER_TYPE_SELL,
@@ -284,6 +287,8 @@ public:
          validation.order.stop_loss,
          validation.order.take_profit,
          comment);
+      receipt.submit_to_broker_ack_us=
+         GetMicrosecondCount()-submit_started_us;
       receipt.sent=sent;
       receipt.retcode=m_trade.ResultRetcode();
       receipt.order_ticket=m_trade.ResultOrder();

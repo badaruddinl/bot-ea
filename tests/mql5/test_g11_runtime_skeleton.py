@@ -102,6 +102,9 @@ def test_scheduler_is_bounded_ordered_and_idempotent_by_forming_bar() -> None:
     assert "CopyRates(m_symbol,timeframe,1,1,rates)" in value
     assert "if(current==m_last_forming_open[index])" in value
     assert "m_last_forming_open[index]=current;" in value
+    assert "iBarShift" in value
+    assert "previous_shift!=1" in value
+    assert "current>m_last_forming_open[index]+seconds" not in value
     assert "while(" not in value
     assert "CopyRates(m_symbol,timeframe,0" not in value
 

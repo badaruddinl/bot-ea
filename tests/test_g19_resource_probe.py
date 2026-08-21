@@ -20,6 +20,8 @@ def test_resource_probe_captures_required_components_and_storage() -> None:
         "goldi_spool_bytes",
         "goldm_spool_bytes",
         "heartbeat_generation",
+        "Get-SpoolEventCount",
+        "ProcessCpu",
     ):
         assert value in source
 
@@ -28,6 +30,7 @@ def test_resource_probe_is_read_only_and_requires_disabled_authority() -> None:
     source = SCRIPT.read_text(encoding="utf-8")
 
     assert 'heartbeat.order_authority -ne "DISABLED"' in source
+    assert "event_count = 0" not in source
     for forbidden in (
         "OrderSend",
         "order_send",
