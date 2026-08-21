@@ -19,5 +19,34 @@ Current sub-batch:
   execution lifecycle and G16 event bridge;
 - preparing GOLDI DEMO attachment/authority checklist without changing the
   terminal until preflight and rollback evidence are complete.
+- shared lifecycle harness now emits one correlated six-event chain:
+  `SETUP_CREATED -> ENTRY_READY -> ORDER_SUBMITTED -> POSITION_OPENED ->
+  POSITION_MODIFIED -> POSITION_CLOSED`, carrying setup, signal, order,
+  position, event, and profile identity into the G16 spool.
+- GOLDM isolated Strategy Tester chain PASS on `GOLDm#` / `XMGlobal-MT5 14`:
+  magic `26081912`, all open/modify/close retcodes `10009`, six correlated
+  events, positions `0 -> 0`, and no REAL mutation; raw log SHA-256
+  `a5cca41620ab7286a4bf8dd47b0a70664f2ce1fcb43c85bc804d4f0cb7352614`.
+- GOLDI actual DEMO chain PASS on account `108098316` / `XMGlobal-MT5 5`:
+  final controlled round trip BUY `0.1`, modify, SELL close, order/position
+  `902855238`, all retcodes `10009`, six correlated events, and positions
+  `0 -> 0`; raw log SHA-256
+  `8ce133a39633b8b3f8ffed93bddc7c12b83a8d774993c798e85512fe3367e409`.
+- the first live attempt correctly failed closed with client retcode `10027`
+  while Algo Trading was disabled. Enabling the isolated DEMO clone caused an
+  older attached harness to open/close one additional `0.02` DEMO round trip;
+  it was removed, all positions were verified closed, then the current `0.1`
+  correlated chain was run. No REAL account was touched.
+- actual native spools were ingested into a fresh SQLite DB: 12 unique rows,
+  13 recipient deliveries, two internal setup events suppressed, zero GOLDM
+  delivery to the GOLDI-approved audience, and both offsets fully ACKed.
+- the isolated clone was returned to Algo Trading OFF and closed cleanly;
+  the main terminal setting was never changed.
+
+Remaining before G17 PASS:
+
+- actual Telegram delivery evidence. `TELEGRAM_BOT_TOKEN` and administrator
+  chat IDs are not present in this local environment, so current delivery proof
+  uses the deterministic capture sender and is not claimed as Telegram E2E.
 
 REAL orders: **DISABLED**
