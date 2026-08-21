@@ -22,7 +22,10 @@ $ErrorActionPreference = "Stop"
 
 function Assert-AbsolutePath {
     param([Parameter(Mandatory = $true)][string]$Path, [string]$Label)
-    if (-not [System.IO.Path]::IsPathFullyQualified($Path)) {
+    # Windows Server 2019 ships Windows PowerShell on a .NET runtime that does
+    # not expose Path.IsPathFullyQualified().  IsPathRooted() rejects relative
+    # paths while remaining available on every supported VM image.
+    if (-not [System.IO.Path]::IsPathRooted($Path)) {
         throw "$Label must be an absolute path"
     }
 }

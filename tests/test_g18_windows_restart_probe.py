@@ -27,3 +27,10 @@ def test_probe_never_reboots_or_enables_order_authority() -> None:
     assert 'production_real_orders = "DISABLED"' in source
     assert 'order_authority = "DISABLED"' in source
     assert "Write-JsonAtomic" in source
+
+
+def test_probe_uses_windows_server_2019_compatible_path_validation() -> None:
+    source = SCRIPT.read_text(encoding="utf-8")
+
+    assert "[System.IO.Path]::IsPathRooted($Path)" in source
+    assert "[System.IO.Path]::IsPathFullyQualified($Path)" not in source
