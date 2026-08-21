@@ -606,12 +606,12 @@ Goal hanya selesai bila seluruh required cell PASS.
 | G09 Causal/tick-aware backtest | PASS | PASS | PASS | N/A | `evidence/G09-causal-tick-replay/` |
 | G10A Reference market-data validation | PASS | IN_PROGRESS | IN_PROGRESS | IN_PROGRESS | `evidence/G10-reference-live-validation/` |
 | G10B GOLD.i DEMO execution validation | PASS | IN_PROGRESS | N/A | N/A | `evidence/G10-reference-live-validation/` |
-| G10C GOLDm tester execution validation | PASS | N/A | DEFERRED_TO_G15 | N/A | `evidence/G10-reference-live-validation/` |
+| G10C GOLDm tester execution validation | PASS | N/A | PASS | N/A | `evidence/G15-full-parity/` |
 | G11 MQL5 runtime skeleton | PASS | PASS | PASS | PASS | `evidence/G11-mql5-runtime-skeleton/` |
 | G12 Revised MQL5 parity | PASS | PASS | PASS | PASS | `evidence/G12-revised-parity/` |
 | G13 Bear MQL5 parity | PASS | PASS | PASS | N/A | `evidence/G13-bear-parity/` |
 | G14 EA execution lifecycle | PASS | PASS | PASS | PASS | `evidence/G14-execution-lifecycle/` |
-| G15 Full parity certification | IN_PROGRESS | IN_PROGRESS | IN_PROGRESS | IN_PROGRESS | `evidence/G15-full-parity/` |
+| G15 Full parity certification | PASS | PASS | PASS | PASS | `evidence/G15-full-parity/` |
 | G16 Event outbox/bridge | NOT_STARTED | NOT_STARTED | NOT_STARTED | NOT_STARTED | |
 | G17 Happy-path E2E | NOT_STARTED | NOT_STARTED | NOT_STARTED | NOT_STARTED | |
 | G18 Failure/restart E2E | NOT_STARTED | NOT_STARTED | NOT_STARTED | NOT_STARTED | |
