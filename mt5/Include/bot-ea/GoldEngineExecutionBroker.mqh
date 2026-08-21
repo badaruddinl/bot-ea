@@ -153,6 +153,11 @@ public:
       return m_initialized && m_authority_enabled;
      }
 
+   void DisableAuthority(void)
+     {
+      m_authority_enabled=false;
+     }
+
    bool Submit(const SignalPlan &plan,
                ExecutionReceipt &receipt,
                string &reason)

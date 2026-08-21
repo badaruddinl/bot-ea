@@ -85,6 +85,18 @@ Current sub-batch:
   the immediate open/close round trip; no external account was touched;
 - focused lifecycle/capture regression: 11 passed; compile 0 errors and 0
   warnings.
+- shared runtime now converts final non-observation Revised and Bear decisions
+  into full immutable plans, applies adaptive profile lot sizing, calls the
+  guarded broker once per final signal, and records sent/disabled/rejected
+  transition outcomes;
+- both thin profile entrypoints expose `InpEnableOrderAuthority=false` and
+  forward trade transactions; startup and every relevant transaction
+  rediscover owned positions and disable authority on foreign-symbol magic or
+  profile-comment intervention;
+- main profile binaries compile warning-clean with execution runtime:
+  GOLDI `fe8771d2fa79650e9ef35abdc78ff71674749b95e50f3e5d8c73f5e047533826`,
+  GOLDM `be5920069b719728c9faaaa91e049f8d5ff13f5b67df7256b1ae9f808210df92`;
+- focused runtime/Revised/Bear/G11 regression: 35 passed.
 
 Next sub-batch:
 
