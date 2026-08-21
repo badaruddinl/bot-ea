@@ -92,6 +92,31 @@ def test_incomplete_tail_is_not_acknowledged_until_newline_arrives(tmp_path: Pat
         store.close()
 
 
+def test_idle_ingest_does_not_rewrite_spool_offset(tmp_path: Path) -> None:
+    spool = tmp_path / "GOLDI.jsonl"
+    spool.write_bytes(b"")
+    store = EventStore(tmp_path / "events.db")
+    try:
+        first = store.ingest_spool(spool)
+        changes_after_first = store.connection.total_changes
+        row_after_first = store.connection.execute(
+            "SELECT byte_offset, updated_at FROM spool_offsets WHERE spool_path=?",
+            (str(spool.resolve()),),
+        ).fetchone()
+
+        second = store.ingest_spool(spool)
+        row_after_second = store.connection.execute(
+            "SELECT byte_offset, updated_at FROM spool_offsets WHERE spool_path=?",
+            (str(spool.resolve()),),
+        ).fetchone()
+
+        assert first.acknowledged_offset == second.acknowledged_offset == 0
+        assert store.connection.total_changes == changes_after_first
+        assert tuple(row_after_second) == tuple(row_after_first)
+    finally:
+        store.close()
+
+
 def test_invalid_line_is_durably_rejected_and_acknowledged(tmp_path: Path) -> None:
     spool = tmp_path / "GOLDI.jsonl"
     spool.write_bytes(b"not-json\n")

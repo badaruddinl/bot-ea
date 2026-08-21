@@ -148,16 +148,17 @@ class EventStore:
                     else:
                         duplicates += 1
                 offset = acknowledged
-            self.connection.execute(
-                """
-                INSERT INTO spool_offsets(spool_path, byte_offset, updated_at)
-                VALUES (?, ?, ?)
-                ON CONFLICT(spool_path) DO UPDATE SET
-                    byte_offset=excluded.byte_offset,
-                    updated_at=excluded.updated_at
-                """,
-                (key, offset, datetime.now(UTC).isoformat()),
-            )
+            if row is None or offset != int(row[0]):
+                self.connection.execute(
+                    """
+                    INSERT INTO spool_offsets(spool_path, byte_offset, updated_at)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT(spool_path) DO UPDATE SET
+                        byte_offset=excluded.byte_offset,
+                        updated_at=excluded.updated_at
+                    """,
+                    (key, offset, datetime.now(UTC).isoformat()),
+                )
         return IngestResult(inserted, duplicates, rejected, offset)
 
     def compact_ingested_spool(self, spool: Path, *, minimum_bytes: int) -> SpoolCompactionResult:

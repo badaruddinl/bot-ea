@@ -37,6 +37,14 @@ Completed sub-batch:
   action;
 - analyzer/collector focused tests: 7 passed; quality gate PASS with core
   90.12% and strategy rules 82.66%.
+- first 10-minute capture correctly failed: the bridge rewrote its offset every
+  idle poll (95 WAL growth observations) and exposed the write-idle defect;
+- after the fix, the repeated 120-sample/599.48-second capture passed resource
+  and storage checks: no ongoing monotonic leak, both heartbeats advanced 599
+  generations, and DB/WAL/GOLDI-spool/GOLDm-spool each had zero idle growth;
+- the repeated capture's latency input is explicitly preliminary. G19 remains
+  IN_PROGRESS until all six stages are replaced by actual causal/native/E2E
+  measurements.
 
 The VM scheduled-task launchers used for G18 are temporary interactive-logon
 probes. Unattended `At startup` operation without desktop login is a locked G20

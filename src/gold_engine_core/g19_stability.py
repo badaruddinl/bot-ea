@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from itertools import pairwise
-from math import ceil
 from statistics import median
 from typing import Any
 
@@ -124,8 +123,15 @@ def _slope_per_hour(times: list[float], values: list[float]) -> float:
 
 
 def _windows(values: list[float], count: int = 4) -> tuple[list[float], ...]:
-    width = max(1, ceil(len(values) / count))
-    return tuple(values[index : index + width] for index in range(0, len(values), width))
+    window_count = min(count, len(values))
+    width, remainder = divmod(len(values), window_count)
+    result: list[list[float]] = []
+    offset = 0
+    for index in range(window_count):
+        length = width + (1 if index < remainder else 0)
+        result.append(values[offset : offset + length])
+        offset += length
+    return tuple(result)
 
 
 def _trend(times: list[float], values: list[float]) -> SeriesTrend:
@@ -141,8 +147,8 @@ def _trend(times: list[float], values: list[float]) -> SeriesTrend:
     median_growth = len(medians) >= 3 and all(
         later > earlier for earlier, later in pairwise(medians)
     )
-    net_growth = medians[-1] - medians[0]
-    monotonic_leak = median_growth and net_growth > noise
+    ongoing_growth = medians[-1] - medians[-2] if len(medians) >= 2 else 0.0
+    monotonic_leak = median_growth and ongoing_growth > noise
     return SeriesTrend(
         samples=len(stable_values),
         first=stable_values[0],
