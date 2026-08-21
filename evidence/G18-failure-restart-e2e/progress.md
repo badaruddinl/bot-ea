@@ -56,11 +56,12 @@ Current sub-batch:
   reconstructs delimiter-containing signal IDs; native round-trip/corruption/
   fallback/manual-change harness remains PASS.
 
-Remaining matrix:
+Deferred final evidence:
 
-- explicit disconnect/reconnect transition capture;
-- manual close and magic-collision aggregation into G18 certification;
-- actual Windows/VM boot-cycle evidence (strict verifier keeps this required);
-- final compile/regression/resource-independent G18 sealing.
+- **only remaining evidence:** actual Windows/VM boot cycle. The strict verifier
+  requires `native/windows-restart.json` with a changed OS boot ID and fresh
+  post-boot GOLDI/GOLDM heartbeats. Final compile/regression sealing runs only
+  after this evidence exists.
+- G18 remains `IN_PROGRESS`; G19-G21 are not started while this item is waiting.
 
 REAL orders: **DISABLED**
