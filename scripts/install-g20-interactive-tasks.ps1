@@ -30,8 +30,12 @@ if ([string]$winlogon.AutoAdminLogon -ne '1') {
     throw "Microsoft Autologon is not enabled"
 }
 $shortUser = $UserName.Split('\')[-1]
+$expectedDomain = $UserName.Split('\')[0]
 if ([string]$winlogon.DefaultUserName -ne $shortUser) {
     throw "Autologon user does not match the task user"
+}
+if ([string]$winlogon.DefaultDomainName -ne $expectedDomain) {
+    throw "Autologon domain does not match the task user domain"
 }
 if ($null -ne $winlogon.PSObject.Properties['DefaultPassword']) {
     throw "Plaintext Winlogon DefaultPassword is forbidden; use Sysinternals Autologon"

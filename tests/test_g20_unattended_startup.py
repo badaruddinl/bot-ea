@@ -161,6 +161,7 @@ def test_autologon_path_is_explicit_interactive_and_immediately_locked() -> None
     assert "-LogonType Interactive" in installer
     assert "MSFT_TaskLogonTrigger" in installer
     assert "DefaultPassword is forbidden" in installer
+    assert "Autologon domain does not match" in installer
     assert "-Password" not in installer
     assert "LockWorkStation" in lock_script
     assert "lock-marker.json" in lock_script
