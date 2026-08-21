@@ -71,6 +71,12 @@ function Read-G20Config {
     if ([string]$value.production_real_orders -ne "DISABLED") {
         throw "G20 requires production_real_orders=DISABLED"
     }
+    if ([string]$value.startup_mode -notin @(
+            'PASSWORD_AT_STARTUP',
+            'AUTOLOGON_LOCKED_INTERACTIVE'
+        )) {
+        throw "Unsupported G20 startup_mode"
+    }
     if ([double]$value.poll_seconds -lt 1.0) {
         throw "poll_seconds must be at least one second"
     }
@@ -298,6 +304,8 @@ while ($true) {
         observed_at_utc = [DateTimeOffset]::UtcNow.ToString('o')
         windows_identity = [Security.Principal.WindowsIdentity]::GetCurrent().Name
         interactive_session = [Environment]::UserInteractive
+        session_id = [Diagnostics.Process]::GetCurrentProcess().SessionId
+        startup_mode = [string]$config.startup_mode
         production_real_orders = "DISABLED"
         terminals = $profileHealth
         bridge = $bridgeHealth

@@ -78,6 +78,10 @@ function Get-TaskEvidence {
             $task.Triggers |
                 Where-Object { $_.CimClass.CimClassName -eq 'MSFT_TaskBootTrigger' }
         ).Count
+        logon_trigger_count = @(
+            $task.Triggers |
+                Where-Object { $_.CimClass.CimClassName -eq 'MSFT_TaskLogonTrigger' }
+        ).Count
         last_run_time_utc = if ($info.LastRunTime.Year -gt 1900) {
             $info.LastRunTime.ToUniversalTime().ToString('o')
         } else { $null }
@@ -122,6 +126,7 @@ function Get-TerminalProcesses {
             expected_path = $expected
             process_count = $matches.Count
             pids = @($matches | ForEach-Object { [int]$_.ProcessId })
+            session_ids = @($matches | ForEach-Object { [int]$_.SessionId })
         }
     }
     return $result
@@ -186,6 +191,7 @@ if ($Phase -eq 'Preboot') {
         captured_at_utc = $capturedAt.ToString('o')
         boot_time_utc = $bootTime.ToString('o')
         production_real_orders = 'DISABLED'
+        startup_mode = [string]$config.startup_mode
         task = Get-TaskEvidence -Name $TaskName
         spools = $spools
     }
@@ -220,6 +226,7 @@ $result = [ordered]@{
     captured_at_utc = $capturedAt.ToString('o')
     boot_time_utc = $bootTime.ToString('o')
     production_real_orders = 'DISABLED'
+    startup_mode = [string]$config.startup_mode
     interactive_login_observed_at_utc = if ($null -ne $explorer) {
         $explorer.StartTime.ToUniversalTime().ToString('o')
     } else { $null }
@@ -231,6 +238,13 @@ $result = [ordered]@{
             throw "Bridge health file is missing: $bridgeHealthPath"
         }
         Get-Content -LiteralPath $bridgeHealthPath -Raw | ConvertFrom-Json
+    } else { $null }
+    lock_marker = if ([string]$config.startup_mode -eq 'AUTOLOGON_LOCKED_INTERACTIVE') {
+        $lockMarkerPath = Resolve-ConfiguredPath ([string]$config.lock_marker_path)
+        if (-not (Test-Path -LiteralPath $lockMarkerPath -PathType Leaf)) {
+            throw "Autologon lock marker is missing: $lockMarkerPath"
+        }
+        Get-Content -LiteralPath $lockMarkerPath -Raw | ConvertFrom-Json
     } else { $null }
     terminal_processes = @(Get-TerminalProcesses -Terminals $config.terminals)
     python_roles = @(Get-PythonRoles)

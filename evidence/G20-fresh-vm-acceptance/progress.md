@@ -95,10 +95,11 @@ but MT5 did not execute either EA or append any postboot event. Details and the
 strict FAIL result are retained in `session0-failure.md`. The experiment task is
 disabled and all experiment processes are stopped.
 
-G20 remains IN_PROGRESS pending explicit operator authorization (or rejection)
-of automatic console sign-in plus immediate workstation lock. This is the only
-remaining design that supplies the interactive Windows session required by MT5
-without manual login, but it stores the Windows credential as an LSA secret and
-therefore changes the security contract.
+The operator explicitly approved automatic console sign-in plus immediate
+workstation lock after reviewing the Session 0 failure and Microsoft LSA-secret
+warning. Interactive-token task tooling, Microsoft signature verification,
+plaintext-password rejection, prompt lock marker, and verifier mutation cases
+are implemented. G20 remains IN_PROGRESS until the revised design passes an
+actual cold boot.
 
 REAL orders: **DISABLED**

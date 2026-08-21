@@ -7,7 +7,9 @@ param(
     [bool]$BridgeEnabled = $true,
     [string]$PythonwPath = "",
     [string]$TelegramSecretPath = "$env:ProgramData\bot-ea\g20\telegram-token.dpapi",
-    [string[]]$TelegramAdminChatIds = @()
+    [string[]]$TelegramAdminChatIds = @(),
+    [ValidateSet('PASSWORD_AT_STARTUP', 'AUTOLOGON_LOCKED_INTERACTIVE')]
+    [string]$StartupMode = 'PASSWORD_AT_STARTUP'
 )
 
 $ErrorActionPreference = "Stop"
@@ -132,9 +134,11 @@ $bridgeArguments = '"{0}" --goldi-spool "{1}" --goldm-spool "{2}" --database "{3
 $config = [ordered]@{
     schema_version = 1
     production_real_orders = "DISABLED"
+    startup_mode = $StartupMode
     poll_seconds = 15
     health_path = Join-Path $env:ProgramData "bot-ea\g20\health.json"
     audit_path = Join-Path $env:ProgramData "bot-ea\g20\audit.jsonl"
+    lock_marker_path = Join-Path $env:ProgramData "bot-ea\g20\lock-marker.json"
     forbidden_task_names = @(
         "g18 vm goldi probe",
         "g18 vm goldm probe",

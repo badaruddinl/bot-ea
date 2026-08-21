@@ -1,9 +1,11 @@
 {
   "schema_version": 1,
   "production_real_orders": "DISABLED",
+  "startup_mode": "PASSWORD_AT_STARTUP",
   "poll_seconds": 15,
   "health_path": "%ProgramData%\\bot-ea\\g20\\health.json",
   "audit_path": "%ProgramData%\\bot-ea\\g20\\audit.jsonl",
+  "lock_marker_path": "%ProgramData%\\bot-ea\\g20\\lock-marker.json",
   "forbidden_task_names": [
     "Gold Global Orchestrator",
     "Gold Global Shutdown Notice"

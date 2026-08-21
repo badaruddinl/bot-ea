@@ -51,11 +51,23 @@ def verify(
     if postboot_time <= preboot_time:
         violations.append("Windows boot identity did not advance")
 
+    startup_mode = str(config.get("startup_mode") or "PASSWORD_AT_STARTUP")
+    if preboot.get("startup_mode") not in {None, startup_mode}:
+        violations.append("preboot startup_mode differs from config")
+    if postboot.get("startup_mode") not in {None, startup_mode}:
+        violations.append("postboot startup_mode differs from config")
+
     task = postboot.get("task") or {}
-    if task.get("logon_type") != "Password":
-        violations.append("startup task does not use password-backed logon")
-    if task.get("boot_trigger_count") != 1:
-        violations.append("startup task does not have exactly one boot trigger")
+    if startup_mode == "AUTOLOGON_LOCKED_INTERACTIVE":
+        if task.get("logon_type") not in {"Interactive", "InteractiveToken"}:
+            violations.append("startup task does not use an interactive logon token")
+        if task.get("logon_trigger_count") != 1 or task.get("boot_trigger_count") != 0:
+            violations.append("startup task does not have exactly one logon trigger")
+    else:
+        if task.get("logon_type") != "Password":
+            violations.append("startup task does not use password-backed logon")
+        if task.get("boot_trigger_count") != 1:
+            violations.append("startup task does not have exactly one boot trigger")
     if task.get("state") != "Running":
         violations.append("startup task is not running")
     try:
@@ -68,24 +80,33 @@ def verify(
     health = postboot.get("supervisor_health") or {}
     if health.get("production_real_orders") != "DISABLED":
         violations.append("supervisor health does not disable production REAL orders")
-    if health.get("interactive_session") is not False:
+    if health.get("startup_mode") not in {None, startup_mode}:
+        violations.append("supervisor health startup_mode mismatch")
+    if startup_mode == "AUTOLOGON_LOCKED_INTERACTIVE":
+        if health.get("interactive_session") is not True or int(health.get("session_id", 0)) <= 0:
+            violations.append("supervisor was not proven in an interactive session")
+    elif health.get("interactive_session") is not False:
         violations.append("supervisor was not proven in a non-interactive session")
     try:
         health_started = _time(health.get("started_at_utc"), "health.started_at_utc")
         if health_started < postboot_time:
             violations.append("supervisor health predates the new boot")
-        interactive_raw = postboot.get("interactive_login_observed_at_utc")
-        if interactive_raw is not None and health_started >= _time(
-            interactive_raw, "interactive login"
-        ):
-            violations.append("supervisor did not start before interactive login")
+        if startup_mode == "AUTOLOGON_LOCKED_INTERACTIVE":
+            if (health_started - postboot_time).total_seconds() > 180:
+                violations.append("interactive supervisor did not start promptly after boot")
+        else:
+            interactive_raw = postboot.get("interactive_login_observed_at_utc")
+            if interactive_raw is not None and health_started >= _time(
+                interactive_raw, "interactive login"
+            ):
+                violations.append("supervisor did not start before interactive login")
     except ValueError as exc:
         violations.append(str(exc))
 
     configured = {item["profile_id"]: item for item in config.get("terminals", [])}
-    health_profiles = {item.get("profile_id"): item for item in health.get("terminals", [])}
+    health_profiles = {item.get("profile_id"): item for item in _items(health.get("terminals"))}
     process_profiles = {
-        item.get("profile_id"): item for item in postboot.get("terminal_processes", [])
+        item.get("profile_id"): item for item in _items(postboot.get("terminal_processes"))
     }
     new_events = postboot.get("new_events") or {}
     profile_summary: dict[str, Any] = {}
@@ -104,6 +125,11 @@ def verify(
             violations.append(f"{profile_id} does not have exactly one terminal process")
         if observed.get("pid") not in process.get("pids", []):
             violations.append(f"{profile_id} supervisor PID does not match exact-path process")
+        if startup_mode == "AUTOLOGON_LOCKED_INTERACTIVE" and (
+            not process.get("session_ids")
+            or any(int(session_id) <= 0 for session_id in process["session_ids"])
+        ):
+            violations.append(f"{profile_id} terminal did not run in an interactive session")
 
         events = new_events.get(profile_id, [])
         required_types = {"ENGINE_STARTED", "PROFILE_VALIDATED", "ENGINE_HEARTBEAT"}
@@ -187,11 +213,31 @@ def verify(
         if task_evidence.get("enabled") or task_evidence.get("state") == "Running":
             violations.append(f"legacy task remains active: {task_evidence.get('task_name')}")
 
+    if startup_mode == "AUTOLOGON_LOCKED_INTERACTIVE":
+        marker = postboot.get("lock_marker") or {}
+        if marker.get("production_real_orders") != "DISABLED":
+            violations.append("lock marker does not disable production REAL orders")
+        if marker.get("lock_requested") is not True or int(marker.get("session_id", 0)) <= 0:
+            violations.append("workstation lock was not requested from an interactive session")
+        try:
+            marker_boot = _time(marker.get("boot_time_utc"), "lock_marker.boot_time_utc")
+            marker_time = _time(
+                marker.get("lock_requested_at_utc"), "lock_marker.lock_requested_at_utc"
+            )
+            if marker_boot != postboot_time:
+                violations.append("lock marker boot identity differs from postboot identity")
+            if marker_time < postboot_time or (marker_time - postboot_time).total_seconds() > 180:
+                violations.append("workstation was not locked promptly after automatic sign-in")
+        except ValueError as exc:
+            violations.append(str(exc))
+
     return {
         "schema_version": 1,
         "gate": "G20",
         "status": "PASS" if not violations else "FAIL",
         "boot_id_changed": postboot_time > preboot_time,
+        "startup_mode": startup_mode,
+        "manual_login_required": False if startup_mode == "AUTOLOGON_LOCKED_INTERACTIVE" else None,
         "unattended_before_login": not any("interactive login" in item for item in violations),
         "bridge_recovered": not bridge_required or bridge.get("state") == "RUNNING",
         "profiles": profile_summary,

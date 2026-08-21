@@ -15,6 +15,9 @@ PREPARE = ROOT / "scripts/prepare-g20-vm.ps1"
 BRIDGE_RUNNER = ROOT / "scripts/run-gold-event-bridge.py"
 SECRET_INSTALLER = ROOT / "scripts/set-g20-telegram-secret.ps1"
 CHAT_INSPECTOR = ROOT / "scripts/inspect-g20-telegram-chats.ps1"
+INTERACTIVE_INSTALLER = ROOT / "scripts/install-g20-interactive-tasks.ps1"
+LOCK_SCRIPT = ROOT / "scripts/g20-lock-workstation.ps1"
+AUTOLOGON_VERIFIER = ROOT / "scripts/verify-g20-autologon-tool.ps1"
 RUNTIME = ROOT / "mt5/Include/bot-ea/GoldEngineRuntime.mqh"
 EVENTS = ROOT / "src/gold_event_bridge/events.py"
 
@@ -53,6 +56,7 @@ def test_example_config_is_non_secret_and_requires_certified_binary_hashes() -> 
     payload = json.loads(EXAMPLE.read_text(encoding="utf-8"))
 
     assert payload["production_real_orders"] == "DISABLED"
+    assert payload["startup_mode"] == "PASSWORD_AT_STARTUP"
     assert [item["profile_id"] for item in payload["terminals"]] == ["GOLDI", "GOLDM"]
     assert all("ea_sha256" in item for item in payload["terminals"])
     assert [item["expected_trade_mode"] for item in payload["terminals"]] == [0, 2]
@@ -63,7 +67,8 @@ def test_example_config_is_non_secret_and_requires_certified_binary_hashes() -> 
     assert all("expected_profile_fingerprint" in item for item in payload["terminals"])
     assert all("spool_path" in item for item in payload["terminals"])
     encoded = EXAMPLE.read_text(encoding="utf-8").lower()
-    assert "password" not in encoded
+    assert '"password":' not in encoded
+    assert "defaultpassword" not in encoded
     assert "bot_token" not in encoded
 
 
@@ -143,3 +148,21 @@ def test_chat_inspector_never_accepts_or_prints_plaintext_token() -> None:
     assert "chat_id" in value
     assert "Write-Output $token" not in value
     assert "param(\n    [string]$SecretPath" in value
+
+
+def test_autologon_path_is_explicit_interactive_and_immediately_locked() -> None:
+    installer = INTERACTIVE_INSTALLER.read_text(encoding="utf-8")
+    lock_script = LOCK_SCRIPT.read_text(encoding="utf-8")
+    verifier = AUTOLOGON_VERIFIER.read_text(encoding="utf-8")
+
+    assert "AcknowledgeLsaSecretRisk" in installer
+    assert "AUTOLOGON_LOCKED_INTERACTIVE" in installer
+    assert "New-ScheduledTaskTrigger -AtLogOn" in installer
+    assert "-LogonType Interactive" in installer
+    assert "MSFT_TaskLogonTrigger" in installer
+    assert "DefaultPassword is forbidden" in installer
+    assert "-Password" not in installer
+    assert "LockWorkStation" in lock_script
+    assert "lock-marker.json" in lock_script
+    assert "Get-AuthenticodeSignature" in verifier
+    assert "CN=Microsoft Corporation" in verifier

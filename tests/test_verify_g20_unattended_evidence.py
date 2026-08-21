@@ -139,6 +139,58 @@ def test_single_python_role_object_is_normalized() -> None:
     assert MODULE.verify(config, preboot, postboot)["status"] == "PASS"
 
 
+def _autologon_evidence() -> tuple[dict[str, object], dict[str, object], dict[str, object]]:
+    config, preboot, postboot = copy.deepcopy(_evidence())
+    config["startup_mode"] = "AUTOLOGON_LOCKED_INTERACTIVE"
+    preboot["startup_mode"] = "AUTOLOGON_LOCKED_INTERACTIVE"
+    postboot["startup_mode"] = "AUTOLOGON_LOCKED_INTERACTIVE"
+    postboot["task"].update(
+        {
+            "logon_type": "Interactive",
+            "boot_trigger_count": 0,
+            "logon_trigger_count": 1,
+        }
+    )
+    postboot["supervisor_health"].update(
+        {
+            "interactive_session": True,
+            "session_id": 1,
+            "startup_mode": "AUTOLOGON_LOCKED_INTERACTIVE",
+        }
+    )
+    for process in postboot["terminal_processes"]:
+        process["session_ids"] = [1]
+    postboot["lock_marker"] = {
+        "boot_time_utc": postboot["boot_time_utc"],
+        "lock_requested_at_utc": "2026-08-21T10:00:40+00:00",
+        "lock_requested": True,
+        "session_id": 1,
+        "production_real_orders": "DISABLED",
+    }
+    return config, preboot, postboot
+
+
+def test_autologon_locked_interactive_evidence_passes() -> None:
+    report = MODULE.verify(*_autologon_evidence())
+
+    assert report["status"] == "PASS"
+    assert report["startup_mode"] == "AUTOLOGON_LOCKED_INTERACTIVE"
+    assert report["manual_login_required"] is False
+
+
+@pytest.mark.parametrize("mutation", ["session_zero", "lock_missing", "late_lock"])
+def test_autologon_safety_mutations_fail(mutation: str) -> None:
+    config, preboot, postboot = copy.deepcopy(_autologon_evidence())
+    if mutation == "session_zero":
+        postboot["terminal_processes"][0]["session_ids"] = [0]
+    elif mutation == "lock_missing":
+        postboot["lock_marker"]["lock_requested"] = False
+    else:
+        postboot["lock_marker"]["lock_requested_at_utc"] = "2026-08-21T10:04:00+00:00"
+
+    assert MODULE.verify(config, preboot, postboot)["status"] == "FAIL"
+
+
 @pytest.mark.parametrize(
     "mutation",
     ["missing_heartbeat", "authority_enabled", "after_login", "forbidden_python", "legacy_task"],
