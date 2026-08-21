@@ -61,6 +61,9 @@ cannot fall through an undefined gap.
 focused_profile_and_runtime=115 passed
 default_regression=658 passed, 154 deselected, 77 subtests passed
 slow_release_regression=154 passed, 658 deselected, 64 subtests passed
+quality_gate=PASS
+core_coverage=90.12%
+rule_coverage=82.66%
 GOLDI_compile=0 errors, 0 warnings
 GOLDM_compile=0 errors, 0 warnings
 focused_junit_sha256=259b3b112491f4dd7cd395c5f4f0e22f8cc16649228add843128951be1efcfdc
