@@ -7,6 +7,10 @@ ROOT = Path(__file__).resolve().parents[1]
 SUPERVISOR = ROOT / "scripts/g20-unattended-supervisor.ps1"
 INSTALLER = ROOT / "scripts/install-g20-unattended-task.ps1"
 EXAMPLE = ROOT / "config/mql5/g20-unattended.example.json"
+GOLDI_STARTUP = ROOT / "config/mql5/startup/GOLDI.ini"
+GOLDM_STARTUP = ROOT / "config/mql5/startup/GOLDM.ini"
+GOLDI_PRESET = ROOT / "config/mql5/presets/G20-GOLDI.set"
+GOLDM_PRESET = ROOT / "config/mql5/presets/G20-GOLDM.set"
 RUNTIME = ROOT / "mt5/Include/bot-ea/GoldEngineRuntime.mqh"
 EVENTS = ROOT / "src/gold_event_bridge/events.py"
 
@@ -48,6 +52,10 @@ def test_example_config_is_non_secret_and_requires_certified_binary_hashes() -> 
     assert [item["profile_id"] for item in payload["terminals"]] == ["GOLDI", "GOLDM"]
     assert all("ea_sha256" in item for item in payload["terminals"])
     assert [item["expected_trade_mode"] for item in payload["terminals"]] == [0, 2]
+    assert [item["expected_order_authority"] for item in payload["terminals"]] == [
+        "ENABLED",
+        "DISABLED",
+    ]
     assert all("expected_profile_fingerprint" in item for item in payload["terminals"])
     assert all("spool_path" in item for item in payload["terminals"])
     encoded = EXAMPLE.read_text(encoding="utf-8").lower()
@@ -66,3 +74,17 @@ def test_native_ea_emits_bounded_internal_health_evidence() -> None:
     assert "account_server" in runtime
     assert "order_authority" in runtime
     assert '"ENGINE_HEARTBEAT"' in events
+
+
+def test_startup_configs_enable_demo_execution_only_and_keep_real_disabled() -> None:
+    goldi = GOLDI_STARTUP.read_text(encoding="utf-8")
+    goldm = GOLDM_STARTUP.read_text(encoding="utf-8")
+    goldi_preset = GOLDI_PRESET.read_text(encoding="utf-8")
+    goldm_preset = GOLDM_PRESET.read_text(encoding="utf-8")
+
+    assert "AllowLiveTrading=1" in goldi
+    assert "InpEnableOrderAuthority=true" in goldi_preset
+    assert "AllowLiveTrading=0" in goldm
+    assert "InpEnableOrderAuthority=false" in goldm_preset
+    assert "Expert=bot-ea\\GoldEngine-GOLDi" in goldi
+    assert "Expert=bot-ea\\GoldEngine-GOLDm" in goldm

@@ -109,6 +109,12 @@ function Read-G20Config {
         if ([int]$terminal.expected_trade_mode -notin @(0, 2)) {
             throw "$($terminal.profile_id) expected_trade_mode must be DEMO(0) or REAL(2)"
         }
+        if ([string]$terminal.expected_order_authority -notin @('ENABLED', 'DISABLED')) {
+            throw "$($terminal.profile_id) expected_order_authority is invalid"
+        }
+        if ($terminal.profile_id -eq 'GOLDM' -and $terminal.expected_order_authority -ne 'DISABLED') {
+            throw "GOLDM REAL order authority must remain DISABLED"
+        }
         if (
             ($terminal.profile_id -eq 'GOLDI' -and $terminal.expected_symbol -ne 'GOLD.i#') -or
             ($terminal.profile_id -eq 'GOLDM' -and $terminal.expected_symbol -ne 'GOLDm#')
@@ -217,6 +223,7 @@ while ($true) {
             expected_profile_fingerprint = ([string]$terminal.expected_profile_fingerprint).ToLowerInvariant()
             expected_symbol = [string]$terminal.expected_symbol
             expected_trade_mode = [int]$terminal.expected_trade_mode
+            expected_order_authority = [string]$terminal.expected_order_authority
             restart_count = [int]$restartCounts[$profileId]
             failure = $failure
         }

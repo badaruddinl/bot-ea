@@ -47,8 +47,11 @@ Implemented pre-deployment batch:
   roles, spool offsets, and only the newly appended engine events;
 - strict verifier requires a changed boot identity, supervisor start before
   interactive login, exactly one terminal per profile, exact fingerprint/account/
-  server/symbol/mode, startup/profile/heartbeat events, recovered bridge, no
-  legacy Python strategy worker, and disabled REAL authority;
+  server/symbol/mode/authority, startup/profile/heartbeat events, recovered
+  bridge, no legacy Python strategy worker, and disabled GOLDm REAL authority;
+- deterministic MT5 startup configs use the official `[StartUp]` mechanism and
+  `MQL5\\Presets`: GOLDI DEMO order authority is enabled for actual E2E, while
+  GOLDM REAL order authority and terminal live-trading permission stay disabled;
 - focused tests: 37 PASS; strict verifier mutation tests cover missing heartbeat,
   enabled authority, late startup, forbidden Python strategy, and legacy task;
 - both profile EAs compile with MetaEditor build 6090 at 0 errors/0 warnings;

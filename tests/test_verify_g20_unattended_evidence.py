@@ -27,6 +27,7 @@ def _terminal(profile_id: str) -> dict[str, object]:
         "expected_profile_fingerprint": ("c" if goldi else "d") * 64,
         "expected_symbol": "GOLD.i#" if goldi else "GOLDm#",
         "expected_trade_mode": 0 if goldi else 2,
+        "expected_order_authority": "ENABLED" if goldi else "DISABLED",
     }
 
 
@@ -40,7 +41,7 @@ def _event(profile: dict[str, object], event_type: str) -> dict[str, object]:
             "account_login": profile["expected_account_login"],
             "account_server": profile["expected_account_server"],
             "trade_mode": profile["expected_trade_mode"],
-            "order_authority": "DISABLED",
+            "order_authority": profile["expected_order_authority"],
         },
     }
 
@@ -123,7 +124,7 @@ def test_strict_mutations_fail(mutation: str) -> None:
     if mutation == "missing_heartbeat":
         postboot["new_events"]["GOLDM"] = postboot["new_events"]["GOLDM"][:-1]
     elif mutation == "authority_enabled":
-        postboot["new_events"]["GOLDI"][0]["payload"]["order_authority"] = "ENABLED"
+        postboot["new_events"]["GOLDM"][0]["payload"]["order_authority"] = "ENABLED"
     elif mutation == "after_login":
         postboot["interactive_login_observed_at_utc"] = "2026-08-21T10:00:20+00:00"
     elif mutation == "forbidden_python":

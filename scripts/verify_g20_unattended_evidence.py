@@ -117,8 +117,10 @@ def verify(config: dict[str, Any], preboot: dict[str, Any], postboot: dict[str, 
                 violations.append(f"{profile_id} event server mismatch")
             if int(payload.get("trade_mode", -1)) != int(expected["expected_trade_mode"]):
                 violations.append(f"{profile_id} event trade mode mismatch")
-            if payload.get("order_authority") != "DISABLED":
-                violations.append(f"{profile_id} event order authority is not disabled")
+            if payload.get("order_authority") != expected["expected_order_authority"]:
+                violations.append(f"{profile_id} event order authority mismatch")
+            if profile_id == "GOLDM" and payload.get("order_authority") != "DISABLED":
+                violations.append("GOLDM REAL event order authority is not disabled")
         profile_summary[profile_id] = {
             "new_event_count": len(events),
             "required_event_types": sorted(required_types),
