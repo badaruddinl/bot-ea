@@ -35,6 +35,10 @@ Completed sub-batch:
 - dual-profile compile: 0 errors, 0 warnings;
 - expanded dual-profile and harness compile: 0 errors, 0 warnings on
   MetaEditor build 6090;
+- final G12 verifier checks both hashed corpora, profile fingerprints, clean
+  compile evidence, both full native state/restart markers, symbol isolation,
+  and disabled REAL authority; it currently fails closed because the GOLD.i
+  native capture does not yet exist;
 - native GOLDm decision-only harness PASS was captured before the setup-state
   expansion; it is retained only as preliminary evidence and cannot satisfy
   final G12 acceptance;
