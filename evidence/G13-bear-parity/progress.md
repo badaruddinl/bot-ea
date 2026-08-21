@@ -1,6 +1,6 @@
 # G13 Bear MQL5 Parity
 
-Status: **IN_PROGRESS**
+Status: **PASS**
 
 Locked scope:
 
@@ -98,10 +98,12 @@ Current sub-batch:
 - legacy G12 corpus sidecars were corrected to the exact already-committed
   bytes and all deterministic vector tests pass; no strategy value changed.
 
-Remaining before PASS:
+Final certification:
 
-- GOLD.i Strategy Tester capture on `GOLD.i#` / `XMGlobal-MT5 5`, followed by
-  the dual-profile final verifier. The saved-credential login dialog is open
-  and requires the human operator to click `OK`.
+- GOLD.i Strategy Tester PASS on `GOLD.i#` / `XMGlobal-MT5 5` with the same
+  complete native marker as GOLDm, `OnTester result 1`, one tick/one bar, and
+  unchanged 100.00 USD tester balance;
+- final dual-profile evidence verifier PASS:
+  `96fdd9c8805e5fb984c70569473a8acaaa19c90ba2d4c3ba6889f137aab408d6`.
 
 REAL orders: **DISABLED**

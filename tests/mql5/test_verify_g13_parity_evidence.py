@@ -13,6 +13,9 @@ def test_g13_parity_verifier_requires_dual_native_and_oracle_evidence() -> None:
     assert 'server="XMGlobal-MT5 14"' in value
     assert "m15_scanner_oracle.json" in value
     assert "len(vector_payload) != 10" in value
+    assert "len(oracle_vectors) != 2" in value
+    assert '("GOLDI", "GOLD.i#")' in value
+    assert '("GOLDM", "GOLDm#")' in value
     assert "validate_block" in value
     assert '"production_real_orders": "DISABLED"' in value
     assert '"status": "PASS"' in value

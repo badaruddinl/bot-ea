@@ -26,7 +26,7 @@ REAL order authority: **DISABLED**
 | G11 | PASS | SHARED, GOLDI, GOLDM, CROSS_PROFILE | `evidence/G11-mql5-runtime-skeleton/` | Profile-locked strict binaries compile with zero errors/warnings; scheduler, warm-up, identity failure, bounded tick path, and no-order invariants passed. |
 | G12S | PASS | GOLDI, GOLDM, CROSS_PROFILE | `evidence/G12S-sizing-contract/` | User-authorized adaptive balance tiers were propagated through canonical manifests, final/validation configs, Python/MQL5 resolvers, regenerated fingerprints/corpora, and full fast/slow regression. |
 | G12 | PASS | SHARED, GOLDI, GOLDM, CROSS_PROFILE | `evidence/G12-revised-parity/` | Native Revised decision/runtime and setup/restart parity certified on GOLD.i/XMGlobal-MT5 5 and GOLDm/XMGlobal-MT5 14. Exact state/reason/timestamps and one-tick geometry passed; compile, fast/slow regression, profile isolation, hashes, and disabled REAL authority verified. |
-| G13 | IN_PROGRESS | SHARED, GOLDI, GOLDM | `evidence/G13-bear-parity/` | Native Bear port, persistence, warning-clean compile, GOLDm Strategy Tester, 685 fast tests, 154 slow tests, and quality gate PASS. GOLD.i native capture and the final dual-profile verifier remain; its saved-login dialog awaits the human `OK`. |
+| G13 | PASS | SHARED, GOLDI, GOLDM | `evidence/G13-bear-parity/` | Incremental Bear state, M15 confluence, persistence/restart, exact event/reason/geometry parity, warning-clean compile, GOLD.i and GOLDm Strategy Tester, 685 fast tests, 154 slow tests, and quality gate are certified with REAL authority disabled. |
 
 Raw or large evidence is stored outside Git under:
 

@@ -40,7 +40,11 @@ def verify_corpus() -> dict[str, str]:
     if {item.get("profile_id") for item in vector_payload} != {"GOLDI", "GOLDM"}:
         raise G13EvidenceError("G13 vector corpus is not profile symmetric")
     oracle_payload = json.loads(oracle.read_text(encoding="utf-8"))
-    if set(oracle_payload.get("profiles", {})) != {"GOLDI", "GOLDM"}:
+    oracle_vectors = oracle_payload.get("vectors")
+    if not isinstance(oracle_vectors, list) or len(oracle_vectors) != 2:
+        raise G13EvidenceError("G13 M15 oracle must contain exactly two vectors")
+    identities = {(item.get("profile_id"), item.get("symbol")) for item in oracle_vectors}
+    if identities != {("GOLDI", "GOLD.i#"), ("GOLDM", "GOLDm#")}:
         raise G13EvidenceError("G13 M15 oracle is not dual-profile")
     return result
 
