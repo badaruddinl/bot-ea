@@ -121,6 +121,19 @@ function Read-G20Config {
         if ($terminal.profile_id -eq 'GOLDM' -and $terminal.expected_order_authority -ne 'DISABLED') {
             throw "GOLDM REAL order authority must remain DISABLED"
         }
+        $allowedErrors = @($terminal.allowed_postboot_engine_error_reasons)
+        if (@($allowedErrors | Where-Object {
+                    [string]$_ -notin @('MANUAL_INTERVENTION_DETECTED')
+                }).Count -gt 0) {
+            throw "$($terminal.profile_id) has an unsupported postboot ENGINE_ERROR exception"
+        }
+        if ($allowedErrors.Count -gt 0 -and (
+                $terminal.profile_id -ne 'GOLDM' -or
+                [int]$terminal.expected_trade_mode -ne 2 -or
+                [string]$terminal.expected_order_authority -ne 'DISABLED'
+            )) {
+            throw "Postboot ENGINE_ERROR exceptions require GOLDM REAL with authority DISABLED"
+        }
         if (
             ($terminal.profile_id -eq 'GOLDI' -and $terminal.expected_symbol -ne 'GOLD.i#') -or
             ($terminal.profile_id -eq 'GOLDM' -and $terminal.expected_symbol -ne 'GOLDm#')

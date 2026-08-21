@@ -50,7 +50,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 $powerShellExe = Join-Path $PSHOME "powershell.exe"
-$supervisorArguments = '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}" -ConfigPath "{1}"' -f `
+$supervisorArguments = '-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File "{0}" -ConfigPath "{1}"' -f `
     $supervisor, $resolvedConfig
 $supervisorAction = New-ScheduledTaskAction -Execute $powerShellExe `
     -Argument $supervisorArguments -WorkingDirectory $PSScriptRoot
@@ -65,7 +65,7 @@ Register-ScheduledTask -TaskName $SupervisorTaskName -Action $supervisorAction `
     -Trigger $supervisorTrigger -Principal $principal -Settings $supervisorSettings `
     -Force | Out-Null
 
-$lockArguments = '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}" -MarkerPath "{1}"' -f `
+$lockArguments = '-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File "{0}" -MarkerPath "{1}"' -f `
     $lockScript, [string]$config.lock_marker_path
 $lockAction = New-ScheduledTaskAction -Execute $powerShellExe -Argument $lockArguments `
     -WorkingDirectory $PSScriptRoot

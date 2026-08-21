@@ -137,8 +137,27 @@ def verify(
         missing = sorted(required_types - seen_types)
         if missing:
             violations.append(f"{profile_id} is missing postboot events: {missing}")
-        if any(event.get("event_type") == "ENGINE_ERROR" for event in events):
-            violations.append(f"{profile_id} emitted ENGINE_ERROR after boot")
+        allowed_engine_errors = set(expected.get("allowed_postboot_engine_error_reasons", []))
+        if allowed_engine_errors and not (
+            profile_id == "GOLDM"
+            and int(expected.get("expected_trade_mode", -1)) == 2
+            and expected.get("expected_order_authority") == "DISABLED"
+            and allowed_engine_errors == {"MANUAL_INTERVENTION_DETECTED"}
+        ):
+            violations.append(f"{profile_id} has an unsafe ENGINE_ERROR exception policy")
+        unexpected_engine_errors = sorted(
+            {
+                str(event.get("reason") or "")
+                for event in events
+                if event.get("event_type") == "ENGINE_ERROR"
+                and event.get("reason") not in allowed_engine_errors
+            }
+        )
+        if unexpected_engine_errors:
+            violations.append(
+                f"{profile_id} emitted unexpected ENGINE_ERROR after boot: "
+                f"{unexpected_engine_errors}"
+            )
         for event in events:
             if event.get("event_type") not in required_types:
                 continue
@@ -165,6 +184,7 @@ def verify(
         profile_summary[profile_id] = {
             "new_event_count": len(events),
             "required_event_types": sorted(required_types),
+            "allowed_engine_error_reasons": sorted(allowed_engine_errors),
             "ea_sha256": str(expected["ea_sha256"]).lower(),
         }
 

@@ -161,6 +161,7 @@ def test_autologon_path_is_explicit_interactive_and_immediately_locked() -> None
     assert "AUTOLOGON_LOCKED_INTERACTIVE" in installer
     assert "New-ScheduledTaskTrigger -AtLogOn" in installer
     assert "-LogonType Interactive" in installer
+    assert installer.count("-WindowStyle Hidden") == 2
     assert "MSFT_TaskLogonTrigger" in installer
     assert "DefaultPassword is forbidden" in installer
     assert "Autologon domain does not match" in installer
@@ -169,3 +170,11 @@ def test_autologon_path_is_explicit_interactive_and_immediately_locked() -> None
     assert "lock-marker.json" in lock_script
     assert "Get-AuthenticodeSignature" in verifier
     assert "CN=Microsoft Corporation" in verifier
+
+
+def test_real_disabled_profile_has_only_the_manual_intervention_boot_exception() -> None:
+    preparer = PREPARE.read_text(encoding="utf-8")
+    supervisor = SUPERVISOR.read_text(encoding="utf-8")
+
+    assert 'allowed_postboot_engine_error_reasons = @("MANUAL_INTERVENTION_DETECTED")' in preparer
+    assert "Postboot ENGINE_ERROR exceptions require GOLDM REAL with authority DISABLED" in supervisor

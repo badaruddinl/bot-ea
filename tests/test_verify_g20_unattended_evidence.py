@@ -28,6 +28,7 @@ def _terminal(profile_id: str) -> dict[str, object]:
         "expected_symbol": "GOLD.i#" if goldi else "GOLDm#",
         "expected_trade_mode": 0 if goldi else 2,
         "expected_order_authority": "ENABLED" if goldi else "DISABLED",
+        "allowed_postboot_engine_error_reasons": [],
     }
 
 
@@ -176,6 +177,48 @@ def test_autologon_locked_interactive_evidence_passes() -> None:
     assert report["status"] == "PASS"
     assert report["startup_mode"] == "AUTOLOGON_LOCKED_INTERACTIVE"
     assert report["manual_login_required"] is False
+
+
+def test_real_disabled_profile_allows_explicit_manual_intervention_safety_event() -> None:
+    config, preboot, postboot = _autologon_evidence()
+    goldm = next(item for item in config["terminals"] if item["profile_id"] == "GOLDM")
+    goldm["allowed_postboot_engine_error_reasons"] = ["MANUAL_INTERVENTION_DETECTED"]
+    event = _event(goldm, "ENGINE_ERROR")
+    event["reason"] = "MANUAL_INTERVENTION_DETECTED"
+    postboot["new_events"]["GOLDM"].append(event)
+    postboot["bridge_health"]["latest_events"].append(
+        {"event_id": event["event_id"], "delivery_state": "DELIVERED"}
+    )
+
+    report = MODULE.verify(config, preboot, postboot)
+
+    assert report["status"] == "PASS"
+    assert report["profiles"]["GOLDM"]["allowed_engine_error_reasons"] == [
+        "MANUAL_INTERVENTION_DETECTED"
+    ]
+
+
+@pytest.mark.parametrize("reason", ["ENTRY_DRIFT_EXCEEDED", "POSITION_STATE_INVALID"])
+def test_real_disabled_profile_rejects_unlisted_engine_errors(reason: str) -> None:
+    config, preboot, postboot = _autologon_evidence()
+    goldm = next(item for item in config["terminals"] if item["profile_id"] == "GOLDM")
+    goldm["allowed_postboot_engine_error_reasons"] = ["MANUAL_INTERVENTION_DETECTED"]
+    event = _event(goldm, "ENGINE_ERROR")
+    event["reason"] = reason
+    postboot["new_events"]["GOLDM"].append(event)
+
+    assert MODULE.verify(config, preboot, postboot)["status"] == "FAIL"
+
+
+def test_engine_error_exception_is_rejected_for_demo_or_enabled_authority() -> None:
+    config, preboot, postboot = _autologon_evidence()
+    goldi = next(item for item in config["terminals"] if item["profile_id"] == "GOLDI")
+    goldi["allowed_postboot_engine_error_reasons"] = ["MANUAL_INTERVENTION_DETECTED"]
+
+    report = MODULE.verify(config, preboot, postboot)
+
+    assert report["status"] == "FAIL"
+    assert any("unsafe ENGINE_ERROR exception policy" in item for item in report["violations"])
 
 
 @pytest.mark.parametrize("mutation", ["session_zero", "lock_missing", "late_lock"])
