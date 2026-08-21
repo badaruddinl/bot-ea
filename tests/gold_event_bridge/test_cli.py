@@ -4,6 +4,8 @@ import inspect
 import json
 from pathlib import Path
 
+import pytest
+
 from gold_event_bridge import cli
 
 
@@ -43,3 +45,21 @@ def test_cli_requires_two_profile_spools_and_one_database() -> None:
     assert args.goldm_spool.name == "GOLDM.jsonl"
     assert args.database.name == "events.db"
     assert args.once
+    assert args.spool_compact_bytes == 16 * 1024 * 1024
+
+
+def test_cli_rejects_nonpositive_spool_compaction_threshold() -> None:
+    parser = cli.build_parser()
+    with pytest.raises(SystemExit):
+        parser.parse_args(
+            [
+                "--goldi-spool",
+                "GOLDI.jsonl",
+                "--goldm-spool",
+                "GOLDM.jsonl",
+                "--database",
+                "events.db",
+                "--spool-compact-bytes",
+                "0",
+            ]
+        )

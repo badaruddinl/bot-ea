@@ -19,6 +19,17 @@ Current batch:
   receipts where available;
 - prove one profile remains responsive while the other is loaded.
 
+Completed sub-batch:
+
+- bridge spool compaction resets the producer offset before atomic rotation, so
+  a crash can cause duplicate replay but cannot skip a new spool;
+- the rotated file is replayed before deletion, capturing append-at-rotation
+  races while all pending deliveries remain durable in SQLite;
+- orphaned rotation files are replayed and cleaned after bridge/VM restart;
+- a busy Windows producer handle fails compaction closed and restores the exact
+  acknowledged offset for retry;
+- bridge suite: 24 passed; Ruff and mypy PASS.
+
 The VM scheduled-task launchers used for G18 are temporary interactive-logon
 probes. Unattended `At startup` operation without desktop login is a locked G20
 acceptance condition and is not claimed by G19.

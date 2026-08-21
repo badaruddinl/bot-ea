@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -100,6 +101,117 @@ def test_invalid_line_is_durably_rejected_and_acknowledged(tmp_path: Path) -> No
         assert result.rejected == 1
         assert result.acknowledged_offset == spool.stat().st_size
         assert store.connection.execute("SELECT COUNT(*) FROM rejected_events").fetchone()[0] == 1
+    finally:
+        store.close()
+
+
+def test_compaction_preserves_pending_events_and_accepts_new_spool(
+    tmp_path: Path,
+) -> None:
+    spool = tmp_path / "GOLDI.jsonl"
+    first = event("goldi:compact:1", event_type="POSITION_OPENED")
+    second = event("goldi:compact:2", event_type="POSITION_CLOSED")
+    append(spool, first)
+    store = EventStore(tmp_path / "events.db")
+    try:
+        result = store.ingest_spool(spool)
+        compacted = store.compact_ingested_spool(spool, minimum_bytes=1)
+
+        assert result.inserted == 1
+        assert compacted.rotated is True
+        assert spool.exists() is False
+        assert store.event_count() == 1
+        assert [row["event_id"] for row in store.pending_events()] == [first["event_id"]]
+
+        append(spool, second)
+        next_result = store.ingest_spool(spool)
+        assert next_result.inserted == 1
+        assert store.event_count() == 2
+    finally:
+        store.close()
+
+
+def test_compaction_reingests_tail_appended_at_rotation_boundary(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    spool = tmp_path / "GOLDM.jsonl"
+    first = event("goldm:compact:1", profile="GOLDM")
+    tail = event("goldm:compact:2", profile="GOLDM")
+    append(spool, first)
+    store = EventStore(tmp_path / "events.db")
+    real_replace = os.replace
+
+    def replace_then_append(source: Path, destination: Path) -> None:
+        real_replace(source, destination)
+        append(Path(destination), tail)
+
+    monkeypatch.setattr("gold_event_bridge.store.replace", replace_then_append)
+    try:
+        store.ingest_spool(spool)
+        compacted = store.compact_ingested_spool(spool, minimum_bytes=1)
+
+        assert compacted.rotated is True
+        assert compacted.recovered_tail_events == 1
+        assert store.event_count() == 2
+    finally:
+        store.close()
+
+
+def test_compaction_rename_failure_restores_acknowledged_offset(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    spool = tmp_path / "GOLDI.jsonl"
+    append(spool, event("goldi:busy"))
+    store = EventStore(tmp_path / "events.db")
+    try:
+        ingested = store.ingest_spool(spool)
+
+        def busy(_source: Path, _destination: Path) -> None:
+            raise PermissionError
+
+        monkeypatch.setattr("gold_event_bridge.store.replace", busy)
+        compacted = store.compact_ingested_spool(spool, minimum_bytes=1)
+        persisted = store.connection.execute(
+            "SELECT byte_offset FROM spool_offsets WHERE spool_path=?",
+            (str(spool.resolve()),),
+        ).fetchone()[0]
+
+        assert compacted.rotated is False
+        assert spool.exists() is True
+        assert persisted == ingested.acknowledged_offset
+    finally:
+        store.close()
+
+
+def test_truncated_or_recreated_spool_resets_stale_offset(tmp_path: Path) -> None:
+    spool = tmp_path / "GOLDI.jsonl"
+    append(spool, event("goldi:reset:long-identity"))
+    store = EventStore(tmp_path / "events.db")
+    try:
+        store.ingest_spool(spool)
+        spool.write_bytes(b"")
+        append(spool, event("goldi:reset:2"))
+
+        result = store.ingest_spool(spool)
+        assert result.inserted == 1
+        assert store.event_count() == 2
+    finally:
+        store.close()
+
+
+def test_rotation_remnant_is_replayed_and_removed_after_crash(tmp_path: Path) -> None:
+    spool = tmp_path / "GOLDI.jsonl"
+    rotated = tmp_path / "GOLDI.jsonl.bridge-crash.rotating"
+    append(rotated, event("goldi:crash-recovery"))
+    store = EventStore(tmp_path / "events.db")
+    try:
+        result = store.recover_rotated_spools(spool)
+
+        assert result.files_seen == 1
+        assert result.files_removed == 1
+        assert result.inserted == 1
+        assert rotated.exists() is False
+        assert store.event_count() == 1
     finally:
         store.close()
 
