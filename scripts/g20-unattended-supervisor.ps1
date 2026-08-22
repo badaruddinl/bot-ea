@@ -106,6 +106,52 @@ function Assert-FileHash {
     }
 }
 
+function Repair-StartupChartIfConfigured {
+    param(
+        [Parameter(Mandatory = $true)]$Terminal,
+        [Parameter(Mandatory = $true)][string]$EaPath,
+        [Parameter(Mandatory = $true)][string]$TerminalPath,
+        [Parameter(Mandatory = $true)][string]$ReceiptPath
+    )
+    if (-not [bool]$Terminal.startup_chart_repair) {
+        return $null
+    }
+    if ([string]$Terminal.profile_id -ne 'GOLDI') {
+        throw 'Startup chart repair is locked to GOLDI only'
+    }
+
+    $dataPath = $null
+    if ($null -ne $Terminal.PSObject.Properties['data_path'] -and
+        -not [string]::IsNullOrWhiteSpace([string]$Terminal.data_path)) {
+        $dataPath = [IO.Path]::GetFullPath(
+            (Resolve-ConfiguredPath ([string]$Terminal.data_path))
+        )
+    }
+    else {
+        # Existing G20 configs predate data_path; derive it from the
+        # profile-locked EA destination without guessing a terminal.
+        $expertDirectory = [IO.Path]::GetFullPath((Split-Path -Parent $EaPath))
+        $expertsDirectory = [IO.Path]::GetFullPath(
+            (Split-Path -Parent $expertDirectory)
+        )
+        $mql5Directory = [IO.Path]::GetFullPath(
+            (Split-Path -Parent $expertsDirectory)
+        )
+        $dataPath = [IO.Path]::GetFullPath((Split-Path -Parent $mql5Directory))
+    }
+    $repairScript = Join-Path $PSScriptRoot 'repair-g20-startup-chart.ps1'
+    if (-not (Test-Path -LiteralPath $repairScript -PathType Leaf)) {
+        throw "GOLDI startup-chart repair tool is missing: $repairScript"
+    }
+    & $repairScript -ProfileId GOLDI -DataPath $dataPath `
+        -TerminalPath $TerminalPath -OutputPath $ReceiptPath `
+        -AcknowledgeProfileRepair | Out-Null
+    if (-not (Test-Path -LiteralPath $ReceiptPath -PathType Leaf)) {
+        throw "GOLDI startup-chart repair receipt is missing: $ReceiptPath"
+    }
+    return Get-Content -LiteralPath $ReceiptPath -Raw | ConvertFrom-Json
+}
+
 function Read-G20Config {
     param([Parameter(Mandatory = $true)][string]$Path)
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
@@ -158,6 +204,17 @@ function Read-G20Config {
         throw "GOLDI and GOLDM must use distinct terminal installations"
     }
     foreach ($terminal in @($value.terminals)) {
+        if ($null -eq $terminal.PSObject.Properties['startup_chart_repair']) {
+            $terminal | Add-Member -NotePropertyName startup_chart_repair `
+                -NotePropertyValue ([string]$terminal.profile_id -eq 'GOLDI')
+        }
+        if ($null -eq $terminal.PSObject.Properties['data_path']) {
+            $terminal | Add-Member -NotePropertyName data_path -NotePropertyValue ''
+        }
+        if ([bool]$terminal.startup_chart_repair -and
+            [string]$terminal.profile_id -ne 'GOLDI') {
+            throw 'Startup chart repair may only be enabled for GOLDI'
+        }
         $terminalPath = Resolve-ConfiguredPath ([string]$terminal.terminal_path)
         $eaPath = Resolve-ConfiguredPath ([string]$terminal.ea_binary_path)
         if (-not (Test-Path -LiteralPath $terminalPath -PathType Leaf)) {
@@ -308,6 +365,7 @@ while ($true) {
         $process = $null
         $processStartedAt = $null
         $receipt = $null
+        $startupChartRepair = $null
         try {
             Assert-FileHash -Path $eaPath -ExpectedSha256 ([string]$terminal.ea_sha256) `
                 -Label "$profileId EA"
@@ -316,6 +374,12 @@ while ($true) {
                 throw "$profileId has duplicate terminal processes"
             }
             if ($matches.Count -eq 0) {
+                $startupChartRepair = Repair-StartupChartIfConfigured `
+                    -Terminal $terminal -EaPath $eaPath `
+                    -TerminalPath $terminalPath `
+                    -ReceiptPath (Join-Path `
+                        (Split-Path -Parent $healthPath) `
+                        "$profileId-startup-chart-repair.json")
                 $arguments = [string]$terminal.arguments
                 if ([string]::IsNullOrWhiteSpace($arguments)) {
                     $process = Start-Process -FilePath $terminalPath -WindowStyle Hidden -PassThru
@@ -370,6 +434,7 @@ while ($true) {
             expected_order_authority = [string]$terminal.expected_order_authority
             restart_count = [int]$restartCounts[$profileId]
             ea_receipt = $receipt
+            startup_chart_repair = $startupChartRepair
             failure = $failure
         }
     }

@@ -23,6 +23,8 @@
       "expected_symbol": "GOLD.i#",
       "expected_trade_mode": 0,
       "expected_order_authority": "ENABLED",
+      "data_path": "%APPDATA%\\MetaQuotes\\Terminal\\REPLACE_GOLDI_TERMINAL_ID",
+      "startup_chart_repair": true,
       "spool_path": "%APPDATA%\\MetaQuotes\\Terminal\\Common\\Files\\bot-ea\\spool\\GOLDI.jsonl"
     },
     {
@@ -37,6 +39,8 @@
       "expected_symbol": "GOLDm#",
       "expected_trade_mode": 2,
       "expected_order_authority": "DISABLED",
+      "data_path": "%APPDATA%\\MetaQuotes\\Terminal\\REPLACE_GOLDM_TERMINAL_ID",
+      "startup_chart_repair": false,
       "spool_path": "%APPDATA%\\MetaQuotes\\Terminal\\Common\\Files\\bot-ea\\spool\\GOLDM.jsonl"
     }
   ],

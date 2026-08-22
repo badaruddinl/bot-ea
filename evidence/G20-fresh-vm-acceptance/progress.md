@@ -151,4 +151,17 @@ matrix is 31 PASS and final fast regression is 828 tests plus 77 subtests PASS.
 G20 remains IN_PROGRESS pending source synchronization to the VM and a third
 clean cold boot with strict verifier PASS.
 
+The subsequent clean boot was captured as `preboot-clean.json` and
+`postboot-clean.json`. GOLDM had no newly appended foreign-position error in
+that postboot window, but GOLDI again started without a post-start EA receipt;
+the strict verifier therefore remained FAIL. A manual GOLDI DEMO process
+restart recovered the EA, proving the failure is startup-chart regeneration,
+not a binary/hash mismatch. The supervisor is being amended to perform an
+explicit, GOLDI-only, hash-verified, recoverable `chart01.chr` backup before
+each terminal launch. GOLDM REAL remains untouched and order authority stays
+disabled. The supervisor now delegates this operation to the existing tested
+repair tool and records its receipt in supervisor health. Focused startup,
+verifier, and repair tests: 32 PASS. Final fast regression: 829 tests plus 77
+subtests PASS.
+
 REAL orders: **DISABLED**

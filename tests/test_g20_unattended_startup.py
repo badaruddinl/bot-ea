@@ -213,3 +213,19 @@ def test_supervisor_requires_profile_receipt_not_only_terminal_process() -> None
     assert "Stop-Process" not in supervisor
     assert "ea_startup_grace_seconds = 180" in preparer
     assert "ea_heartbeat_stale_seconds = 3900" in preparer
+
+
+def test_startup_chart_repair_is_profile_locked_and_recoverable() -> None:
+    supervisor = SUPERVISOR.read_text(encoding="utf-8")
+    preparer = PREPARE.read_text(encoding="utf-8")
+    example = json.loads(EXAMPLE.read_text(encoding="utf-8"))
+
+    assert "Repair-StartupChartIfConfigured" in supervisor
+    assert "repair-g20-startup-chart.ps1" in supervisor
+    assert "AcknowledgeProfileRepair" in supervisor
+    assert "Startup chart repair may only be enabled for GOLDI" in supervisor
+    assert "startup_chart_repair = $true" in preparer
+    assert "startup_chart_repair = $false" in preparer
+    assert example["terminals"][0]["startup_chart_repair"] is True
+    assert example["terminals"][1]["startup_chart_repair"] is False
+    assert all("data_path" in item for item in example["terminals"])

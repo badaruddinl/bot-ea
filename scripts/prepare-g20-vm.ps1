@@ -53,6 +53,7 @@ $bindings = @(
         symbol = "GOLD.i#"
         trade_mode = 0
         order_authority = "ENABLED"
+        startup_chart_repair = $true
         allowed_postboot_engine_error_reasons = @()
         spool_name = "GOLDI.jsonl"
     },
@@ -70,6 +71,7 @@ $bindings = @(
         symbol = "GOLDm#"
         trade_mode = 2
         order_authority = "DISABLED"
+        startup_chart_repair = $false
         allowed_postboot_engine_error_reasons = @("MANUAL_INTERVENTION_DETECTED")
         spool_name = "GOLDM.jsonl"
     }
@@ -101,6 +103,8 @@ foreach ($binding in $bindings) {
         expected_symbol = $binding.symbol
         expected_trade_mode = $binding.trade_mode
         expected_order_authority = $binding.order_authority
+        data_path = $binding.data_path
+        startup_chart_repair = $binding.startup_chart_repair
         allowed_postboot_engine_error_reasons = @(
             $binding.allowed_postboot_engine_error_reasons
         )
