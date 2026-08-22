@@ -98,6 +98,18 @@ def test_native_ea_emits_bounded_internal_health_evidence() -> None:
     assert '"ENGINE_HEARTBEAT"' in events
 
 
+def test_supervisor_performs_only_one_profile_locked_startup_repair_restart() -> None:
+    supervisor = SUPERVISOR.read_text(encoding="utf-8")
+
+    assert "$startupRepairAttempts = @{ GOLDI = 0; GOLDM = 0 }" in supervisor
+    assert "[bool]$terminal.startup_chart_repair" in supervisor
+    assert "[int]$startupRepairAttempts[$profileId] -lt 1" in supervisor
+    assert "Stop-Process -Id ([int]$processId) -Force -ErrorAction Stop" in supervisor
+    assert "$state = 'REPAIR_RESTART_QUEUED'" in supervisor
+    assert "startup_repair_attempts" in supervisor
+    assert "$profileId PROFILE_EA_STARTUP_RECEIPT_MISSING" in supervisor
+
+
 def test_startup_configs_enable_demo_execution_only_and_keep_real_disabled() -> None:
     goldi = GOLDI_STARTUP.read_text(encoding="utf-8")
     goldm = GOLDM_STARTUP.read_text(encoding="utf-8")
@@ -222,7 +234,9 @@ def test_supervisor_requires_profile_receipt_not_only_terminal_process() -> None
     assert "PROFILE_EA_STARTUP_RECEIPT_MISSING" in supervisor
     assert "PROFILE_EA_HEARTBEAT_STALE" in supervisor
     assert '$state = "STARTING"' in supervisor
-    assert "Stop-Process" not in supervisor
+    assert "Stop-Process -Name" not in supervisor
+    assert "Stop-Process -Id ([int]$processId) -Force -ErrorAction Stop" in supervisor
+    assert "Get-ExactProcess -ExecutablePath $terminalPath" in supervisor
     assert "ea_startup_grace_seconds = 180" in preparer
     assert "ea_heartbeat_stale_seconds = 3900" in preparer
 

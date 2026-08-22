@@ -352,6 +352,7 @@ if ($ValidateOnly) {
 
 $startedAt = [DateTimeOffset]::UtcNow
 $restartCounts = @{ GOLDI = 0; GOLDM = 0; BRIDGE = 0 }
+$startupRepairAttempts = @{ GOLDI = 0; GOLDM = 0 }
 $bridgeProcess = $null
 
 while ($true) {
@@ -404,9 +405,36 @@ while ($true) {
             $processAgeSeconds = ([DateTimeOffset]::UtcNow - $processStartedAt).TotalSeconds
             if (-not [bool]$receipt.receipt_after_process_start) {
                 if ($processAgeSeconds -gt [double]$config.ea_startup_grace_seconds) {
-                    throw "$profileId PROFILE_EA_STARTUP_RECEIPT_MISSING"
+                    if ([bool]$terminal.startup_chart_repair -and
+                        [int]$startupRepairAttempts[$profileId] -lt 1) {
+                        $processId = Get-PortableProcessId -Process $process
+                        if ($null -eq $processId -or [int]$processId -le 0) {
+                            throw "$profileId process id is unavailable for bounded repair"
+                        }
+                        Stop-Process -Id ([int]$processId) -Force -ErrorAction Stop
+                        for ($attempt = 0; $attempt -lt 20; $attempt++) {
+                            if (@(Get-ExactProcess -ExecutablePath $terminalPath).Count -eq 0) {
+                                break
+                            }
+                            Start-Sleep -Milliseconds 250
+                        }
+                        if (@(Get-ExactProcess -ExecutablePath $terminalPath).Count -ne 0) {
+                            throw "$profileId bounded repair could not stop the exact terminal"
+                        }
+                        $startupRepairAttempts[$profileId] =
+                            [int]$startupRepairAttempts[$profileId] + 1
+                        $process = $null
+                        $processStartedAt = $null
+                        $receipt = $null
+                        $state = 'REPAIR_RESTART_QUEUED'
+                    }
+                    else {
+                        throw "$profileId PROFILE_EA_STARTUP_RECEIPT_MISSING"
+                    }
                 }
-                $state = "STARTING"
+                else {
+                    $state = "STARTING"
+                }
             }
             elseif ([double]$receipt.age_seconds -gt
                 [double]$config.ea_heartbeat_stale_seconds) {
@@ -433,6 +461,7 @@ while ($true) {
             expected_trade_mode = [int]$terminal.expected_trade_mode
             expected_order_authority = [string]$terminal.expected_order_authority
             restart_count = [int]$restartCounts[$profileId]
+            startup_repair_attempts = [int]$startupRepairAttempts[$profileId]
             ea_receipt = $receipt
             startup_chart_repair = $startupChartRepair
             failure = $failure
