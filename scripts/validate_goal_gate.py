@@ -103,6 +103,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Run one named BOT-EA goal validation gate")
     parser.add_argument("gate", choices=ALL_GATES)
     args = parser.parse_args()
+    (REPOSITORY_ROOT / "runtime_data").mkdir(parents=True, exist_ok=True)
     command = command_for(args.gate, REPOSITORY_ROOT)
     completed = subprocess.run(command, cwd=REPOSITORY_ROOT, check=False)
     return completed.returncode
