@@ -93,7 +93,7 @@ def goldm_tester_batch() -> dict[str, object]:
             }
             for index, classification in enumerate(classifications)
         ],
-        "source_commit_sha": "c" * 64,
+        "source_commit_sha": "c" * 40,
         "symbol": profile.symbol,
         "validation_profile_id": "GOLDM_REAL_READ_ONLY",
     }
@@ -137,14 +137,13 @@ def test_complete_actual_evidence_is_deterministic_and_accepted(tmp_path: Path) 
     assert first.to_payload()["production_real_orders"] == "DISABLED"
 
 
-def test_current_preparation_evidence_cannot_pass_as_actual() -> None:
+def test_current_actual_evidence_is_accepted() -> None:
     current = REPOSITORY_ROOT / "evidence" / "G10-reference-live-validation"
     result = verify_g10_evidence(REPOSITORY_ROOT, current)
 
-    assert result.accepted is False
-    assert "prerequisites.ready is not true" in result.reasons
-    assert any("GOLDI-probe.json" in reason for reason in result.reasons)
-    assert any("GOLDM-tester-batch.json" in reason for reason in result.reasons)
+    assert result.accepted is True
+    assert result.reasons == ()
+    assert len(result.evidence_fingerprint or "") == 64
 
 
 def test_duplicate_account_terminal_and_lifecycle_failures_are_rejected(

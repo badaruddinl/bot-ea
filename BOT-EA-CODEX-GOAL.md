@@ -604,8 +604,8 @@ Goal hanya selesai bila seluruh required cell PASS.
 | G07 Event-driven reference runtime | PASS | PASS | PASS | PASS | `evidence/G07-event-driven-reference-runtime/` |
 | G08 Execution validity | PASS | PASS | PASS | PASS | `evidence/G08-execution-validity/` |
 | G09 Causal/tick-aware backtest | PASS | PASS | PASS | N/A | `evidence/G09-causal-tick-replay/` |
-| G10A Reference market-data validation | PASS | IN_PROGRESS | IN_PROGRESS | IN_PROGRESS | `evidence/G10-reference-live-validation/` |
-| G10B GOLD.i DEMO execution validation | PASS | IN_PROGRESS | N/A | N/A | `evidence/G10-reference-live-validation/` |
+| G10A Reference market-data validation | PASS | PASS | PASS | PASS | `evidence/G10-reference-live-validation/` |
+| G10B GOLD.i DEMO execution validation | PASS | PASS | N/A | N/A | `evidence/G10-reference-live-validation/` |
 | G10C GOLDm tester execution validation | PASS | N/A | PASS | N/A | `evidence/G15-full-parity/` |
 | G11 MQL5 runtime skeleton | PASS | PASS | PASS | PASS | `evidence/G11-mql5-runtime-skeleton/` |
 | G12 Revised MQL5 parity | PASS | PASS | PASS | PASS | `evidence/G12-revised-parity/` |
