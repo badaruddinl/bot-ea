@@ -19,3 +19,9 @@ evidence/G10-reference-live-validation/prerequisites.json text eol=lf
 evidence/G10-reference-live-validation/prerequisites.sha256 text eol=lf
 evidence/G10-reference-live-validation/acceptance.json text eol=lf
 evidence/G10-reference-live-validation/acceptance.sha256 text eol=lf
+release/*.md text eol=lf
+release/*.json text eol=lf
+release/*.sha256 text eol=lf
+release/*.txt text eol=lf
+release/*.ex5 -text
+release/rollback/*.ex5 -text
