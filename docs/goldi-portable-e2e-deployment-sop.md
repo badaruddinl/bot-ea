@@ -11,6 +11,10 @@ Kontrak identitas, instrumen, leverage, dan sizing dijelaskan di
 [`goldi-portable-account-instrument-sop.md`](goldi-portable-account-instrument-sop.md)
 dan menjadi bagian wajib SOP ini.
 
+Prosedur mengubah strategy, menguji, mengompilasi, dan membuat release `.ex5`
+baru dijelaskan di
+[`goldi-strategy-development-compile-release-sop.md`](goldi-strategy-development-compile-release-sop.md).
+
 Status implementasi saat dokumen dibuat:
 
 | Kemampuan | G21 saat ini | Target portable |
