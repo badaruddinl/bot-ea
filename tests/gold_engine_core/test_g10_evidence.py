@@ -225,3 +225,17 @@ def test_g10_scalar_validators_reject_ambiguous_values() -> None:
     assert g10_evidence._timestamp("not-a-timestamp") is None
     assert g10_evidence._timestamp("2026-08-22T12:00:00") is None
     assert g10_evidence._timestamp("2026-08-22T12:00:00+07:00") is not None
+
+
+def test_g10_optional_evidence_reader_reports_invalid_json_and_object(tmp_path: Path) -> None:
+    reasons: list[str] = []
+    invalid_json = tmp_path / "invalid.json"
+    invalid_json.write_text("{", encoding="utf-8")
+    assert g10_evidence._read_optional(invalid_json, reasons) is None
+    assert "missing/invalid invalid.json: JSONDecodeError" in reasons
+
+    reasons.clear()
+    invalid_object = tmp_path / "list.json"
+    invalid_object.write_text("[]", encoding="utf-8")
+    assert g10_evidence._read_optional(invalid_object, reasons) is None
+    assert reasons == ["invalid object list.json"]
