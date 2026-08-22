@@ -1,6 +1,6 @@
 corpus/current_behavior/*.jsonl text eol=lf
 corpus/current_behavior/*.sha256 text eol=lf
-corpus/revised_parity/*.json text eol=lf
+corpus/revised_parity/*.json text eol=crlf
 corpus/revised_parity/*.sha256 text eol=lf
 corpus/bear_parity/*.json text eol=lf
 corpus/bear_parity/*.sha256 text eol=lf
