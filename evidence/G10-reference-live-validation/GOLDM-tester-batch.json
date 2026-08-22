@@ -1,0 +1,53 @@
+{
+  "batch_schema_version": 1,
+  "execution_environment": "strategy_tester",
+  "live_order_api_calls": 0,
+  "modeling": "every_tick_based_on_real_ticks",
+  "production_real_orders": "DISABLED",
+  "profile_fingerprint": "704b383f959298c8a1b1dd5c21665ffb7a022dc9831c7498e68cc37f607d4c24",
+  "profile_id": "GOLDM",
+  "symbol": "GOLDm#",
+  "validation_profile_id": "GOLDM_REAL_READ_ONLY",
+  "binary_sha256": "e11686f30c2df88cfaa74c936dbefd716c1d0ffd7c16a5edc7c795c5f8a7af98",
+  "source_commit_sha": "887cf4141418d6839fd71c3d500a91fb9b9e9804",
+  "runs": [
+    {
+      "classification": "regression",
+      "window_id": "g09-causal-regression",
+      "start": "2026-08-21T12:59:30+03:00",
+      "end": "2026-08-21T13:00:01+03:00",
+      "event_state_parity_pct": 100,
+      "max_price_error_ticks": 0,
+      "duplicate_count": 0,
+      "restart_recovery_pass": true
+    },
+    {
+      "classification": "historical_holdout",
+      "window_id": "g19-real-ticks-holdout",
+      "start": "2026-08-04T00:00:00+03:00",
+      "end": "2026-08-12T00:00:00+03:00",
+      "event_state_parity_pct": 100,
+      "max_price_error_ticks": 0,
+      "duplicate_count": 0,
+      "restart_recovery_pass": true
+    },
+    {
+      "classification": "walk_forward_oos",
+      "window_id": "g19-real-ticks-oos",
+      "start": "2026-08-12T00:00:00+03:00",
+      "end": "2026-08-20T00:00:00+03:00",
+      "event_state_parity_pct": 100,
+      "max_price_error_ticks": 0,
+      "duplicate_count": 0,
+      "restart_recovery_pass": true
+    }
+  ],
+  "lineage": {
+    "parity": "evidence/G15-full-parity/certification.json",
+    "native_lifecycle": "evidence/G15-full-parity/native/goldm-execution-lifecycle-tester.json",
+    "causal_regression": "evidence/G09-causal-tick-replay/GOLDM-report.json",
+    "real_tick_run": "external:G19-resource-storage-latency/tester-latency-raw/GOLDM-tester-agent-20260821.log",
+    "real_tick_count": 3916275,
+    "restart": "evidence/G18-failure-restart-e2e/native/dual-terminal-restart.json"
+  }
+}

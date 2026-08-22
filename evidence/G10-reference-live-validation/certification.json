@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "gate": "G10",
+  "status": "PASS",
+  "production_real_orders": "DISABLED",
+  "capture_tool_source_sha": "7cfa05b7f3714c7c478aeb922f1e788a05040295",
+  "vm_evidence_commit": "754f2ef106ad3a984906543b01a914b8caf8a462",
+  "accepted": true,
+  "evidence_fingerprint": "deefea781e4edc1b04cd43a7629daa72228940a322766e75f170cdf666f3455d",
+  "reasons": [],
+  "input_sha256": {
+    "prerequisites": "d4ac20242885d5fc7aa72ce13b0b04a3975e800d041b0fd7de9e8e97b5661091",
+    "goldi_probe": "16dc496d3351fb6828a065111301435f04dd8c9cc83bf8b4fb817943084ab75c",
+    "goldm_probe": "d0b30601deff3c8fab8b680c8eeb4f27ec35ed75c9df5aaf719bc47433484526",
+    "goldi_lifecycle": "350807574325211430e34fcb1dfab8843b263d864196e201a4d1eb295a587c6a",
+    "goldm_tester_batch": "980d7c2a4286f8773aad2eabed1c7383d56ac323c2a8084ff9bf504408b48360",
+    "concurrency": "3d22118b44fdad0d14ef98b3feada4c589bca01ea6fc357eb5908df94eba6904",
+    "acceptance": "fd6ff6feb6e79626442c634ad41723e9c47e86e438b985b453925446347be880"
+  },
+  "upstream_gates": {
+    "G15": "PASS",
+    "G17": "PASS",
+    "G18": "PASS",
+    "G19": "PASS",
+    "G20": "PASS"
+  },
+  "verification": {
+    "focused_tests_passed": 7,
+    "fast_tests_passed": 832,
+    "fast_subtests_passed": 77,
+    "slow_tests_deselected": 154,
+    "ruff": "PASS"
+  }
+}
