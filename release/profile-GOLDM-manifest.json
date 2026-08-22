@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "profile_id": "GOLDM",
+  "profile_version": "1.1.0",
+  "strategy_version": "revised-bear-baseline-b042d51",
+  "symbol": "GOLDm#",
+  "expected_trade_mode": "real",
+  "engineering_trade_mode": "demo",
+  "order_authority_default": "disabled",
+  "terminal": {
+    "identity": "GOLDM_DEDICATED_TERMINAL",
+    "path_env": "GOLDM_REAL_MT5_TERMINAL_PATH",
+    "expected_login_env": "GOLDM_REAL_MT5_LOGIN",
+    "expected_server_env": "GOLDM_REAL_MT5_SERVER",
+    "require_account_binding": true
+  },
+  "magic": 26081912,
+  "sizing_tiers": [
+    {"minimum_balance": "0.0", "lot": "0.1"},
+    {"minimum_balance": "10.0", "lot": "0.2"},
+    {"minimum_balance": "30.0", "lot": "0.5"},
+    {"minimum_balance": "50.0", "lot": "1.0"},
+    {"minimum_balance": "100.0", "lot": "2.0"},
+    {"minimum_balance": "200.0", "lot": "5.0"},
+    {"minimum_balance": "1000.0", "lot": "10.0"},
+    {"minimum_balance": "2000.0", "lot": "20.0"},
+    {"minimum_balance": "10000.0", "lot": "100.0"}
+  ],
+  "max_positions": 2,
+  "max_total_lot": "200.0",
+  "deviation_points": 30,
+  "revised_config": {
+    "path": "config/final/goldm/revised.json",
+    "canonical_sha256": "20340d532159abe1bf1cdf57258a5b5c39caa1961e0e504c54561d83f0a7398f"
+  },
+  "bear_config": {
+    "path": "config/final/goldm/bear.json",
+    "canonical_sha256": "5c21fa9ec05ae2edf58286345f13ce14fdd7e62f8f84fff6eb5fcf5ae29ada1a"
+  },
+  "state_namespace": "runtime_data/final/goldm/state.json",
+  "audit_namespace": "runtime_data/final/goldm/audit.jsonl",
+  "telegram_audience": "admin_only",
+  "event_privacy": "admin_only_all_external_events"
+}
