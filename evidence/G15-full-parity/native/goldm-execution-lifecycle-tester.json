@@ -1,0 +1,15 @@
+{
+  "captured_at_utc": "2026-08-21T05:39:59.682272+00:00",
+  "captured_log": "goldm-execution-lifecycle-tester.log",
+  "captured_log_sha256": "5c96c516fff256271343c993b1a4b8d8c44c20270f12064f175d9c59b8820e7d",
+  "order_authority": "TESTER_ONLY",
+  "profile_matrix": [
+    "GOLDM"
+  ],
+  "proof": "lifecycle_goldm",
+  "server": "XMGlobal-MT5 14",
+  "source_log": "E:\\mnt\\e\\luthfi\\project\\bot-ea-mql5-integration\\.mt5-g12-portable\\Tester\\logs\\20260821.log",
+  "source_log_sha256": "ed3eae2ac0323488a77b83cc47b1166822d11fe04d5a08f9d473bfc3febf5cd4",
+  "symbol": "GOLDm#",
+  "timeframe": "M15"
+}

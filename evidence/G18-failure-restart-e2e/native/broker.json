@@ -1,0 +1,9 @@
+{
+  "captured_at_utc": "2026-08-21T07:34:34.015329+00:00",
+  "captured_log": "broker.log",
+  "captured_log_sha256": "4c27a7ac706885d2b841d355abaaa7a81cf58d16991a6c95f4ab13c721f34aa9",
+  "order_authority": "DISABLED",
+  "production_real_orders": "DISABLED",
+  "proof": "broker",
+  "result": "PASS"
+}

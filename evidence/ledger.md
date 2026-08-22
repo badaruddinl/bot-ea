@@ -1,0 +1,43 @@
+# BOT-EA-CODEX-GOAL Evidence Ledger
+
+Goal: `BOT-EA-LIVE-ENGINE-MQL5-DUAL-PROFILE-E2E`
+
+Baseline: `b042d51cfc3b2ea1f9aa048054af03d79d79726e`
+
+REAL order authority: **DISABLED**
+
+| Gate | Status | Scope | Evidence | Notes |
+|---|---|---|---|---|
+| G00 | PASS | SHARED, GOLDI, GOLDM, CROSS_PROFILE | `evidence/G00-baseline/` | Exact baseline is reproducible; fresh suite passed. Missing external prerequisites remain explicit and block only dependent later gates. |
+| G00-Q | PASS | SHARED | `evidence/G00-quality-tooling/` | Pinned incremental quality ratchet and full regression passed; core coverage activates fail-closed at G03. |
+| G01 | PASS | GOLDI, GOLDM, CROSS_PROFILE | `evidence/G01-profile-fingerprints/` | Immutable canonical manifests, component binding, profile isolation, mutation tests, quality gate, and full regression passed. |
+| G02 | PASS | GOLDI, GOLDM | `evidence/G02-current-behavior-corpus/` | Deterministic causal profile-isolated corpus, current wrong behavior, restart records, quality gate, and full regression passed. |
+| G03 | PASS | SHARED, CROSS_PROFILE | `evidence/G03-common-strategy-contract/` | Pure state-explicit contracts, causal/ownership guards, quality gate, and full regression passed. |
+| G04 | PASS | SHARED, GOLDI, GOLDM | `evidence/G04-pure-rule-extraction/` | Revised/Bear pure rules, legacy identity, corpus stability, type/lint ratchets, quality gate, and full regression passed. |
+| G05 | PASS | SHARED, GOLDI, GOLDM | `evidence/G05-bear-incremental-state/` | Bar-by-bar/replay parity, bounded recovery, live-worker migration, quality gate, and full regression passed. |
+| G06 | PASS | SHARED, GOLDI, GOLDM | `evidence/G06-revised-restart-parity/` | Full restart matrix, stale-resurrection guards, dual-profile worker recovery, quality gate, and regression passed. |
+| G07 | PASS | SHARED, GOLDI, GOLDM, CROSS_PROFILE | `evidence/G07-event-driven-reference-runtime/` | Fast/bar/slow lanes, deterministic sequence, outbox isolation, stall containment, quality gate, and regression passed. |
+| G08 | PASS | SHARED, GOLDI, GOLDM, CROSS_PROFILE | `evidence/G08-execution-validity/` | Immutable plan/policy, all pre-send guards, no quote chasing, integration, quality gate, and regression passed. |
+| G09 | PASS | SHARED, GOLDI, GOLDM | `evidence/G09-causal-tick-replay/` | Common-runtime replay, forming-bar exclusion, tick/same-bar policy, profile reports, quality gate, and regression passed. |
+| G10A | PASS | GOLDI, GOLDM, CROSS_PROFILE | `evidence/G10-reference-live-validation/` | Actual distinct-terminal probes captured closed bars/ticks and zero order API calls for GOLDI DEMO and GOLDM REAL read-only; concurrent isolation passed. |
+| G10B | PASS | GOLDI | `evidence/G10-reference-live-validation/` | Actual guarded GOLDI DEMO lifecycle, close, restart, latency, and zero duplicate/bleed evidence passed. |
+| G10C | PASS | GOLDM | `evidence/G10-reference-live-validation/` | Profile-locked GOLDM Strategy Tester batch, parity, real-tick window, and restart recovery passed without live REAL orders. |
+| G10D | PASS | SHARED | `evidence/G10D-remove-app-surfaces/` | Desktop UI, application runtime, WebSocket service, dependencies, launchers, tests, and stale docs were removed; fast and release suites passed. |
+| G11 | PASS | SHARED, GOLDI, GOLDM, CROSS_PROFILE | `evidence/G11-mql5-runtime-skeleton/` | Profile-locked strict binaries compile with zero errors/warnings; scheduler, warm-up, identity failure, bounded tick path, and no-order invariants passed. |
+| G12S | PASS | GOLDI, GOLDM, CROSS_PROFILE | `evidence/G12S-sizing-contract/` | User-authorized adaptive balance tiers were propagated through canonical manifests, final/validation configs, Python/MQL5 resolvers, regenerated fingerprints/corpora, and full fast/slow regression. |
+| G12 | PASS | SHARED, GOLDI, GOLDM, CROSS_PROFILE | `evidence/G12-revised-parity/` | Native Revised decision/runtime and setup/restart parity certified on GOLD.i/XMGlobal-MT5 5 and GOLDm/XMGlobal-MT5 14. Exact state/reason/timestamps and one-tick geometry passed; compile, fast/slow regression, profile isolation, hashes, and disabled REAL authority verified. |
+| G13 | PASS | SHARED, GOLDI, GOLDM | `evidence/G13-bear-parity/` | Incremental Bear state, M15 confluence, persistence/restart, exact event/reason/geometry parity, warning-clean compile, GOLD.i and GOLDm Strategy Tester, 685 fast tests, 154 slow tests, and quality gate are certified with REAL authority disabled. |
+| G14 | PASS | SHARED, GOLDI, GOLDM, CROSS_PROFILE | `evidence/G14-execution-lifecycle/` | Full guard/preflight/CTrade contract, Python authority removal, owned-position modify/close, dual-slot restart recovery, manual-intervention fail-closed behavior, warning-clean dual-profile compile, native tester proofs, 795 fast tests, 218 slow tests, and quality gate passed; REAL authority remained disabled. |
+| G15 | PASS | SHARED, GOLDI, GOLDM, CROSS_PROFILE | `evidence/G15-full-parity/` | Canonical four-pipeline parity, exact fields, zero-tick observed geometry delta, zero cross-profile events, dual-profile lifecycle Strategy Tester, warning-clean compile, 805 fast tests, 218 slow tests, and quality gate passed; REAL authority remained disabled. |
+| G16 | PASS | SHARED, GOLDI, GOLDM, CROSS_PROFILE | `evidence/G16-event-bridge/` | Profile-specific append-only EA spool, atomic idempotent SQLite ingest/ACK, recipient-level retry, GOLDI-approved/GOLDM-admin isolation, WATCH suppression, native tester, warning-clean compile, 820 fast tests, 218 slow tests, and quality gate passed. |
+| G17 | PASS | SHARED, GOLDI, GOLDM, CROSS_PROFILE | `evidence/G17-happy-path-e2e/` | GOLDI actual DEMO and GOLDM isolated tester chains completed through order/position/close/spool/SQLite/actual Telegram, exact GOLDM refusal passed, cross-profile leakage stayed zero, compile/regression/quality passed, and REAL authority remained disabled. |
+| G18 | PASS | SHARED, GOLDI, GOLDM, CROSS_PROFILE | `evidence/G18-failure-restart-e2e/` | Strict failure/restart certification passed, including an actual Windows Server VM boot-ID change, fresh GOLDI/GOLDM runtime identities, recovery/isolation, and disabled REAL authority. |
+| G19 | PASS | SHARED, GOLDI, GOLDM, CROSS_PROFILE | `evidence/G19-resource-storage-latency/` | 602.01-second final-EA capture, zero idle storage growth/leak, 24 native position receipts, 100 bridge receipts, both profile tester runs, compile, fast/slow regression, and quality gate PASS. Telegram latency is labeled internal/no-network. |
+| G20 | PASS | SHARED, GOLDI, GOLDM, CROSS_PROFILE | `evidence/G20-fresh-vm-acceptance/` | Strict clean-boot verifier passed before operator login with one bridge, both exact terminals/EAs, profile startup/validation/heartbeat events, and disabled REAL authority. |
+| G21 | PASS | SHARED, GOLDI, GOLDM, CROSS_PROFILE | `release/`, `evidence/G21-final-release/` | Exact fresh-VM binaries, rollback binaries, manifests, full release reports, SHA256SUMS, strict verifier, fast/slow regression, and disabled REAL authority passed. |
+
+Raw or large evidence is stored outside Git under:
+
+`E:\luthfi\project\bot-ea-evidence\BOT-EA-LIVE-ENGINE-MQL5-DUAL-PROFILE-E2E\b042d51cfc3b2ea1f9aa048054af03d79d79726e`
+
+Every external artifact is referenced by SHA-256 from its gate summary.

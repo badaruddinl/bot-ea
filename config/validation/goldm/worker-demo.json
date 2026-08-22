@@ -1,0 +1,15 @@
+{
+  "group": "goldm",
+  "portfolio_config": "config/validation/goldm/portfolio-demo.json",
+  "poll_seconds": 1,
+  "server_utc_offset_minutes": 180,
+  "state_path": "runtime_data/validation/goldm/demo/state.json",
+  "audit_path": "runtime_data/validation/goldm/demo/audit.jsonl",
+  "telegram": {
+    "bot_token_env": "TELEGRAM_BOT_TOKEN",
+    "chat_ids_env": "TELEGRAM_ADMIN_CHAT_IDS",
+    "fallback_chat_id_env": "TELEGRAM_CHAT_ID",
+    "audience": "admin_only",
+    "send_health": true
+  }
+}

@@ -8,13 +8,9 @@ version = "0.1.0"
 description = "Research-first MT5 trading bot scaffold with risk-first design."
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = [
-  "websockets>=12",
-]
+dependencies = []
 
 [project.scripts]
-bot-ea-qt = "bot_ea.entrypoints:qt_main"
-bot-ea-websocket = "bot_ea.entrypoints:websocket_main"
 goldm-bear-scan = "goldm_bear.cli:main"
 goldm-bear-mt5-scan = "goldm_bear.mt5_cli:main"
 goldm-revised-shadow = "goldm_revised.cli:main"
@@ -22,28 +18,58 @@ goldm-revised-replay = "goldm_revised.replay_cli:main"
 goldm-telegram-worker = "goldm_signal.notify.cli:main"
 gold-portfolio-worker = "gold_portfolio.cli:main"
 gold-global-orchestrator = "gold_orchestrator.cli:main"
+gold-event-bridge = "gold_event_bridge.cli:main"
 
 [project.optional-dependencies]
 live = [
-  "MetaTrader5>=5.0.29",
-]
-desktop = [
-  "PySide6>=6.7",
+  "MetaTrader5==5.0.6090",
 ]
 research = [
   "matplotlib>=3.10",
   "pandas>=2.2",
   "yfinance>=0.2.65",
 ]
+dev = [
+  "mypy==2.3.1",
+  "pytest==9.1.1",
+  "pytest-cov==7.1.0",
+  "ruff==0.16.3",
+]
 
 [tool.pytest.ini_options]
 pythonpath = [
   "src",
 ]
+addopts = "-m 'not slow'"
+markers = [
+  "slow: historical research, deployment sealing, and matrix validation for full gates",
+]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["B", "E4", "E7", "E9", "F", "I", "RUF", "SIM", "UP"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_unused_configs = true
+show_error_codes = true
+
+[tool.coverage.run]
+branch = true
+source = ["gold_engine_core"]
+
+[tool.coverage.report]
+fail_under = 90
+show_missing = true
+skip_covered = true
 
 [tool.setuptools]
 package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["bot_ea*", "gold_orchestrator*", "gold_portfolio*", "goldm_bear*", "goldm_revised*", "goldm_signal*"]
+include = ["bot_ea*", "gold_engine_core*", "gold_event_bridge*", "gold_orchestrator*", "gold_portfolio*", "goldm_bear*", "goldm_revised*", "goldm_signal*"]

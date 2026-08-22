@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "profile_id": "GOLDM",
+  "profile_fingerprint": "704b383f959298c8a1b1dd5c21665ffb7a022dc9831c7498e68cc37f607d4c24",
+  "policy_version": "1.0.0",
+  "maximum_drift_r": "0.15",
+  "maximum_spread": "0.72",
+  "maximum_signal_age_seconds": 60
+}

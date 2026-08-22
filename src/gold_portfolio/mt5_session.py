@@ -1,11 +1,15 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from collections.abc import Sequence
+from datetime import UTC, datetime, timedelta, timezone
+from decimal import Decimal
 from importlib import import_module
-from math import floor, isclose
+from math import floor
+from pathlib import Path
 from types import ModuleType
-from typing import Any, Sequence
+from typing import Any
 
+from gold_engine_core import ProfileConfig, load_execution_policy, load_named_profile
 from goldm_bear.engine import BearBar
 from goldm_revised.engine import RevisedBar
 from goldm_revised.timebase import mt5_epoch_to_server_wall
@@ -15,10 +19,22 @@ from .models import SignalPlan
 
 
 class BoundMt5Session:
-    def __init__(self, config: PortfolioWorkerConfig, *, mt5_module: ModuleType | None = None) -> None:
+    def __init__(
+        self, config: PortfolioWorkerConfig, *, mt5_module: ModuleType | None = None
+    ) -> None:
         self.config = config
         self.mt5 = mt5_module or import_module("MetaTrader5")
         self.connected = False
+        profile_id = {"goldi": "GOLDI", "goldm": "GOLDM"}.get(config.group)
+        if profile_id is None:
+            raise ValueError(f"unsupported final worker group: {config.group!r}")
+        root = Path(__file__).resolve().parents[2]
+        self.profile = ProfileConfig.from_manifest(
+            load_named_profile(root, profile_id), tick_size=Decimal("0.01")
+        )
+        self.execution_policy = load_execution_policy(
+            root / "config" / "execution_profiles" / f"{profile_id}.json"
+        )
 
     @property
     def server_timezone(self) -> timezone:
@@ -47,7 +63,7 @@ class BoundMt5Session:
             self.mt5.shutdown()
             self.connected = False
 
-    def account_info(self):
+    def account_info(self) -> Any:
         self.connect()
         account = self.mt5.account_info()
         if account is None:
@@ -123,11 +139,13 @@ class BoundMt5Session:
         raw = self.mt5.copy_rates_range(
             self.config.symbol,
             timeframe,
-            start.astimezone(timezone.utc),
-            end.astimezone(timezone.utc),
+            start.astimezone(UTC),
+            end.astimezone(UTC),
         )
         if raw is None:
-            raise RuntimeError(f"MT5 range rates failed for {timeframe_name}: {self.mt5.last_error()}")
+            raise RuntimeError(
+                f"MT5 range rates failed for {timeframe_name}: {self.mt5.last_error()}"
+            )
         point = float(self.mt5.symbol_info(self.config.symbol).point)
         return tuple(
             BearBar(
@@ -144,14 +162,7 @@ class BoundMt5Session:
 
     def select_lot(self) -> float:
         balance = float(self.account_info().balance)
-        if not self.config.balance_tiers:
-            return 0.0
-        selected = self.config.balance_tiers[0][1]
-        for minimum_balance, lot in self.config.balance_tiers:
-            if balance + 1e-12 < minimum_balance:
-                break
-            selected = lot
-        return self.normalize_volume(selected)
+        return self.normalize_volume(self.config.lot_for_balance(balance))
 
     def normalize_volume(self, volume: float) -> float:
         info = self.mt5.symbol_info(self.config.symbol)
@@ -202,9 +213,7 @@ class BoundMt5Session:
         account = self.account_info()
         return {
             "position_ticket": position_ticket,
-            "close_time": datetime.fromtimestamp(
-                int(close_deal.time), tz=self.server_timezone
-            ),
+            "close_time": datetime.fromtimestamp(int(close_deal.time), tz=self.server_timezone),
             "close_price": float(close_deal.price),
             "profit_loss": total_pl,
             "balance": float(account.balance),
@@ -213,85 +222,13 @@ class BoundMt5Session:
         }
 
     def execute(self, signal: SignalPlan) -> dict[str, Any]:
-        if not self.config.order_execution:
-            return {"status": "SIGNAL_ONLY"}
-        self.validate_binding()
-        existing = self.managed_positions()
-        if len(existing) >= self.config.maximum_positions:
-            return {"status": "BLOCKED", "reason": "maximum managed positions reached"}
-        lot = self.select_lot()
-        if lot <= 0.0:
-            return {"status": "BLOCKED", "reason": "no executable lot"}
-        current_total = sum(float(position.volume) for position in existing)
-        if current_total + lot > self.config.maximum_total_lot + 1e-12:
-            return {"status": "BLOCKED", "reason": "maximum total lot exceeded"}
-        tick = self.mt5.symbol_info_tick(self.config.symbol)
-        info = self.mt5.symbol_info(self.config.symbol)
-        if tick is None or info is None:
-            raise RuntimeError("MT5 tick/symbol info unavailable")
-        server_time = self._tick_server_time(tick)
-        execution_context = {
-            "signal_id": signal.event_id,
-            "server_time": server_time.isoformat() if server_time else None,
-            "vm_time": datetime.now().astimezone().isoformat(),
-        }
-        buy = signal.side == "BUY"
-        price = float(tick.ask if buy else tick.bid)
-        stop_distance = abs(signal.entry - signal.stop)
-        target_distance = abs(signal.target - signal.entry)
-        digits = int(info.digits)
-        stop = round(price - stop_distance if buy else price + stop_distance, digits)
-        target = round(price + target_distance if buy else price - target_distance, digits)
-        request = {
-            "action": self.mt5.TRADE_ACTION_DEAL,
-            "symbol": self.config.symbol,
-            "volume": lot,
-            "type": self.mt5.ORDER_TYPE_BUY if buy else self.mt5.ORDER_TYPE_SELL,
-            "price": price,
-            "sl": stop,
-            "tp": target,
-            "deviation": self.config.deviation_points,
-            "magic": self.config.magic,
-            "comment": f"{self.config.group}:{signal.component}",
-            "type_time": self.mt5.ORDER_TIME_GTC,
-            "type_filling": self._filling_type(info),
-        }
-        check = self.mt5.order_check(request)
-        if check is None:
-            raise RuntimeError(f"order_check returned None: {self.mt5.last_error()}")
-        if int(check.retcode) != 0:
-            return {
-                **execution_context,
-                "status": "REJECTED_CHECK",
-                "retcode": int(check.retcode),
-                "comment": str(check.comment),
-            }
-        # Account identity is deliberately the final read before order_send.
-        self.validate_binding()
-        result = self.mt5.order_send(request)
-        if result is None:
-            raise RuntimeError(f"order_send returned None: {self.mt5.last_error()}")
-        accepted_codes = {
-            int(getattr(self.mt5, "TRADE_RETCODE_DONE", 10009)),
-            int(getattr(self.mt5, "TRADE_RETCODE_PLACED", 10008)),
-            int(getattr(self.mt5, "TRADE_RETCODE_DONE_PARTIAL", 10010)),
-        }
         return {
-            **execution_context,
-            "status": "EXECUTED" if int(result.retcode) in accepted_codes else "REJECTED_SEND",
-            "retcode": int(result.retcode),
-            "comment": str(result.comment),
-            "order": int(result.order),
-            "deal": int(result.deal),
-            "request_id": int(getattr(result, "request_id", 0) or 0),
-            "price": float(result.price),
-            "volume": lot,
-            "sl": stop,
-            "tp": target,
-            "balance": float(self.account_info().balance),
+            "status": "SIGNAL_ONLY",
+            "order_authority": self.config.order_authority.upper(),
+            "signal_id": signal.event_id,
         }
 
-    def _tick_server_time(self, tick) -> datetime | None:
+    def _tick_server_time(self, tick: Any) -> datetime | None:
         time_msc = int(getattr(tick, "time_msc", 0) or 0)
         if time_msc > 0:
             return datetime.fromtimestamp(time_msc / 1000.0, tz=self.server_timezone)
@@ -300,10 +237,10 @@ class BoundMt5Session:
             return datetime.fromtimestamp(timestamp, tz=self.server_timezone)
         return None
 
-    def _filling_type(self, info) -> int:
+    def _filling_type(self, info: Any) -> int:
         filling = int(getattr(info, "filling_mode", 0))
         if filling & 1 and hasattr(self.mt5, "ORDER_FILLING_FOK"):
-            return self.mt5.ORDER_FILLING_FOK
+            return int(self.mt5.ORDER_FILLING_FOK)
         if filling & 2 and hasattr(self.mt5, "ORDER_FILLING_IOC"):
-            return self.mt5.ORDER_FILLING_IOC
-        return getattr(self.mt5, "ORDER_FILLING_RETURN", self.mt5.ORDER_FILLING_FOK)
+            return int(self.mt5.ORDER_FILLING_IOC)
+        return int(getattr(self.mt5, "ORDER_FILLING_RETURN", self.mt5.ORDER_FILLING_FOK))

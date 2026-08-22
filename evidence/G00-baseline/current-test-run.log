@@ -1,0 +1,25 @@
+G00 BASELINE TEST RUN
+baseline=b042d51cfc3b2ea1f9aa048054af03d79d79726e
+worktree=E:\mnt\e\luthfi\project\bot-ea-baseline-b042d51
+real_orders=DISABLED
+
+RUN 1
+command=xuva python -m pytest -q --junitxml=<external>/G00-baseline/pytest-junit.xml
+exit_code=1
+test_results=858 collected, 0 failures, 0 errors, 2 skipped
+environment_failure=pytest session cleanup PermissionError on the shared Windows pytest-current symlink
+junit_sha256=9cbc871a3ee786ee3d52c48b16f90b487c05f33d7630912662287fd39e734b42
+disposition=not accepted as PASS because the process exit status was non-zero
+
+RUN 2 (AUTHORITATIVE)
+command=xuva python -m pytest -q --basetemp=<external>/G00-baseline/pytest-temp-run2 --junitxml=<external>/G00-baseline/pytest-junit-run2.xml
+exit_code=0
+summary=715 passed, 2 skipped, 2 warnings, 141 subtests passed in 723.97s
+junit_tests=858
+junit_failures=0
+junit_errors=0
+junit_skipped=2
+junit_sha256=75fa9bd61821eeb88f94986f555c8a992c196d26e81bfb1e82c8099be724cf3a
+
+WARNINGS
+- PytestCollectionWarning for dataclass TesterSettings in src/goldm_signal/research_run.py:147, reported from two research test modules.

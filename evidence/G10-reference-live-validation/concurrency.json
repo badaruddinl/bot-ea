@@ -1,0 +1,22 @@
+{
+  "profiles": [
+    "GOLDI",
+    "GOLDM"
+  ],
+  "access_modes": {
+    "GOLDI": "demo_execution",
+    "GOLDM": "read_only"
+  },
+  "live_order_api_calls": 0,
+  "overlap_seconds": 602.01304,
+  "privacy_bleed_count": 0,
+  "production_real_orders": "DISABLED",
+  "state_bleed_count": 0,
+  "lineage": {
+    "actual_profile_probes": "evidence/G10-reference-live-validation/capture-summary.json",
+    "simultaneous_resource_capture": "external:G19-resource-storage-latency/resource-analysis-actual-latency.json",
+    "cross_profile_routing": "evidence/G17-happy-path-e2e/native/bridge-live-demo.json",
+    "dual_terminal_restart": "evidence/G18-failure-restart-e2e/native/dual-terminal-restart.json",
+    "fresh_vm": "evidence/G20-fresh-vm-acceptance/certification.json"
+  }
+}

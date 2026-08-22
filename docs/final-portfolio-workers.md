@@ -10,7 +10,7 @@ single unit with shared state and, where applicable, shared balance sizing.
 GOLD.i worker (demo execution)    GOLDm worker (real)
 ├─ Revised BUY                    ├─ Revised BUY
 ├─ Bear SELL                      ├─ Bear SELL
-├─ adaptive 0.01/0.02 sizing      ├─ shared Aggressive sizing
+├─ adaptive 0.01→2.0 sizing       ├─ adaptive 0.1→100 sizing
 ├─ approved GOLD.i audience       ├─ admin-only Telegram
 └─ checked demo orders            ├─ MT5 order_check/order_send
                                   └─ Telegram lifecycle sender
