@@ -173,9 +173,10 @@ def _verify_tester_batch(
     for field, value in expected.items():
         if batch.get(field) != value:
             reasons.append(f"GOLDM tester batch {field} mismatch")
-    for field in ("binary_sha256", "source_commit_sha"):
-        if not _sha256(batch.get(field)):
-            reasons.append(f"GOLDM tester batch {field} invalid")
+    if not _sha256(batch.get("binary_sha256")):
+        reasons.append("GOLDM tester batch binary_sha256 invalid")
+    if not _git_object_id(batch.get("source_commit_sha")):
+        reasons.append("GOLDM tester batch source_commit_sha invalid")
     runs = batch.get("runs")
     if not isinstance(runs, list) or len(runs) < 3:
         reasons.append("GOLDM tester batch requires at least three runs")
@@ -292,6 +293,14 @@ def _sha256(value: object) -> bool:
     return (
         isinstance(value, str)
         and len(value) == 64
+        and all(character in "0123456789abcdef" for character in value)
+    )
+
+
+def _git_object_id(value: object) -> bool:
+    return (
+        isinstance(value, str)
+        and len(value) in {40, 64}
         and all(character in "0123456789abcdef" for character in value)
     )
 
