@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import sys
 from pathlib import Path
 from types import ModuleType
 
@@ -53,3 +54,24 @@ def test_mql5_build_script_compiles_both_profiles_and_requires_clean_logs() -> N
     assert "GoldEngine-GOLDm.mq5" in source
     assert "0 errors, 0 warnings" in source
     assert "production_real_orders=DISABLED" in source
+
+
+def test_runner_creates_fresh_basetemp_parent(tmp_path: Path, monkeypatch) -> None:
+    module = _load_runner()
+
+    class Completed:
+        returncode = 0
+
+    observed: dict[str, object] = {}
+
+    def run(command, *, cwd, check):
+        observed.update(command=command, cwd=cwd, check=check)
+        return Completed()
+
+    monkeypatch.setattr(module, "REPOSITORY_ROOT", tmp_path)
+    monkeypatch.setattr(module.subprocess, "run", run)
+    monkeypatch.setattr(sys, "argv", ["validate_goal_gate.py", "validate-causality"])
+
+    assert module.main() == 0
+    assert (tmp_path / "runtime_data").is_dir()
+    assert observed["cwd"] == tmp_path
