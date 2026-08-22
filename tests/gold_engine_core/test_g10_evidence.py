@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+import gold_engine_core.g10_evidence as g10_evidence
 from gold_engine_core import G10Acceptance, load_named_profile, verify_g10_evidence
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
@@ -204,3 +205,23 @@ def test_concurrency_fail_closed(tmp_path: Path) -> None:
 def test_acceptance_result_cannot_claim_pass_without_fingerprint() -> None:
     with pytest.raises(ValueError, match="inconsistent"):
         G10Acceptance(True, (), None)
+
+
+def test_g10_scalar_validators_reject_ambiguous_values() -> None:
+    assert g10_evidence._git_object_id("a" * 40) is True
+    assert g10_evidence._git_object_id("b" * 64) is True
+    assert g10_evidence._git_object_id("A" * 40) is False
+    assert g10_evidence._git_object_id("a" * 39) is False
+    assert g10_evidence._sha256("c" * 64) is True
+    assert g10_evidence._sha256("C" * 64) is False
+    assert g10_evidence._integer_at_least(True, 1) is False
+    assert g10_evidence._integer_at_least(0, 1) is False
+    assert g10_evidence._integer_at_least(1, 1) is True
+    assert g10_evidence._positive_number(True, allow_zero=True) is False
+    assert g10_evidence._positive_number(object(), allow_zero=True) is False
+    assert g10_evidence._positive_number(0, allow_zero=True) is True
+    assert g10_evidence._positive_number(0, allow_zero=False) is False
+    assert g10_evidence._timestamp(None) is None
+    assert g10_evidence._timestamp("not-a-timestamp") is None
+    assert g10_evidence._timestamp("2026-08-22T12:00:00") is None
+    assert g10_evidence._timestamp("2026-08-22T12:00:00+07:00") is not None
