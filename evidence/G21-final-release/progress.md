@@ -21,6 +21,8 @@ Final release facts:
 - focused G21 tests: 4 PASS;
 - final fast regression: 836 PASS, 154 deselected, 77 subtests PASS;
 - final slow regression: 154 PASS, 836 deselected, 64 subtests PASS;
+- incremental quality ratchet: Ruff/format PASS, core coverage `90.20%`,
+  strategy-rule coverage `82.66%`, no changed production mypy source files;
 - two known `TesterSettings` pytest collection warnings remain non-release
   blocking and are documented legacy debt.
 
