@@ -6,6 +6,10 @@ This document defines the target provisioning and deployment contract for a
 portable `GOLDI` engine. It is an implementation specification and operator
 SOP; it does not by itself enable orders or change the certified G21 binaries.
 
+The operational end-to-end deployment procedure, including the optional
+multi-account topology, is defined in
+[`goldi-portable-e2e-deployment-sop.md`](goldi-portable-e2e-deployment-sop.md).
+
 The scope is `GOLDI` only. `GOLDM`, its `GOLDm#` symbol, sizing, account,
 terminal, magic, state, and admin-only notification route remain unchanged and
 must not use this workflow.
