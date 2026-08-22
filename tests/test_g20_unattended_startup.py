@@ -20,6 +20,8 @@ LOCK_SCRIPT = ROOT / "scripts/g20-lock-workstation.ps1"
 AUTOLOGON_VERIFIER = ROOT / "scripts/verify-g20-autologon-tool.ps1"
 CHART_REPAIR = ROOT / "scripts/repair-g20-startup-chart.ps1"
 RUNTIME = ROOT / "mt5/Include/bot-ea/GoldEngineRuntime.mqh"
+GOLDI_ENTRYPOINT = ROOT / "mt5/Experts/bot-ea/GoldEngine-GOLDi.mq5"
+GOLDM_ENTRYPOINT = ROOT / "mt5/Experts/bot-ea/GoldEngine-GOLDm.mq5"
 EVENTS = ROOT / "src/gold_event_bridge/events.py"
 
 
@@ -76,10 +78,20 @@ def test_example_config_is_non_secret_and_requires_certified_binary_hashes() -> 
 def test_native_ea_emits_bounded_internal_health_evidence() -> None:
     runtime = RUNTIME.read_text(encoding="utf-8")
     events = EVENTS.read_text(encoding="utf-8")
+    entrypoints = [
+        GOLDI_ENTRYPOINT.read_text(encoding="utf-8"),
+        GOLDM_ENTRYPOINT.read_text(encoding="utf-8"),
+    ]
 
     assert 'EmitTransition("ENGINE_HEARTBEAT"' in runtime
-    assert "m_next_heartbeat_at=TimeCurrent()+60" in runtime
-    assert "m_next_heartbeat_at=raw_tick.time+3600" in runtime
+    assert "m_next_heartbeat_due_ms=GetTickCount64()+60000" in runtime
+    assert "m_next_heartbeat_due_ms=now_ms+3600000" in runtime
+    assert "EventSetTimer(1)" in runtime
+    assert "EventKillTimer()" in runtime
+    assert "void OnTimer(void)" in runtime
+    assert "MaybeEmitHeartbeat(TimeCurrent())" in runtime
+    assert all("void OnTimer(void)" in source for source in entrypoints)
+    assert all("Runtime.OnTimer();" in source for source in entrypoints)
     assert "account_login" in runtime
     assert "account_server" in runtime
     assert "order_authority" in runtime

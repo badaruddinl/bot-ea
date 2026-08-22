@@ -22,6 +22,11 @@ void OnTick(void)
    Runtime.OnTick();
   }
 
+void OnTimer(void)
+  {
+   Runtime.OnTimer();
+  }
+
 void OnDeinit(const int reason)
   {
    Runtime.Deinitialize(reason);
