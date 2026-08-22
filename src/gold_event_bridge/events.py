@@ -31,6 +31,7 @@ class EngineEventEnvelope:
     EVENT_TYPES: ClassVar[frozenset[str]] = frozenset(
         {
             "ENGINE_STARTED",
+            "ENGINE_HEARTBEAT",
             "PROFILE_VALIDATED",
             "SETUP_CREATED",
             "WATCH_UPDATED",

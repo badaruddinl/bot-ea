@@ -33,6 +33,7 @@ REAL order authority: **DISABLED**
 | G17 | PASS | SHARED, GOLDI, GOLDM, CROSS_PROFILE | `evidence/G17-happy-path-e2e/` | GOLDI actual DEMO and GOLDM isolated tester chains completed through order/position/close/spool/SQLite/actual Telegram, exact GOLDM refusal passed, cross-profile leakage stayed zero, compile/regression/quality passed, and REAL authority remained disabled. |
 | G18 | PASS | SHARED, GOLDI, GOLDM, CROSS_PROFILE | `evidence/G18-failure-restart-e2e/` | Strict failure/restart certification passed, including an actual Windows Server VM boot-ID change, fresh GOLDI/GOLDM runtime identities, recovery/isolation, and disabled REAL authority. |
 | G19 | PASS | SHARED, GOLDI, GOLDM, CROSS_PROFILE | `evidence/G19-resource-storage-latency/` | 602.01-second final-EA capture, zero idle storage growth/leak, 24 native position receipts, 100 bridge receipts, both profile tester runs, compile, fast/slow regression, and quality gate PASS. Telegram latency is labeled internal/no-network. |
+| G20 | IN_PROGRESS | SHARED, GOLDI, GOLDM, CROSS_PROFILE | `evidence/G20-fresh-vm-acceptance/` | Session 0 design retained as strict FAIL. Operator approved Microsoft Autologon + immediate lock; interactive-token cold-boot acceptance is in progress. Temporary G18/Python launchers remain disabled. |
 
 Raw or large evidence is stored outside Git under:
 

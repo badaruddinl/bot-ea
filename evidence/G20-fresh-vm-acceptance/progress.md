@@ -1,0 +1,203 @@
+# G20 Fresh VM Acceptance
+
+Status: **PASS**
+
+Production REAL order authority remains **DISABLED**.
+
+Locked unattended-start contract:
+
+- the VM power-on event is sufficient; no interactive Windows login is needed;
+- tasks trigger `At startup` and run under the Windows account that owns both
+  MT5 profiles with `Run whether user is logged on or not`;
+- the operator enters the Windows password once into Task Scheduler's protected
+  credential store; the password is never written to Git, bot configuration,
+  Telegram, logs, command lines, or evidence;
+- `SYSTEM`, S4U, auto-logon, and the temporary G18 `ONLOGON` probes are rejected;
+- the native profile-locked EAs remain the only strategy/order authorities;
+  the optional bridge may fail without stopping trading continuity;
+- a scheduled cold power-off/on acceptance must recover both terminals, exact
+  profile/account/server ownership, open-position ownership, bounded spools,
+  and bridge delivery before this gate can PASS.
+
+Completed acceptance sequence:
+
+1. package the two exact G19-certified binaries and profile launch settings;
+2. install password-backed startup tasks without exposing the credential;
+3. remove/disable all temporary `ONLOGON` tasks and Python strategy workers;
+4. cold power-cycle the VM without logging in;
+5. inspect process, EA heartbeat, spool, bridge, and ownership evidence remotely;
+6. log in only after evidence capture for operator-side visual confirmation.
+
+Implemented pre-deployment batch:
+
+- a native-only supervisor validates certified EA hashes, exact distinct terminal
+  paths, profile/account/server/symbol/trade-mode contracts, and restarts only
+  the two MT5 terminals plus the optional event-delivery bridge;
+- the password-backed installer creates one delayed `AtStartup` task, verifies
+  `LogonType=Password` and the boot trigger, and never serializes the credential;
+- health/audit files are atomic and contain exact-path PIDs, restart counts,
+  profile hashes/contracts, bridge state, Windows identity, and proof that REAL
+  authority remains disabled;
+- the EA emits a first internal health receipt after 60 seconds from a bounded
+  timer that remains active without market ticks, then at most once per hour.
+  Its payload includes account login/server,
+  trade mode, and order-authority state; the bridge suppresses the heartbeat from
+  Telegram recipients;
+- preboot/postboot capture records boot identity, task principal/trigger,
+  supervisor health, exact terminal processes, legacy task state, Python process
+  roles, spool offsets, and only the newly appended engine events;
+- strict verifier requires a changed boot identity, supervisor start before
+  interactive login, exactly one terminal per profile, exact fingerprint/account/
+  server/symbol/mode/authority, startup/profile/heartbeat events, recovered
+  bridge, no legacy Python strategy worker, and disabled GOLDm REAL authority;
+- deterministic MT5 startup configs use the official `[StartUp]` mechanism and
+  `MQL5\\Presets`: GOLDI DEMO order authority is enabled for actual E2E, while
+  GOLDM REAL order authority and terminal live-trading permission stay disabled;
+- focused tests: 37 PASS; strict verifier mutation tests cover missing heartbeat,
+  enabled authority, late startup, forbidden Python strategy, and legacy task;
+- both profile EAs compile with MetaEditor build 6090 at 0 errors/0 warnings;
+  quality coverage remains core 90.12% and strategy rules 82.66%.
+
+The password was entered only into Windows facilities on the VM. It was never
+read, displayed, or persisted by repository code or evidence tooling.
+
+Actual VM deployment batch:
+
+- exact VM worktree `c870b50` compiled both EAs with MetaEditor build 6090 at
+  0 errors/0 warnings and installed SHA-256
+  `7c9b68a41f16a4f6e930134badc61b60b90eb314bcd9d44c582f12ca2ff92ae6`
+  (GOLDI) and
+  `fe718009e75fda9dd3f15c04f07bc89b6b4ff48eb503c27cfd2d7f5df12a1579`
+  (GOLDM);
+- temporary G18 logon tasks and legacy Python orchestrator tasks are disabled;
+  the old saved charts were removed after the final EA correctly rejected the
+  first attempt as `DUPLICATE_EA_INSTANCE`;
+- clean config-driven restart produced exact `ENGINE_STARTED`,
+  `PROFILE_VALIDATED`, and internal `ENGINE_HEARTBEAT` events for both profiles:
+  GOLDI account `108098316`, server `XMGlobal-MT5 5`, DEMO mode, authority
+  enabled; GOLDM account `391425346`, server `XMGlobal-MT5 14`, REAL mode,
+  authority disabled;
+- password-backed task installation reported `LogonType=Password` and one
+  `AtStartup` trigger; no password was read or persisted by repository code;
+- Telegram dev token is stored with CurrentUser DPAPI and restrictive ACL. The
+  bridge routes to dev admin chat `-5481117256`, with no subscriber audience;
+- preboot bridge health: six events, four `DELIVERED`, two internal heartbeats
+  `SUPPRESSED`, zero pending, zero failed, REAL disabled;
+- preboot snapshot recorded the prior boot identity, task principal/trigger,
+  and exact three-line offsets/hashes for each profile spool;
+- the VM was cold-restarted and deliberately left at the Windows lock screen
+  from 09:00 through 09:02 local time. No Ctrl+Alt+Del or interactive login was
+  sent during the unattended startup window;
+- final regression after the G20 changes: 809 fast tests plus 77 subtests PASS;
+  154 slow tests plus 64 subtests PASS.
+
+Postboot capture disproved the Session 0 design. The task started before login,
+but MT5 did not execute either EA or append any postboot event. Details and the
+strict FAIL result are retained in `session0-failure.md`. The experiment task is
+disabled and all experiment processes are stopped.
+
+The operator explicitly approved automatic console sign-in plus immediate
+workstation lock after reviewing the Session 0 failure and Microsoft LSA-secret
+warning. Interactive-token task tooling, Microsoft signature verification,
+plaintext-password rejection, prompt lock marker, and verifier mutation cases
+are implemented.
+
+The first automatic-sign-in cold boot proved that sign-in and immediate lock
+worked, but its strict verifier result was FAIL. A visible supervisor
+PowerShell window was accidentally closed during evidence collection, so the
+task was no longer running; Windows also restored previously open MT5 windows
+before the supervisor could launch the profile configs. GOLDI therefore had no
+new postboot startup/profile/heartbeat evidence. GOLDM correctly emitted
+`MANUAL_INTERVENTION_DETECTED` because the REAL account had a live position
+while its order authority remained disabled. The raw VM files are retained as
+`C:\bot-ea-g20\preboot-auto.json`, `postboot-auto.json`, and
+`verification-auto.json`; the diagnosis is recorded in
+`autologon-first-failure.md`.
+
+Corrections are now installed:
+
+- scheduled supervisor and immediate-lock PowerShell hosts use hidden windows;
+- Task Scheduler result evidence preserves the full unsigned 32-bit value;
+- legacy configs default to no allowed ENGINE_ERROR exceptions;
+- only GOLDM REAL with order authority disabled may explicitly allow
+  `MANUAL_INTERVENTION_DETECTED`; every other ENGINE_ERROR still fails;
+- both MT5 terminals were closed normally before the second cold boot so
+  Windows could not restore them outside the supervisor path.
+
+Post-correction regression: 823 fast tests plus 77 subtests PASS; 154 slow
+tests plus 64 subtests PASS. The incremental quality gate PASSes with core
+coverage 90.12% and strategy-rule coverage 82.66%.
+
+The second cold boot reached the workstation lock automatically and remained
+locked for more than two minutes while engines warmed up. Its postboot capture
+proved task, lock, bridge, exact terminal processes, GOLDM startup events, and
+disabled REAL authority, but the strict verifier remained FAIL because GOLDI
+had no new startup/profile/heartbeat events. Terminal journal evidence proved
+that `GOLDI.ini` was read and then failed to open
+`MQL5\Profiles\Charts\Default\chart01.chr`; the GOLDI MQL5 log remained stale,
+so no profile EA was attached after boot. This is retained in
+`autologon-second-failure.md` and is not promoted to PASS.
+
+The corrupt GOLDI startup chart was moved—not deleted—to a same-directory,
+timestamped backup while both terminal processes were stopped. Restarting the
+supervisor then attached `GoldEngine-GOLDi` successfully and increased the
+GOLDI spool from 1,571 to 3,584 bytes. Commit `820f977` adds an explicit,
+terminal-safe, hash-verified, recoverable repair tool plus runtime tests. The
+post-repair focused matrix is 29 PASS, incremental quality/coverage PASS, and
+fast regression is 826 tests plus 77 subtests PASS. Commit `9a807c8` further
+requires a profile spool receipt after process start and marks missing/stale EA
+receipts fail-closed without terminating terminal processes. Its focused
+matrix is 31 PASS and final fast regression is 828 tests plus 77 subtests PASS.
+
+This historical failure was retained and superseded by the final clean-boot
+acceptance below.
+
+The subsequent clean boot was captured as `preboot-clean.json` and
+`postboot-clean.json`. GOLDM had no newly appended foreign-position error in
+that postboot window, but GOLDI again started without a post-start EA receipt;
+the strict verifier therefore remained FAIL. A manual GOLDI DEMO process
+restart recovered the EA, proving the failure is startup-chart regeneration,
+not a binary/hash mismatch. The supervisor is being amended to perform an
+explicit, GOLDI-only, hash-verified, recoverable `chart01.chr` backup before
+each terminal launch. GOLDM REAL remains untouched and order authority stays
+disabled. The supervisor now delegates this operation to the existing tested
+repair tool and records its receipt in supervisor health. Focused startup,
+verifier, and repair tests: 32 PASS. Final fast regression: 829 tests plus 77
+subtests PASS.
+
+Final clean-boot acceptance:
+
+- gate source tip: `292f76104e703fd5f0a405017b24b68f064c37e6`;
+- EA timer source commit: `087314d`; both VM MetaEditor compiles reported
+  0 errors and 0 warnings;
+- installed GOLDI binary SHA-256:
+  `b3142e26e37fdca846cdece3694dbfbb75d5bd201ea46f3c9835767ccc3bfd4c`;
+- installed GOLDM binary SHA-256:
+  `29aab8b4105d8b640161018913d6a6a0b15296ec182acc816e2dc06d89bce0f4`;
+- the VM completed a clean reboot and reached the locked workstation without an
+  interactive login; the supervisor, one bridge, both terminal processes, and
+  both profile EAs started before the later operator unlock;
+- GOLDI and GOLDM each appended exactly the required postboot
+  `ENGINE_STARTED`, `PROFILE_VALIDATED`, and `ENGINE_HEARTBEAT` event set;
+- GOLDI was bound to account `108098316`, server `XMGlobal-MT5 5`, symbol
+  `GOLD.i#`, DEMO mode, and its profile-locked authority contract;
+- GOLDM was bound to account `391425346`, server `XMGlobal-MT5 14`, symbol
+  `GOLDm#`, REAL mode with order authority **DISABLED**;
+- strict verifier result: `PASS`, `boot_id_changed=true`,
+  `unattended_before_login=true`, `manual_login_required=false`,
+  `bridge_recovered=true`, and `violations=[]`;
+- raw VM artifacts and SHA-256:
+  - `C:\bot-ea-g20\preboot-final.json` —
+    `cc6d99d098f55113a58748a42c18ec1914cb97272e3d98ceb1141f5a5a4cc564`;
+  - `C:\bot-ea-g20\postboot-final.json` —
+    `f4f1d2e1c8a3943166c16fa0db3a02321a9d1ec30fea232d764462eee96a50a2`;
+  - `C:\bot-ea-g20\verification-final.json` —
+    `5a4f35b0d373cdfbe604fb9f17805da07f90a6c6e415d5124123033813e2e55f`;
+- post-fix focused tests: 31 PASS; PowerShell syntax PASS; final fast regression:
+  830 tests and 77 subtests PASS, 154 slow tests deselected, with the two known
+  `TesterSettings` collection warnings only.
+
+The prior failed Session 0 and automatic-sign-in attempts remain preserved as
+negative evidence. They were not relabeled as PASS.
+
+REAL orders: **DISABLED**

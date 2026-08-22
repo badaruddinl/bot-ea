@@ -616,7 +616,7 @@ Goal hanya selesai bila seluruh required cell PASS.
 | G17 Happy-path E2E | PASS | PASS | PASS | PASS | `evidence/G17-happy-path-e2e/` |
 | G18 Failure/restart E2E | PASS | PASS | PASS | PASS | `evidence/G18-failure-restart-e2e/` |
 | G19 Resource/storage/latency | PASS | PASS | PASS | PASS | `evidence/G19-resource-storage-latency/` |
-| G20 Fresh VM acceptance | NOT_STARTED | NOT_STARTED | NOT_STARTED | NOT_STARTED | |
+| G20 Fresh VM acceptance | PASS | PASS | PASS | PASS | `evidence/G20-fresh-vm-acceptance/` |
 | G21 Final release evidence | NOT_STARTED | NOT_STARTED | NOT_STARTED | NOT_STARTED | |
 
 `N/A` hanya valid jika gate memang shared-only atau profile-only berdasarkan kontrak ini.
@@ -1532,22 +1532,29 @@ Bridge may be separate and optional for trading continuity.
 ## Unattended boot and scheduled power cycle
 
 - MT5 profile terminals and the optional bridge must start after VM boot without
-  requiring an interactive desktop login.
-- Windows Scheduled Tasks use `At startup` and `Run whether user is logged on
-  or not` under the Windows account that owns the MT5 profiles. The operator
-  enters that Windows credential once directly into Task Scheduler; it is never
-  written to Git, config, Telegram, logs, or release evidence.
-- `SYSTEM` and S4U are rejected for broker terminals because they do not provide
-  the required user profile and/or broker network credential context.
-- A scheduled cloud power-off/on cycle must recover both profile terminals,
-  bridge delivery, open-position ownership, and bounded spools without manual
-  login.
+  requiring the operator to enter a Windows password manually.
+- Actual cold-boot evidence proved that password-backed `At startup` tasks place
+  MT5 in noninteractive Session 0: the processes exist but never execute
+  `OnInit()`. That design is retained as FAIL evidence and is forbidden.
+- The approved design uses Microsoft Sysinternals Autologon to create a Console
+  session, `AtLogOn` tasks with an interactive token, and a separate immediate
+  `LockWorkStation` task. The signed Autologon executable is verified before use.
+- The operator enters the Windows credential only in the Microsoft Autologon UI.
+  It is stored as an LSA secret and is never written to Git, task arguments,
+  bot config, Telegram, logs, or release evidence. The operator explicitly
+  accepted Microsoft's warning that a local administrator can retrieve and
+  decrypt this LSA secret.
+- `SYSTEM`, S4U, Session 0, plaintext `DefaultPassword`, and command-line
+  credentials are rejected.
+- A scheduled cloud power-off/on cycle must automatically sign in, lock the
+  workstation promptly, recover both profile terminals, bridge delivery,
+  open-position ownership, and bounded spools without manual login.
 
 ## PASS
 
 Each VM needs only the relevant `.ex5` for engine operation, wrong-profile
 installation fails closed, and scheduled cold boot reaches healthy profile
-heartbeats without interactive login.
+heartbeats in a locked interactive session without manual login.
 
 ---
 

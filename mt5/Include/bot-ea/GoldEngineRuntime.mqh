@@ -48,7 +48,19 @@ private:
    ulong               m_last_bar_close_to_detection_ms;
    ulong               m_last_detection_to_decision_us;
    ulong               m_last_entry_ready_to_submit_us;
+   ulong               m_next_heartbeat_due_ms;
    CEngineInstanceLease m_instance_lease;
+
+   string RuntimeEvidencePayload(void) const
+     {
+      return StringFormat(
+         "{\"account_login\":%I64d,\"account_server\":\"%s\","
+         "\"trade_mode\":%d,\"order_authority\":\"%s\"}",
+         AccountInfoInteger(ACCOUNT_LOGIN),
+         OutboxJsonEscape(AccountInfoString(ACCOUNT_SERVER)),
+         (int)AccountInfoInteger(ACCOUNT_TRADE_MODE),
+         m_execution_broker.AuthorityEnabled() ? "ENABLED" : "DISABLED");
+     }
 
    void EmitTransition(const string event_type,
                        const string setup_id="",
@@ -60,6 +72,15 @@ private:
       if(m_outbox_initialized)
          m_outbox.Emit(event_type,m_last_event,setup_id,signal_id,
                        order_id,position_id,payload);
+     }
+
+   void MaybeEmitHeartbeat(const datetime server_time)
+     {
+      const ulong now_ms=GetTickCount64();
+      if(m_next_heartbeat_due_ms==0 || now_ms<m_next_heartbeat_due_ms)
+         return;
+      m_next_heartbeat_due_ms=now_ms+3600000;
+      SetEvent(ENGINE_EVENT_HEARTBEAT,server_time,"ENGINE_HEALTHY");
      }
 
    bool PersistSubmittedPosition(const SignalPlan &plan,
@@ -284,9 +305,12 @@ private:
          IntegerToString((long)server_time);
       if(type==ENGINE_EVENT_RUNTIME_READY)
         {
-         EmitTransition("ENGINE_STARTED");
-         EmitTransition("PROFILE_VALIDATED");
+         const string payload=RuntimeEvidencePayload();
+         EmitTransition("ENGINE_STARTED","","","","",payload);
+         EmitTransition("PROFILE_VALIDATED","","","","",payload);
         }
+      else if(type==ENGINE_EVENT_HEARTBEAT)
+         EmitTransition("ENGINE_HEARTBEAT","","","","",RuntimeEvidencePayload());
       else if(type==ENGINE_EVENT_ENTRY_READY)
          EmitTransition("ENTRY_READY",m_state.setup_id);
       else if(type==ENGINE_EVENT_POSITION)
@@ -568,6 +592,7 @@ public:
       m_last_bar_close_to_detection_ms=0;
       m_last_detection_to_decision_us=0;
       m_last_entry_ready_to_submit_us=0;
+      m_next_heartbeat_due_ms=0;
       m_position_state_status=POSITION_STATE_MISSING;
       PositionStateReset(m_expected_position);
      }
@@ -653,6 +678,16 @@ public:
       SetEvent(ENGINE_EVENT_RUNTIME_READY,TimeCurrent(),"WARMUP_COMPLETE");
       if(!RecoverOwnedPositions(TimeCurrent()))
          return INIT_FAILED;
+      // Health evidence must remain live while the market is closed and no
+      // ticks arrive. The timer only emits observability events; strategy and
+      // execution remain exclusively tick/closed-bar driven.
+      m_next_heartbeat_due_ms=GetTickCount64()+60000;
+      if(!EventSetTimer(1))
+        {
+         Print("GOLD_ENGINE_INIT_REJECT profile=",m_profile.profile_id,
+               " reason=HEARTBEAT_TIMER_FAILED");
+         return INIT_FAILED;
+        }
       Print("GOLD_ENGINE_READY profile=",m_profile.profile_id,
             " fingerprint=",m_profile.profile_fingerprint,
             " order_authority=",
@@ -677,6 +712,8 @@ public:
       tick.bid=raw_tick.bid;
       tick.ask=raw_tick.ask;
       tick.last=raw_tick.last;
+
+      MaybeEmitHeartbeat(raw_tick.time);
 
       EngineBar closed_bars[];
       int bar_count=0;
@@ -712,8 +749,16 @@ public:
          CheckActiveSetupTick(tick);
      }
 
+   void OnTimer(void)
+     {
+      if(!m_initialized || !m_data_healthy)
+         return;
+      MaybeEmitHeartbeat(TimeCurrent());
+     }
+
    void Deinitialize(const int reason)
      {
+      EventKillTimer();
       if(m_initialized)
          m_bear_store.Save(
             m_profile.profile_id,m_profile.profile_fingerprint,m_bear_machine);
