@@ -617,7 +617,7 @@ Goal hanya selesai bila seluruh required cell PASS.
 | G18 Failure/restart E2E | PASS | PASS | PASS | PASS | `evidence/G18-failure-restart-e2e/` |
 | G19 Resource/storage/latency | PASS | PASS | PASS | PASS | `evidence/G19-resource-storage-latency/` |
 | G20 Fresh VM acceptance | PASS | PASS | PASS | PASS | `evidence/G20-fresh-vm-acceptance/` |
-| G21 Final release evidence | NOT_STARTED | NOT_STARTED | NOT_STARTED | NOT_STARTED | |
+| G21 Final release evidence | PASS | PASS | PASS | PASS | `release/`, `evidence/G21-final-release/` |
 
 `N/A` hanya valid jika gate memang shared-only atau profile-only berdasarkan kontrak ini.
 
@@ -1675,47 +1675,47 @@ CI harus gagal bila:
 
 Goal **DONE** hanya jika:
 
-- [ ] Exact baseline evidence PASS.
-- [ ] GOLD.i manifest/fingerprint PASS.
-- [ ] GOLDm manifest/fingerprint PASS.
-- [ ] Cross-profile isolation PASS.
-- [ ] Current behavior corpus complete.
-- [ ] Common pure strategy contract PASS.
-- [ ] Bear incremental parity PASS untuk GOLD.i.
-- [ ] Bear incremental parity PASS untuk GOLDm.
-- [ ] Revised restart parity PASS untuk GOLD.i.
-- [ ] Revised restart parity PASS untuk GOLDm.
-- [ ] Event-driven reference runtime PASS.
-- [ ] Signal-age guard PASS.
-- [ ] Entry-drift guard PASS.
-- [ ] Spread guard PASS.
-- [ ] Invalidation-before-send PASS.
-- [ ] Causal/tick-aware backtest PASS.
-- [ ] GOLD.i live DEMO validation PASS.
-- [ ] GOLDm REAL read-only market-data validation PASS dengan `orders_sent=0`.
-- [ ] GOLDm isolated Strategy Tester execution validation PASS.
-- [ ] MQL5 native scheduler PASS.
-- [ ] Revised MQL5 parity 100% untuk kedua profile.
-- [ ] Bear MQL5 parity 100% untuk kedua profile.
-- [ ] Entry/SL/TP parity <= one profile tick.
-- [ ] EA execution/management PASS.
-- [ ] Python tidak mempunyai production order authority.
-- [ ] Event outbox/DB/Telegram bridge PASS.
-- [ ] GOLD.i happy-path E2E PASS.
-- [ ] GOLDm happy-path engineering E2E PASS.
-- [ ] Privacy/audience E2E PASS.
-- [ ] Failure injection PASS.
-- [ ] Restart/open-position recovery PASS.
-- [ ] Dual-terminal independence PASS.
-- [ ] Resource/storage/latency stability PASS.
-- [ ] Fresh VM GOLD.i PASS.
-- [ ] Fresh VM GOLDm PASS.
-- [ ] `GoldEngine-GOLDi-vX.Y.Z.ex5` dihasilkan dan di-hash.
-- [ ] `GoldEngine-GOLDm-vX.Y.Z.ex5` dihasilkan dan di-hash.
-- [ ] Rollback binaries tersedia.
-- [ ] Tidak ada P1 terbuka.
-- [ ] Tidak ada required gate `BLOCKED`.
-- [ ] REAL activation tetap disabled kecuali manusia mengotorisasi.
+- [x] Exact baseline evidence PASS.
+- [x] GOLD.i manifest/fingerprint PASS.
+- [x] GOLDm manifest/fingerprint PASS.
+- [x] Cross-profile isolation PASS.
+- [x] Current behavior corpus complete.
+- [x] Common pure strategy contract PASS.
+- [x] Bear incremental parity PASS untuk GOLD.i.
+- [x] Bear incremental parity PASS untuk GOLDm.
+- [x] Revised restart parity PASS untuk GOLD.i.
+- [x] Revised restart parity PASS untuk GOLDm.
+- [x] Event-driven reference runtime PASS.
+- [x] Signal-age guard PASS.
+- [x] Entry-drift guard PASS.
+- [x] Spread guard PASS.
+- [x] Invalidation-before-send PASS.
+- [x] Causal/tick-aware backtest PASS.
+- [x] GOLD.i live DEMO validation PASS.
+- [x] GOLDm REAL read-only market-data validation PASS dengan `orders_sent=0`.
+- [x] GOLDm isolated Strategy Tester execution validation PASS.
+- [x] MQL5 native scheduler PASS.
+- [x] Revised MQL5 parity 100% untuk kedua profile.
+- [x] Bear MQL5 parity 100% untuk kedua profile.
+- [x] Entry/SL/TP parity <= one profile tick.
+- [x] EA execution/management PASS.
+- [x] Python tidak mempunyai production order authority.
+- [x] Event outbox/DB/Telegram bridge PASS.
+- [x] GOLD.i happy-path E2E PASS.
+- [x] GOLDm happy-path engineering E2E PASS.
+- [x] Privacy/audience E2E PASS.
+- [x] Failure injection PASS.
+- [x] Restart/open-position recovery PASS.
+- [x] Dual-terminal independence PASS.
+- [x] Resource/storage/latency stability PASS.
+- [x] Fresh VM GOLD.i PASS.
+- [x] Fresh VM GOLDm PASS.
+- [x] `GoldEngine-GOLDi-vX.Y.Z.ex5` dihasilkan dan di-hash.
+- [x] `GoldEngine-GOLDm-vX.Y.Z.ex5` dihasilkan dan di-hash.
+- [x] Rollback binaries tersedia.
+- [x] Tidak ada P1 terbuka.
+- [x] Tidak ada required gate `BLOCKED`.
+- [x] REAL activation tetap disabled kecuali manusia mengotorisasi.
 
 ---
 

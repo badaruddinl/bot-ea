@@ -83,7 +83,9 @@ def export(config_path: Path, output_root: Path) -> dict[str, object]:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Export G21 binaries from certified G20 VM bindings")
+    parser = argparse.ArgumentParser(
+        description="Export G21 binaries from certified G20 VM bindings"
+    )
     parser.add_argument("--config", type=Path, required=True)
     parser.add_argument("--output-root", type=Path, required=True)
     args = parser.parse_args()
