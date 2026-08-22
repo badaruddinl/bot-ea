@@ -25,3 +25,6 @@ release/*.sha256 text eol=lf
 release/*.txt text eol=lf
 release/*.ex5 -text
 release/rollback/*.ex5 -text
+evidence/G21-final-release/*.json text eol=lf
+evidence/G21-final-release/*.sha256 text eol=lf
+evidence/G21-final-release/*.md text eol=lf
