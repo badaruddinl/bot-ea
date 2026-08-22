@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "gate": "G20",
+  "status": "PASS",
+  "gate_source_sha": "292f76104e703fd5f0a405017b24b68f064c37e6",
+  "ea_timer_source_sha": "087314d",
+  "external_evidence_root": "E:\\luthfi\\project\\bot-ea-evidence\\BOT-EA-LIVE-ENGINE-MQL5-DUAL-PROFILE-E2E\\b042d51cfc3b2ea1f9aa048054af03d79d79726e\\G20-fresh-vm-acceptance",
+  "startup_mode": "AUTOLOGON_LOCKED_INTERACTIVE",
+  "production_real_orders": "DISABLED",
+  "boot_id_changed": true,
+  "unattended_before_login": true,
+  "manual_login_required": false,
+  "bridge_recovered": true,
+  "violations": [],
+  "profiles": {
+    "GOLDI": {
+      "binary_sha256": "b3142e26e37fdca846cdece3694dbfbb75d5bd201ea46f3c9835767ccc3bfd4c",
+      "new_event_count": 3,
+      "required_event_types": [
+        "ENGINE_STARTED",
+        "PROFILE_VALIDATED",
+        "ENGINE_HEARTBEAT"
+      ],
+      "allowed_engine_error_reasons": []
+    },
+    "GOLDM": {
+      "binary_sha256": "29aab8b4105d8b640161018913d6a6a0b15296ec182acc816e2dc06d89bce0f4",
+      "new_event_count": 3,
+      "required_event_types": [
+        "ENGINE_STARTED",
+        "PROFILE_VALIDATED",
+        "ENGINE_HEARTBEAT"
+      ],
+      "allowed_engine_error_reasons": [
+        "MANUAL_INTERVENTION_DETECTED"
+      ]
+    }
+  },
+  "raw_vm_artifacts": {
+    "preboot": {
+      "path": "C:\\bot-ea-g20\\preboot-final.json",
+      "sha256": "cc6d99d098f55113a58748a42c18ec1914cb97272e3d98ceb1141f5a5a4cc564"
+    },
+    "postboot": {
+      "path": "C:\\bot-ea-g20\\postboot-final.json",
+      "sha256": "f4f1d2e1c8a3943166c16fa0db3a02321a9d1ec30fea232d764462eee96a50a2"
+    },
+    "verification": {
+      "path": "C:\\bot-ea-g20\\verification-final.json",
+      "sha256": "5a4f35b0d373cdfbe604fb9f17805da07f90a6c6e415d5124123033813e2e55f"
+    }
+  },
+  "verification": {
+    "focused_tests_passed": 31,
+    "fast_tests_passed": 830,
+    "fast_subtests_passed": 77,
+    "slow_tests_deselected": 154,
+    "metaeditor_profiles_compiled": 2,
+    "metaeditor_errors": 0,
+    "metaeditor_warnings": 0,
+    "powershell_syntax": "PASS"
+  }
+}

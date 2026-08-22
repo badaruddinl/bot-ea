@@ -1,6 +1,6 @@
 # G20 Fresh VM Acceptance
 
-Status: **IN_PROGRESS**
+Status: **PASS**
 
 Production REAL order authority remains **DISABLED**.
 
@@ -19,7 +19,7 @@ Locked unattended-start contract:
   profile/account/server ownership, open-position ownership, bounded spools,
   and bridge delivery before this gate can PASS.
 
-Next evidence batch:
+Completed acceptance sequence:
 
 1. package the two exact G19-certified binaries and profile launch settings;
 2. install password-backed startup tasks without exposing the credential;
@@ -38,8 +38,9 @@ Implemented pre-deployment batch:
 - health/audit files are atomic and contain exact-path PIDs, restart counts,
   profile hashes/contracts, bridge state, Windows identity, and proof that REAL
   authority remains disabled;
-- the EA emits a first internal health receipt after 60 seconds of quote flow and
-  then at most once per hour. Its payload includes account login/server,
+- the EA emits a first internal health receipt after 60 seconds from a bounded
+  timer that remains active without market ticks, then at most once per hour.
+  Its payload includes account login/server,
   trade mode, and order-authority state; the bridge suppresses the heartbeat from
   Telegram recipients;
 - preboot/postboot capture records boot identity, task principal/trigger,
@@ -57,8 +58,8 @@ Implemented pre-deployment batch:
 - both profile EAs compile with MetaEditor build 6090 at 0 errors/0 warnings;
   quality coverage remains core 90.12% and strategy rules 82.66%.
 
-G20 remains IN_PROGRESS until the password is entered directly on the VM and a
-real cold boot is captured without interactive login.
+The password was entered only into Windows facilities on the VM. It was never
+read, displayed, or persisted by repository code or evidence tooling.
 
 Actual VM deployment batch:
 
@@ -148,8 +149,8 @@ requires a profile spool receipt after process start and marks missing/stale EA
 receipts fail-closed without terminating terminal processes. Its focused
 matrix is 31 PASS and final fast regression is 828 tests plus 77 subtests PASS.
 
-G20 remains IN_PROGRESS pending source synchronization to the VM and a third
-clean cold boot with strict verifier PASS.
+This historical failure was retained and superseded by the final clean-boot
+acceptance below.
 
 The subsequent clean boot was captured as `preboot-clean.json` and
 `postboot-clean.json`. GOLDM had no newly appended foreign-position error in
@@ -163,5 +164,40 @@ disabled. The supervisor now delegates this operation to the existing tested
 repair tool and records its receipt in supervisor health. Focused startup,
 verifier, and repair tests: 32 PASS. Final fast regression: 829 tests plus 77
 subtests PASS.
+
+Final clean-boot acceptance:
+
+- gate source tip: `292f76104e703fd5f0a405017b24b68f064c37e6`;
+- EA timer source commit: `087314d`; both VM MetaEditor compiles reported
+  0 errors and 0 warnings;
+- installed GOLDI binary SHA-256:
+  `b3142e26e37fdca846cdece3694dbfbb75d5bd201ea46f3c9835767ccc3bfd4c`;
+- installed GOLDM binary SHA-256:
+  `29aab8b4105d8b640161018913d6a6a0b15296ec182acc816e2dc06d89bce0f4`;
+- the VM completed a clean reboot and reached the locked workstation without an
+  interactive login; the supervisor, one bridge, both terminal processes, and
+  both profile EAs started before the later operator unlock;
+- GOLDI and GOLDM each appended exactly the required postboot
+  `ENGINE_STARTED`, `PROFILE_VALIDATED`, and `ENGINE_HEARTBEAT` event set;
+- GOLDI was bound to account `108098316`, server `XMGlobal-MT5 5`, symbol
+  `GOLD.i#`, DEMO mode, and its profile-locked authority contract;
+- GOLDM was bound to account `391425346`, server `XMGlobal-MT5 14`, symbol
+  `GOLDm#`, REAL mode with order authority **DISABLED**;
+- strict verifier result: `PASS`, `boot_id_changed=true`,
+  `unattended_before_login=true`, `manual_login_required=false`,
+  `bridge_recovered=true`, and `violations=[]`;
+- raw VM artifacts and SHA-256:
+  - `C:\bot-ea-g20\preboot-final.json` —
+    `cc6d99d098f55113a58748a42c18ec1914cb97272e3d98ceb1141f5a5a4cc564`;
+  - `C:\bot-ea-g20\postboot-final.json` —
+    `f4f1d2e1c8a3943166c16fa0db3a02321a9d1ec30fea232d764462eee96a50a2`;
+  - `C:\bot-ea-g20\verification-final.json` —
+    `5a4f35b0d373cdfbe604fb9f17805da07f90a6c6e415d5124123033813e2e55f`;
+- post-fix focused tests: 31 PASS; PowerShell syntax PASS; final fast regression:
+  830 tests and 77 subtests PASS, 154 slow tests deselected, with the two known
+  `TesterSettings` collection warnings only.
+
+The prior failed Session 0 and automatic-sign-in attempts remain preserved as
+negative evidence. They were not relabeled as PASS.
 
 REAL orders: **DISABLED**
