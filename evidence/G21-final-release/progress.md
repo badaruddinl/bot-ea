@@ -23,6 +23,11 @@ Final release facts:
 - final slow regression: 154 PASS, 836 deselected, 64 subtests PASS;
 - incremental quality ratchet: Ruff/format PASS, core coverage `90.20%`,
   strategy-rule coverage `82.66%`, no changed production mypy source files;
+- repository CI exposes all fourteen required `validate-*` gate names;
+  `validate-release` depends on the complete Python matrix and the self-hosted
+  `validate-mql5-build` job;
+- the new dual-profile MQL5 build gate was executed locally against MetaEditor:
+  GOLDI PASS and GOLDM PASS at `0 errors, 0 warnings`;
 - two known `TesterSettings` pytest collection warnings remain non-release
   blocking and are documented legacy debt.
 
