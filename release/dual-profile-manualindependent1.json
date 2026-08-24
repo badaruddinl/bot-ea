@@ -1,0 +1,27 @@
+{
+  "release_id": "dual-profile-manualindependent1",
+  "source_commit": "5c8373c",
+  "profile_version": "1.1.0",
+  "production_real_orders": "DISABLED",
+  "manual_position_policy": {
+    "analysis": "UNCHANGED",
+    "ea_entry": "NOT_BLOCKED",
+    "ownership": "IGNORED_UNLESS_EA_MAGIC_COLLIDES",
+    "telegram": "NO_MANUAL_POSITION_EVENT"
+  },
+  "trade_notifications": [
+    "ENTRY_READY",
+    "POSITION_OPENED",
+    "POSITION_CLOSED"
+  ],
+  "artifacts": {
+    "GOLDI": {
+      "path": "release/GoldEngine-GOLDi-v1.1.0-manualindependent1.ex5",
+      "sha256": "96138e414b3f8dd1e6c8f5d3d21691f9213bde12eacb998a0e00be6746eea66c"
+    },
+    "GOLDM": {
+      "path": "release/GoldEngine-GOLDm-v1.1.0-manualindependent1.ex5",
+      "sha256": "156072b9404577c67bfcac3deee4e1a9f9c0df0f385c79185f752571a8f3f773"
+    }
+  }
+}
