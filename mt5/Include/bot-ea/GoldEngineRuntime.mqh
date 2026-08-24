@@ -40,6 +40,7 @@ private:
    ManagedPosition     m_owned_positions[];
    bool                m_foreign_symbol_position;
    bool                m_manual_intervention;
+   bool                m_external_position_active;
    CPositionStateStore m_position_store;
    ExpectedPositionState m_expected_position;
    PositionStateLoadStatus m_position_state_status;
@@ -60,6 +61,19 @@ private:
          OutboxJsonEscape(AccountInfoString(ACCOUNT_SERVER)),
          (int)AccountInfoInteger(ACCOUNT_TRADE_MODE),
          m_execution_broker.AuthorityEnabled() ? "ENABLED" : "DISABLED");
+     }
+
+   string ExternalPositionPayload(const bool active) const
+     {
+      return StringFormat(
+         "{\"source\":\"MANUAL_OR_OTHER_EA\",\"entry_blocked\":%s,"
+         "\"order_authority_configured\":\"%s\",\"balance\":%.2f,"
+         "\"equity\":%.2f,\"vm_time_epoch\":%I64d}",
+         active ? "true" : "false",
+         m_execution_broker.AuthorityEnabled() ? "ENABLED" : "DISABLED",
+         AccountInfoDouble(ACCOUNT_BALANCE),
+         AccountInfoDouble(ACCOUNT_EQUITY),
+         (long)TimeLocal());
      }
 
    void EmitTransition(const string event_type,
@@ -170,6 +184,8 @@ private:
      {
       if(!RecoverOwnedPositions(server_time))
          return;
+      if(m_external_position_active)
+         return;
       if(ArraySize(m_owned_positions)>0)
         {
          SetEvent(ENGINE_EVENT_ENTRY_READY,server_time,
@@ -220,13 +236,23 @@ private:
          SetEvent(ENGINE_EVENT_ERROR,server_time,reason);
          return false;
         }
-      if(m_foreign_symbol_position || m_manual_intervention)
+      const bool external_position=
+         m_foreign_symbol_position || m_manual_intervention;
+      if(external_position)
         {
-         m_execution_broker.DisableAuthority();
-         SetEvent(ENGINE_EVENT_ERROR,server_time,
-            m_manual_intervention ? "MANUAL_INTERVENTION_DETECTED" :
-            "FOREIGN_SYMBOL_POSITION_DETECTED");
+         if(!m_external_position_active)
+           {
+            m_external_position_active=true;
+            SetEvent(ENGINE_EVENT_TRADING_PAUSED,server_time,
+               "EXTERNAL_POSITION_DETECTED");
+           }
          return true;
+        }
+      if(m_external_position_active)
+        {
+         m_external_position_active=false;
+         SetEvent(ENGINE_EVENT_TRADING_RESUMED,server_time,
+            "EXTERNAL_POSITION_CLEARED");
         }
       m_position_state_status=m_position_store.Load(m_expected_position);
       if(m_position_state_status==POSITION_STATE_INVALID)
@@ -311,6 +337,12 @@ private:
         }
       else if(type==ENGINE_EVENT_HEARTBEAT)
          EmitTransition("ENGINE_HEARTBEAT","","","","",RuntimeEvidencePayload());
+      else if(type==ENGINE_EVENT_TRADING_PAUSED)
+         EmitTransition("TRADING_PAUSED","","","","",
+            ExternalPositionPayload(true));
+      else if(type==ENGINE_EVENT_TRADING_RESUMED)
+         EmitTransition("TRADING_RESUMED","","","","",
+            ExternalPositionPayload(false));
       else if(type==ENGINE_EVENT_ENTRY_READY)
          EmitTransition("ENTRY_READY",m_state.setup_id);
       else if(type==ENGINE_EVENT_POSITION)
@@ -588,6 +620,7 @@ public:
       m_has_execution_receipt=false;
       m_foreign_symbol_position=false;
       m_manual_intervention=false;
+      m_external_position_active=false;
       m_outbox_initialized=false;
       m_last_bar_close_to_detection_ms=0;
       m_last_detection_to_decision_us=0;
@@ -840,12 +873,13 @@ public:
 
    bool OrderAuthorityEnabled(void) const
      {
-      return m_execution_broker.AuthorityEnabled();
+      return m_execution_broker.AuthorityEnabled() &&
+             !m_external_position_active;
      }
 
    bool ManualInterventionDetected(void) const
      {
-     return m_manual_intervention;
+     return m_external_position_active;
      }
 
    bool OutboxHealthy(void) const

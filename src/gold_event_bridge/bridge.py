@@ -26,6 +26,8 @@ class RecipientPolicy:
                 "POSITION_CLOSED",
                 "ENGINE_ERROR",
                 "RECOVERY_COMPLETED",
+                "TRADING_PAUSED",
+                "TRADING_RESUMED",
             }
             or event.audience == "internal"
         ):

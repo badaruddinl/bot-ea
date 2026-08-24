@@ -21,13 +21,18 @@ def test_runtime_builds_complete_profile_bound_plans_for_revised_and_bear() -> N
     assert "m_last_revised_decision.observation_only" in value
 
 
-def test_runtime_recovers_owned_positions_and_disables_on_intervention() -> None:
+def test_runtime_pauses_without_latching_authority_off_for_external_position() -> None:
     value = RUNTIME.read_text(encoding="utf-8")
     assert "RecoverOwnedPositions" in value
     assert "DiscoverOwnedPositions" in value
-    assert "m_execution_broker.DisableAuthority();" in value
-    assert "MANUAL_INTERVENTION_DETECTED" in value
-    assert "FOREIGN_SYMBOL_POSITION_DETECTED" in value
+    external_block = value[value.index("const bool external_position=") :]
+    external_block = external_block[: external_block.index("m_position_state_status=")]
+    assert "DisableAuthority" not in external_block
+    assert "ENGINE_EVENT_TRADING_PAUSED" in external_block
+    assert "EXTERNAL_POSITION_DETECTED" in external_block
+    assert "ENGINE_EVENT_TRADING_RESUMED" in external_block
+    assert "EXTERNAL_POSITION_CLEARED" in external_block
+    assert "if(m_external_position_active)" in value
     assert "POSITION_RECOVERED" in value
     assert "void OnTradeTransaction" in value
 

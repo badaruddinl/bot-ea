@@ -44,6 +44,8 @@ class EngineEventEnvelope:
             "POSITION_CLOSED",
             "ENGINE_ERROR",
             "RECOVERY_COMPLETED",
+            "TRADING_PAUSED",
+            "TRADING_RESUMED",
         }
     )
 

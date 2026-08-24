@@ -300,6 +300,34 @@ def test_order_and_modify_diagnostics_are_db_only_not_telegram(tmp_path: Path) -
         store.close()
 
 
+def test_external_position_pause_and_resume_are_admin_only(tmp_path: Path) -> None:
+    spool = tmp_path / "events.jsonl"
+    append(
+        spool,
+        event("goldi:pause", event_type="TRADING_PAUSED", audience="admin_only"),
+        event("goldi:resume", event_type="TRADING_RESUMED", audience="admin_only"),
+        event(
+            "goldm:pause",
+            profile="GOLDM",
+            event_type="TRADING_PAUSED",
+            audience="admin_only",
+        ),
+    )
+    store = EventStore(tmp_path / "events.db")
+    sent: list[tuple[str, str]] = []
+    bridge = EventBridge(
+        store,
+        RecipientPolicy(("admin",), ("subscriber",)),
+        lambda chat_id, message: sent.append((chat_id, message)),
+    )
+    try:
+        store.ingest_spool(spool)
+        assert bridge.deliver_pending() == (3, 0)
+        assert [chat_id for chat_id, _message in sent] == ["admin", "admin", "admin"]
+    finally:
+        store.close()
+
+
 def test_telegram_failure_retries_only_undelivered_recipient(tmp_path: Path) -> None:
     spool = tmp_path / "events.jsonl"
     append(spool, event("retry:1"))
