@@ -13,6 +13,7 @@ GOLDI_PRESET = ROOT / "config/mql5/presets/G20-GOLDI.set"
 GOLDM_PRESET = ROOT / "config/mql5/presets/G20-GOLDM.set"
 PREPARE = ROOT / "scripts/prepare-g20-vm.ps1"
 BRIDGE_RUNNER = ROOT / "scripts/run-gold-event-bridge.py"
+CONTROL_RUNNER = ROOT / "scripts/run-g20-telegram-control.py"
 SECRET_INSTALLER = ROOT / "scripts/set-g20-telegram-secret.ps1"
 CHAT_INSPECTOR = ROOT / "scripts/inspect-g20-telegram-chats.ps1"
 INTERACTIVE_INSTALLER = ROOT / "scripts/install-g20-interactive-tasks.ps1"
@@ -53,6 +54,10 @@ def test_supervisor_runs_only_native_terminals_and_optional_delivery_bridge() ->
     assert "run-final-portfolio-worker" not in value
     assert "goldm_revised" not in value
     assert "goldm_bear" not in value
+    assert "telegram_control" in value
+    assert 'order_authority = "NONE"' in value
+    assert "Start-TelegramProcess" in value
+    assert "Get-ExactManagedProcess" in value
 
 
 def test_example_config_is_non_secret_and_requires_certified_binary_hashes() -> None:
@@ -69,6 +74,10 @@ def test_example_config_is_non_secret_and_requires_certified_binary_hashes() -> 
     ]
     assert all("expected_profile_fingerprint" in item for item in payload["terminals"])
     assert all("spool_path" in item for item in payload["terminals"])
+    assert payload["schema_version"] == 2
+    assert payload["telegram_control"]["order_authority"] == "NONE"
+    assert payload["bridge"]["runner_path"].endswith("run-gold-event-bridge.py")
+    assert payload["telegram_control"]["runner_path"].endswith("run-g20-telegram-control.py")
     encoded = EXAMPLE.read_text(encoding="utf-8").lower()
     assert '"password":' not in encoded
     assert "defaultpassword" not in encoded
@@ -127,6 +136,7 @@ def test_startup_configs_enable_demo_execution_only_and_keep_real_disabled() -> 
 def test_vm_preparer_installs_only_native_engines_and_optional_bridge() -> None:
     value = PREPARE.read_text(encoding="utf-8")
     runner = BRIDGE_RUNNER.read_text(encoding="utf-8")
+    control_runner = CONTROL_RUNNER.read_text(encoding="utf-8")
 
     assert "GoldEngine-GOLDi.ex5" in value
     assert "GoldEngine-GOLDm.ex5" in value
@@ -142,6 +152,9 @@ def test_vm_preparer_installs_only_native_engines_and_optional_bridge() -> None:
     assert "goldm_revised" not in value
     assert "goldm_bear" not in value
     assert "from gold_event_bridge.cli import main" in runner
+    assert "from gold_orchestrator.g20_control import main" in control_runner
+    assert "telegram_control" in value
+    assert 'order_authority = "NONE"' in value
 
 
 def test_bridge_token_uses_current_user_dpapi_and_never_enters_process_arguments() -> None:

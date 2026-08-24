@@ -55,6 +55,7 @@ class OrchestratorConfig:
     admin_chat_ids: tuple[str, ...]
     workers: Mapping[str, WorkerSpec]
     expected_bot_username: str | None = None
+    worker_control_enabled: bool = True
 
 
 def load_orchestrator_config(path: str | Path) -> OrchestratorConfig:

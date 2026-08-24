@@ -136,8 +136,8 @@ if ($BridgeEnabled) {
 }
 
 if ([string]::IsNullOrWhiteSpace($TelegramSubscriberStatePath)) {
-    $TelegramSubscriberStatePath = Join-Path $repoRoot `
-        "runtime_data\final\orchestrator\state.json"
+    $TelegramSubscriberStatePath = Join-Path $env:ProgramData `
+        "bot-ea\orchestrator\state.json"
 }
 
 $bridgeRoot = Join-Path $env:ProgramData "bot-ea\bridge"
@@ -151,9 +151,12 @@ $bridgeArguments = '"{0}" --goldi-spool "{1}" --goldm-spool "{2}" --database "{3
     (Join-Path $bridgeRoot "events.db"),
     $bridgeHealth,
     $TelegramSubscriberStatePath
+$controlRoot = Join-Path $env:ProgramData "bot-ea\orchestrator"
+$controlRunner = Join-Path $PSScriptRoot "run-g20-telegram-control.py"
+$controlAudit = Join-Path $controlRoot "audit.jsonl"
 
 $config = [ordered]@{
-    schema_version = 1
+    schema_version = 2
     production_real_orders = "DISABLED"
     startup_mode = $StartupMode
     poll_seconds = 15
@@ -172,12 +175,22 @@ $config = [ordered]@{
     bridge = [ordered]@{
         enabled = $BridgeEnabled
         executable_path = $PythonwPath
+        runner_path = $bridgeRunner
         arguments = $bridgeArguments
         token_secret_path = $TelegramSecretPath
         admin_chat_ids = $TelegramAdminChatIds
         expected_bot_username = $TelegramExpectedBotUsername
         subscriber_state_path = $TelegramSubscriberStatePath
         health_path = $bridgeHealth
+    }
+    telegram_control = [ordered]@{
+        enabled = $BridgeEnabled
+        executable_path = $PythonwPath
+        runner_path = $controlRunner
+        state_path = $TelegramSubscriberStatePath
+        audit_path = $controlAudit
+        poll_timeout_seconds = 20
+        order_authority = "NONE"
     }
 }
 $configPath = Join-Path $OutputRoot "g20-unattended.json"

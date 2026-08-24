@@ -27,6 +27,35 @@ function Get-ExactProcess {
     )
 }
 
+function Get-ExactManagedProcess {
+    param(
+        [Parameter(Mandatory = $true)][string]$ExecutablePath,
+        [Parameter(Mandatory = $true)][string]$RunnerPath
+    )
+    $expectedExecutable = [IO.Path]::GetFullPath($ExecutablePath)
+    $expectedRunner = [IO.Path]::GetFullPath($RunnerPath)
+    $matches = @(
+        Get-CimInstance Win32_Process | Where-Object {
+            -not [string]::IsNullOrWhiteSpace([string]$_.ExecutablePath) -and
+            [IO.Path]::GetFullPath([string]$_.ExecutablePath).Equals(
+                $expectedExecutable,
+                [StringComparison]::OrdinalIgnoreCase
+            ) -and
+            ([string]$_.CommandLine).IndexOf(
+                $expectedRunner,
+                [StringComparison]::OrdinalIgnoreCase
+            ) -ge 0
+        }
+    )
+    if ($matches.Count -gt 1) {
+        throw "Duplicate managed processes found for runner: $expectedRunner"
+    }
+    if ($matches.Count -eq 0) {
+        return $null
+    }
+    return Get-Process -Id ([int]$matches[0].ProcessId) -ErrorAction Stop
+}
+
 function Get-PortableProcessId {
     param($Process)
     if ($null -eq $Process) {
@@ -158,7 +187,7 @@ function Read-G20Config {
         throw "G20 config is missing: $Path"
     }
     $value = Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json
-    if ([int]$value.schema_version -ne 1) {
+    if ([int]$value.schema_version -notin @(1, 2)) {
         throw "Unsupported G20 config schema_version"
     }
     if ([string]$value.production_real_orders -ne "DISABLED") {
@@ -270,6 +299,11 @@ function Read-G20Config {
             throw "$($terminal.profile_id) arguments may not contain credentials"
         }
     }
+    if ($null -eq $value.PSObject.Properties['telegram_control']) {
+        $value | Add-Member -NotePropertyName telegram_control -NotePropertyValue ([pscustomobject]@{
+                enabled = $false
+            })
+    }
     if ([bool]$value.bridge.enabled) {
         $secretPath = Resolve-ConfiguredPath ([string]$value.bridge.token_secret_path)
         if (-not (Test-Path -LiteralPath $secretPath -PathType Leaf)) {
@@ -287,11 +321,37 @@ function Read-G20Config {
         if ([string]::IsNullOrWhiteSpace([string]$value.bridge.subscriber_state_path)) {
             throw "Bridge subscriber_state_path is required"
         }
+        if ([string]::IsNullOrWhiteSpace([string]$value.bridge.runner_path)) {
+            throw "Bridge runner_path is required"
+        }
+        if ($null -eq $value.PSObject.Properties['telegram_control'] -or
+            -not [bool]$value.telegram_control.enabled) {
+            throw "Enabled Telegram bridge requires the approval-only telegram_control poller"
+        }
+        $control = $value.telegram_control
+        $controlState = Resolve-ConfiguredPath ([string]$control.state_path)
+        $bridgeState = Resolve-ConfiguredPath ([string]$value.bridge.subscriber_state_path)
+        if (-not [IO.Path]::GetFullPath($controlState).Equals(
+                [IO.Path]::GetFullPath($bridgeState),
+                [StringComparison]::OrdinalIgnoreCase
+            )) {
+            throw "telegram_control and bridge must share the same subscriber state path"
+        }
+        if ([string]::IsNullOrWhiteSpace([string]$control.runner_path)) {
+            throw "telegram_control runner_path is required"
+        }
+        if ([string]::IsNullOrWhiteSpace([string]$control.audit_path)) {
+            throw "telegram_control audit_path is required"
+        }
+        if ([int]$control.poll_timeout_seconds -lt 0 -or
+            [int]$control.poll_timeout_seconds -gt 50) {
+            throw "telegram_control poll_timeout_seconds must be between 0 and 50"
+        }
     }
     return $value
 }
 
-function Start-BridgeProcess {
+function Start-TelegramProcess {
     param(
         [Parameter(Mandatory = $true)]$Bridge,
         [Parameter(Mandatory = $true)][string]$ExecutablePath,
@@ -361,9 +421,10 @@ if ($ValidateOnly) {
 }
 
 $startedAt = [DateTimeOffset]::UtcNow
-$restartCounts = @{ GOLDI = 0; GOLDM = 0; BRIDGE = 0 }
+$restartCounts = @{ GOLDI = 0; GOLDM = 0; BRIDGE = 0; CONTROL = 0 }
 $startupRepairAttempts = @{ GOLDI = 0; GOLDM = 0 }
 $bridgeProcess = $null
+$controlProcess = $null
 
 while ($true) {
     $profileHealth = @()
@@ -478,21 +539,72 @@ while ($true) {
         }
     }
 
+    $controlHealth = [ordered]@{
+        enabled = [bool]$config.telegram_control.enabled
+        state = "DISABLED"
+        pid = $null
+        order_authority = "NONE"
+    }
+    if ([bool]$config.telegram_control.enabled) {
+        try {
+            $controlExe = Resolve-ConfiguredPath ([string]$config.telegram_control.executable_path)
+            $controlRunner = Resolve-ConfiguredPath ([string]$config.telegram_control.runner_path)
+            $controlState = Resolve-ConfiguredPath ([string]$config.telegram_control.state_path)
+            $controlAudit = Resolve-ConfiguredPath ([string]$config.telegram_control.audit_path)
+            if (-not (Test-Path -LiteralPath $controlExe -PathType Leaf)) {
+                throw "Telegram control executable is missing: $controlExe"
+            }
+            if (-not (Test-Path -LiteralPath $controlRunner -PathType Leaf)) {
+                throw "Telegram control runner is missing: $controlRunner"
+            }
+            if ($null -eq $controlProcess -or $controlProcess.HasExited) {
+                Ensure-ParentDirectory -Path $controlState
+                Ensure-ParentDirectory -Path $controlAudit
+                $controlProcess = Get-ExactManagedProcess `
+                    -ExecutablePath $controlExe -RunnerPath $controlRunner
+                if ($null -eq $controlProcess) {
+                    $controlArguments = '"{0}" --state-path "{1}" --audit-path "{2}" --poll-timeout {3}' -f `
+                        $controlRunner,
+                        $controlState,
+                        $controlAudit,
+                        [int]$config.telegram_control.poll_timeout_seconds
+                    $controlProcess = Start-TelegramProcess -Bridge $config.bridge `
+                        -ExecutablePath $controlExe -Arguments $controlArguments
+                    $restartCounts.CONTROL = [int]$restartCounts.CONTROL + 1
+                }
+            }
+            $controlHealth.state = "RUNNING"
+            $controlHealth.pid = [int]$controlProcess.Id
+        }
+        catch {
+            $controlHealth.state = "FAILED"
+            $controlHealth.failure = $_.Exception.Message
+        }
+    }
+
     $bridgeHealth = [ordered]@{ enabled = [bool]$config.bridge.enabled; state = "DISABLED"; pid = $null }
     if ([bool]$config.bridge.enabled) {
         try {
             $bridgeExe = Resolve-ConfiguredPath ([string]$config.bridge.executable_path)
+            $bridgeRunner = Resolve-ConfiguredPath ([string]$config.bridge.runner_path)
             if (-not (Test-Path -LiteralPath $bridgeExe -PathType Leaf)) {
                 throw "Bridge executable is missing: $bridgeExe"
             }
+            if (-not (Test-Path -LiteralPath $bridgeRunner -PathType Leaf)) {
+                throw "Bridge runner is missing: $bridgeRunner"
+            }
             if ($null -eq $bridgeProcess -or $bridgeProcess.HasExited) {
-                $bridgeArguments = [string]$config.bridge.arguments
-                if ($bridgeArguments -match '(?i)(bot[_-]?token|password|AA[A-Za-z0-9_-]{20,})') {
-                    throw "Bridge arguments may not contain credentials"
+                $bridgeProcess = Get-ExactManagedProcess `
+                    -ExecutablePath $bridgeExe -RunnerPath $bridgeRunner
+                if ($null -eq $bridgeProcess) {
+                    $bridgeArguments = [string]$config.bridge.arguments
+                    if ($bridgeArguments -match '(?i)(bot[_-]?token|password|AA[A-Za-z0-9_-]{20,})') {
+                        throw "Bridge arguments may not contain credentials"
+                    }
+                    $bridgeProcess = Start-TelegramProcess -Bridge $config.bridge `
+                        -ExecutablePath $bridgeExe -Arguments $bridgeArguments
+                    $restartCounts.BRIDGE = [int]$restartCounts.BRIDGE + 1
                 }
-                $bridgeProcess = Start-BridgeProcess -Bridge $config.bridge `
-                    -ExecutablePath $bridgeExe -Arguments $bridgeArguments
-                $restartCounts.BRIDGE = [int]$restartCounts.BRIDGE + 1
             }
             $bridgeHealth.state = "RUNNING"
             $bridgeHealth.pid = [int]$bridgeProcess.Id
@@ -514,6 +626,7 @@ while ($true) {
         startup_mode = [string]$config.startup_mode
         production_real_orders = "DISABLED"
         terminals = $profileHealth
+        telegram_control = $controlHealth
         bridge = $bridgeHealth
     }
     Write-AtomicJson -Path $healthPath -Value $health
