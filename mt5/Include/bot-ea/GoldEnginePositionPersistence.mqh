@@ -15,6 +15,7 @@ struct ExpectedPositionState
    ulong  generation;
    bool   active;
    ulong  ticket;
+   ulong  identifier;
    string signal_id;
    double volume;
    double entry_price;
@@ -27,6 +28,7 @@ void PositionStateReset(ExpectedPositionState &state)
    state.generation=0;
    state.active=false;
    state.ticket=0;
+   state.identifier=0;
    state.signal_id="";
    state.volume=0.0;
    state.entry_price=0.0;
@@ -52,9 +54,14 @@ bool PositionStateMatches(const ManagedPosition &actual,
                           string &reason)
   {
    const double tolerance=MathMax(tick_size*0.5,1e-8);
-   if(!expected.active || actual.ticket!=expected.ticket)
+   if(!expected.active)
      {
-      reason="POSITION_TICKET_CHANGED";
+      reason="POSITION_NOT_EXPECTED_ACTIVE";
+      return false;
+     }
+   if(expected.identifier>0 && actual.identifier!=expected.identifier)
+     {
+      reason="POSITION_IDENTIFIER_CHANGED";
       return false;
      }
    if(MathAbs(actual.volume-expected.volume)>1e-8)
@@ -96,9 +103,9 @@ private:
    string Serialize(const ExpectedPositionState &state) const
      {
       return StringFormat(
-         "1|%s|%s|%I64u|%d|%I64u|%s|%.8f|%.8f|%.8f|%.8f",
+         "2|%s|%s|%I64u|%d|%I64u|%I64u|%s|%.8f|%.8f|%.8f|%.8f",
          m_profile_id,m_profile_fingerprint,state.generation,
-         state.active ? 1 : 0,state.ticket,state.signal_id,
+         state.active ? 1 : 0,state.ticket,state.identifier,state.signal_id,
          state.volume,state.entry_price,state.stop_loss,state.take_profit);
      }
 
@@ -121,21 +128,26 @@ private:
       const int field_count=StringSplit(payload,'|',fields);
       if(field_count<11)
          return POSITION_STATE_INVALID;
-      if(fields[0]!="1" || fields[1]!=m_profile_id ||
+      const bool legacy=fields[0]=="1";
+      if((!legacy && fields[0]!="2") || fields[1]!=m_profile_id ||
          fields[2]!=m_profile_fingerprint)
          return POSITION_STATE_INVALID;
       state.generation=(ulong)StringToInteger(fields[3]);
       state.active=StringToInteger(fields[4])==1;
       state.ticket=(ulong)StringToInteger(fields[5]);
-      state.signal_id=fields[6];
-      for(int index=7;index<=field_count-5;index++)
+      const int signal_start=(legacy ? 6 : 7);
+      state.identifier=(legacy ? 0 :
+         (ulong)StringToInteger(fields[6]));
+      state.signal_id=fields[signal_start];
+      for(int index=signal_start+1;index<=field_count-5;index++)
          state.signal_id+="|"+fields[index];
       state.volume=StringToDouble(fields[field_count-4]);
       state.entry_price=StringToDouble(fields[field_count-3]);
       state.stop_loss=StringToDouble(fields[field_count-2]);
       state.take_profit=StringToDouble(fields[field_count-1]);
       if(state.generation==0 ||
-         (state.active && (state.ticket==0 || state.signal_id=="" ||
+         (state.active && (state.ticket==0 || (!legacy && state.identifier==0) ||
+                           state.signal_id=="" ||
                            state.volume<=0.0)))
          return POSITION_STATE_INVALID;
       return POSITION_STATE_VALID;

@@ -4,6 +4,7 @@ ROOT = Path(__file__).resolve().parents[2]
 RUNTIME = ROOT / "mt5" / "Include" / "bot-ea" / "GoldEngineRuntime.mqh"
 BROKER = ROOT / "mt5" / "Include" / "bot-ea" / "GoldEngineExecutionBroker.mqh"
 BROKER_CONTEXT = ROOT / "mt5" / "Include" / "bot-ea" / "GoldEngineBrokerContext.mqh"
+LIFECYCLE = ROOT / "mt5" / "Include" / "bot-ea" / "GoldEnginePositionLifecycle.mqh"
 EXPERTS = [
     ROOT / "mt5" / "Experts" / "bot-ea" / "GoldEngine-GOLDi.mq5",
     ROOT / "mt5" / "Experts" / "bot-ea" / "GoldEngine-GOLDm.mq5",
@@ -36,6 +37,22 @@ def test_runtime_ignores_manual_magic_and_fails_closed_on_owned_identity_conflic
     assert "TRADING_PAUSED" not in value
     assert "POSITION_RECOVERED" in value
     assert "void OnTradeTransaction" in value
+    assert "DEAL_MAGIC" not in value
+    assert "DEAL_POSITION_ID" in value
+    assert "transaction.position" in value
+    assert "ReconcileClosingDeal" in value
+    assert "POSITION_PARTIALLY_CLOSED" in value
+    assert "RecoverOwnedPositions(TimeCurrent(),true)" in value
+    assert "RecoverOwnedPositions(TimeCurrent(),false)" in value
+
+    lifecycle = LIFECYCLE.read_text(encoding="utf-8")
+    assert "PositionExitBelongsToExpected" in lifecycle
+    assert "expected.identifier" in lifecycle
+    assert "MANUAL_DESKTOP" in lifecycle
+    assert "MANUAL_MOBILE" in lifecycle
+    assert "MANUAL_WEB" in lifecycle
+    assert "STOP_LOSS" in lifecycle
+    assert "TAKE_PROFIT" in lifecycle
 
     broker = BROKER.read_text(encoding="utf-8")
     assert "identity==POSITION_IDENTITY_OTHER_SYMBOL ||" in broker
@@ -79,7 +96,14 @@ def test_runtime_emits_complete_human_trade_payloads() -> None:
     assert "DEAL_COMMISSION" in value
     assert "DEAL_FEE" in value
     assert "DEAL_ENTRY_OUT" in value
-    assert 'SetEvent(ENGINE_EVENT_POSITION,closed_at,"POSITION_CLOSED"' in value
+    assert r"\"closed_volume\":%.8f" in value
+    assert r"\"remaining_volume\":%.8f" in value
+    assert r"\"close_reason\":\"%s\"" in value
+    assert r"\"deal_id\":%I64u" in value
+    assert "PositionCloseEventReason(close_reason,partial)" in value
+    assert 'EmitTransition("POSITION_PARTIALLY_CLOSED"' in value
+    assert 'EmitTransition("POSITION_CLOSED"' in value
+    assert 'EmitTransition("RECOVERY_COMPLETED",setup_id,signal_id' in value
 
 
 def test_runtime_submits_market_order_synchronously_and_classifies_rejects() -> None:

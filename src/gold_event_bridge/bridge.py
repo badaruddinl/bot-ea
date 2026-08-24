@@ -10,6 +10,17 @@ from .store import EventStore
 
 Sender = Callable[[str, str], None]
 
+_CLOSE_REASON_LABELS = {
+    "STOP_LOSS": "Stop Loss",
+    "TAKE_PROFIT": "Take Profit",
+    "MANUAL_DESKTOP": "Manual dari MT5 desktop",
+    "MANUAL_MOBILE": "Manual dari MT5 mobile",
+    "MANUAL_WEB": "Manual dari MT5 web",
+    "EA": "Ditutup oleh EA",
+    "STOP_OUT": "Stop Out broker",
+    "BROKER_OTHER": "Broker/penyebab lain",
+}
+
 
 @dataclass(frozen=True, slots=True)
 class RecipientPolicy:
@@ -24,6 +35,7 @@ class RecipientPolicy:
                 "PROFILE_VALIDATED",
                 "ENTRY_REJECTED",
                 "POSITION_OPENED",
+                "POSITION_PARTIALLY_CLOSED",
                 "POSITION_CLOSED",
                 "ENGINE_ERROR",
                 "RECOVERY_COMPLETED",
@@ -35,6 +47,7 @@ class RecipientPolicy:
             return tuple(dict.fromkeys(self.admin_chat_ids))
         if event.audience == "goldi_approved" and event.event_type in {
             "POSITION_OPENED",
+            "POSITION_PARTIALLY_CLOSED",
             "POSITION_CLOSED",
         }:
             return tuple(dict.fromkeys((*self.admin_chat_ids, *self.goldi_approved_chat_ids)))
@@ -152,6 +165,7 @@ class EventBridge:
             "ENTRY_READY": "🟡 SIGNAL SIAP",
             "ENTRY_REJECTED": "⛔ ENTRY DITOLAK",
             "POSITION_OPENED": "✅ ORDER OPEN",
+            "POSITION_PARTIALLY_CLOSED": "✂️ ORDER PARTIAL CLOSE",
             "POSITION_CLOSED": "🏁 ORDER CLOSED",
             "ENGINE_ERROR": "⚠️ ENGINE ERROR",
             "ENGINE_STARTED": "🟢 ENGINE STARTED",
@@ -183,6 +197,8 @@ class EventBridge:
             ("Take Profit", "take_profit", False, 2),
             ("Harga close", "close_price", False, 2),
             ("Lot", "volume", False, 2),
+            ("Lot ditutup", "closed_volume", False, 2),
+            ("Lot tersisa", "remaining_volume", False, 2),
             ("R:R", "rr", False, 2),
             ("Risk harga", "risk_price", False, 2),
             ("P/L", "profit_loss", True, 2),
@@ -208,6 +224,12 @@ class EventBridge:
             ):
                 if key in payload:
                     lines.append(f"{label}: {cls._number(payload[key], digits=digits)}")
+
+        close_reason = str(payload.get("close_reason") or "").strip().upper()
+        if close_reason:
+            lines.append(f"Ditutup oleh: {_CLOSE_REASON_LABELS.get(close_reason, close_reason)}")
+        if str(payload.get("recovery_kind") or "").upper() == "RESTART":
+            lines.append("Recovery: EA/terminal dimulai ulang")
         if event.event_type == "ENTRY_REJECTED":
             for label, key, digits in (
                 ("Bid", "quote_bid", 2),
@@ -226,6 +248,7 @@ class EventBridge:
             ("ID sinyal", event.signal_id),
             ("ID order", event.order_id),
             ("ID posisi", event.position_id),
+            ("ID deal", str(payload.get("deal_id") or "")),
             ("ID event", event.event_id),
         ):
             if value:

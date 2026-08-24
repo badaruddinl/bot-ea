@@ -1,7 +1,7 @@
 #property strict
 #property tester_everytick_calculate
 
-#include <bot-ea/GoldEnginePositionPersistence.mqh>
+#include "../../Include/bot-ea/GoldEnginePositionPersistence.mqh"
 
 bool HarnessPassed=false;
 
@@ -14,11 +14,30 @@ bool RunHarness(void)
    store.Initialize(profile_id,fingerprint);
    store.DeleteTestState();
 
+   const string legacy_payload=StringFormat(
+      "1|%s|%s|1|1|66001|GOLDI:REVISED:LEGACY|0.02|4400.10|4390.10|4425.10",
+      profile_id,fingerprint);
+   const int legacy_handle=FileOpen(
+      "bot-ea\\position-"+profile_id+"-0.state",
+      FILE_WRITE|FILE_TXT|FILE_ANSI|FILE_COMMON);
+   if(legacy_handle!=INVALID_HANDLE)
+     {
+      FileWriteString(legacy_handle,legacy_payload+"\r\n");
+      FileWriteString(legacy_handle,
+         IntegerToString((long)PositionStateChecksum(legacy_payload))+"\r\n");
+      FileClose(legacy_handle);
+     }
+   ExpectedPositionState legacy;
+   const bool legacy_loaded=store.Load(legacy)==POSITION_STATE_VALID &&
+      legacy.active && legacy.ticket==66001 && legacy.identifier==0;
+   store.DeleteTestState();
+
    ExpectedPositionState state;
    const bool missing=store.Load(state)==POSITION_STATE_MISSING;
    PositionStateReset(state);
    state.active=true;
    state.ticket=77123;
+   state.identifier=77123;
    state.signal_id="GOLDI|REVISED|BUY|77123";
    state.volume=0.02;
    state.entry_price=4400.10;
@@ -29,10 +48,12 @@ bool RunHarness(void)
    ExpectedPositionState loaded;
    const bool loaded_valid=store.Load(loaded)==POSITION_STATE_VALID &&
       loaded.active && loaded.ticket==state.ticket &&
+      loaded.identifier==state.identifier &&
       loaded.signal_id==state.signal_id;
    ManagedPosition actual;
    ZeroMemory(actual);
    actual.ticket=loaded.ticket;
+   actual.identifier=loaded.identifier;
    actual.volume=loaded.volume;
    actual.entry_price=loaded.entry_price;
    actual.stop_loss=loaded.stop_loss;
@@ -66,13 +87,14 @@ bool RunHarness(void)
       restarted.Load(recovered)==POSITION_STATE_VALID && !recovered.active;
    restarted.DeleteTestState();
 
-   const bool passed=missing && saved && loaded_valid && geometry_matches &&
+   const bool passed=legacy_loaded && missing && saved && loaded_valid && geometry_matches &&
       manual_detected && second_saved && fallback_recovered && cleared;
    PrintFormat(
-      "G14_POSITION_PERSISTENCE passed=%s missing=%s saved=%s loaded=%s "
+      "G14_POSITION_PERSISTENCE passed=%s legacy=%s missing=%s saved=%s loaded=%s "
       "geometry=%s manual=%s restart_fallback=%s cleared=%s reason=%s "
       "order_authority=DISABLED",
-      passed ? "true" : "false",missing ? "true" : "false",
+      passed ? "true" : "false",legacy_loaded ? "true" : "false",
+      missing ? "true" : "false",
       saved ? "true" : "false",loaded_valid ? "true" : "false",
       geometry_matches ? "true" : "false",manual_detected ? "true" : "false",
       fallback_recovered ? "true" : "false",cleared ? "true" : "false",
