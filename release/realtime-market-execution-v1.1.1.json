@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "release_version": "1.1.1",
+  "baseline_commit": "9dba75fc79f6bb5f98bfdfd4501abcbb8cda0c4d",
+  "source_commit": "cf7b15cecbd4c4a1e7af1ba7fac6b74aae4d8763",
+  "strategy_profile_version": "1.1.0",
+  "execution_policy_schema": 2,
+  "execution_policy_version": "1.1.0",
+  "scope": "CROSS_PROFILE",
+  "binaries": {
+    "GoldEngine-GOLDi-v1.1.1.ex5": "6de0246cec97056d03ee0cfdabe719d4c26c469a345759c5cbb0173d2cb094dd",
+    "GoldEngine-GOLDm-v1.1.1.ex5": "d0da9c7785311f7a21f6be8f00909a8d08bfa1b424962a5560a0f49278567af8"
+  },
+  "profile_fingerprints": {
+    "GOLDI": "7af1d75e1be54ba4505b32cedcf53f4317dea0a90a2a0636510884d0d408c5b5",
+    "GOLDM": "704b383f959298c8a1b1dd5c21665ffb7a022dc9831c7498e68cc37f607d4c24"
+  },
+  "acceptance": {
+    "focused_tests": "106 passed",
+    "full_tests": "843 passed, 154 deselected, 77 subtests passed",
+    "ruff": "PASS",
+    "mypy_changed_core": "PASS",
+    "metaeditor": "0 errors, 0 warnings",
+    "strategy_tester_guard": "PASS: august24=true, dynamic_rr=true, OnTester result 1",
+    "strategy_tester_goldi_lifecycle": "PASS: magic=26081911, reject_mask=0",
+    "strategy_tester_goldm_lifecycle": "PASS: magic=26081912, reject_mask=0",
+    "g15_parity": "PASS"
+  },
+  "raw_evidence_root": "C:\\Users\\badaruddinl\\.codex\\evidence\\realtime-market-execution-v1.1.1-20260824",
+  "goldm_real_activation": "NOT_PERFORMED",
+  "goldm_real_orders_sent_during_engineering": 0
+}
