@@ -30,7 +30,9 @@ private:
          event_type=="ENTRY_READY")
          return "internal";
       if(m_profile.profile_id=="GOLDI" &&
-         (event_type=="POSITION_OPENED" || event_type=="POSITION_CLOSED"))
+         (event_type=="POSITION_OPENED" ||
+          event_type=="POSITION_PARTIALLY_CLOSED" ||
+          event_type=="POSITION_CLOSED"))
          return "goldi_approved";
       return "admin_only";
      }
