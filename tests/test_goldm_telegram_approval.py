@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import tempfile
 import unittest
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
@@ -89,7 +89,7 @@ class GoldMTelegramApprovalTests(unittest.TestCase):
             runtime_config_sha256=self.runtime_config_sha256,
             production_config_sha256=self.production_config_sha256,
             worker_instance_id=self.worker_instance_id,
-            worker_started_at=datetime.now(timezone.utc) - timedelta(seconds=1),
+            worker_started_at=datetime.now(UTC) - timedelta(seconds=1),
         )
         self.account = {
             "login": "108098316",
@@ -353,7 +353,7 @@ class GoldMTelegramApprovalTests(unittest.TestCase):
             expected_release_manifest_sha256=self.release_manifest_sha256,
             expected_runtime_config_sha256=self.runtime_config_sha256,
             expected_production_config_sha256=self.production_config_sha256,
-            not_before=datetime.now(timezone.utc) - timedelta(minutes=1),
+            not_before=datetime.now(UTC) - timedelta(minutes=1),
             max_age_seconds=30,
         )
         self.assertFalse(readiness["ready"])
@@ -370,9 +370,9 @@ class GoldMTelegramApprovalTests(unittest.TestCase):
                 "set_telegram_update_offset",
                 side_effect=OSError("sensitive database path"),
             ),
+            self.assertRaisesRegex(RuntimeError, "offset_error") as caught,
         ):
-            with self.assertRaisesRegex(RuntimeError, "offset_error") as caught:
-                self.worker.run_once(timeout=0)
+            self.worker.run_once(timeout=0)
 
         process_update.assert_called_once()
         self.assertNotIn("sensitive database path", str(caught.exception))
@@ -385,7 +385,7 @@ class GoldMTelegramApprovalTests(unittest.TestCase):
             expected_release_manifest_sha256=self.release_manifest_sha256,
             expected_runtime_config_sha256=self.runtime_config_sha256,
             expected_production_config_sha256=self.production_config_sha256,
-            not_before=datetime.now(timezone.utc) - timedelta(minutes=1),
+            not_before=datetime.now(UTC) - timedelta(minutes=1),
             max_age_seconds=30,
         )
         self.assertFalse(readiness["ready"])
@@ -401,7 +401,7 @@ class GoldMTelegramApprovalTests(unittest.TestCase):
             expected_release_manifest_sha256=self.release_manifest_sha256,
             expected_runtime_config_sha256=self.runtime_config_sha256,
             expected_production_config_sha256=self.production_config_sha256,
-            not_before=datetime.now(timezone.utc) - timedelta(minutes=1),
+            not_before=datetime.now(UTC) - timedelta(minutes=1),
             max_age_seconds=30,
         )
         self.assertFalse(before["ready"])
@@ -416,7 +416,7 @@ class GoldMTelegramApprovalTests(unittest.TestCase):
             expected_release_manifest_sha256=self.release_manifest_sha256,
             expected_runtime_config_sha256=self.runtime_config_sha256,
             expected_production_config_sha256=self.production_config_sha256,
-            not_before=datetime.now(timezone.utc) - timedelta(minutes=1),
+            not_before=datetime.now(UTC) - timedelta(minutes=1),
             max_age_seconds=30,
         )
         self.assertTrue(after["ready"])
@@ -442,7 +442,7 @@ class GoldMTelegramApprovalTests(unittest.TestCase):
             expected_release_manifest_sha256=self.release_manifest_sha256,
             expected_runtime_config_sha256=self.runtime_config_sha256,
             expected_production_config_sha256=self.production_config_sha256,
-            not_before=datetime.now(timezone.utc) - timedelta(minutes=1),
+            not_before=datetime.now(UTC) - timedelta(minutes=1),
             max_age_seconds=30,
         )
         self.assertFalse(readiness["ready"])
@@ -469,7 +469,7 @@ class GoldMTelegramApprovalTests(unittest.TestCase):
             expected_release_manifest_sha256=self.release_manifest_sha256,
             expected_runtime_config_sha256=self.runtime_config_sha256,
             expected_production_config_sha256=self.production_config_sha256,
-            not_before=datetime.now(timezone.utc) - timedelta(minutes=1),
+            not_before=datetime.now(UTC) - timedelta(minutes=1),
             max_age_seconds=30,
         )
         self.assertFalse(poisoned["ready"])
@@ -491,7 +491,7 @@ class GoldMTelegramApprovalTests(unittest.TestCase):
             expected_release_manifest_sha256=self.release_manifest_sha256,
             expected_runtime_config_sha256=self.runtime_config_sha256,
             expected_production_config_sha256=self.production_config_sha256,
-            not_before=datetime.now(timezone.utc) - timedelta(minutes=1),
+            not_before=datetime.now(UTC) - timedelta(minutes=1),
             max_age_seconds=30,
         )
         self.assertFalse(readiness["ready"])
@@ -512,7 +512,7 @@ class GoldMTelegramApprovalTests(unittest.TestCase):
             expected_release_manifest_sha256=self.release_manifest_sha256,
             expected_runtime_config_sha256=self.runtime_config_sha256,
             expected_production_config_sha256=self.production_config_sha256,
-            not_before=datetime.now(timezone.utc) - timedelta(minutes=1),
+            not_before=datetime.now(UTC) - timedelta(minutes=1),
             max_age_seconds=30,
         )
         self.assertFalse(degraded["ready"])
@@ -527,7 +527,7 @@ class GoldMTelegramApprovalTests(unittest.TestCase):
             expected_release_manifest_sha256=self.release_manifest_sha256,
             expected_runtime_config_sha256=self.runtime_config_sha256,
             expected_production_config_sha256=self.production_config_sha256,
-            not_before=datetime.now(timezone.utc) - timedelta(minutes=1),
+            not_before=datetime.now(UTC) - timedelta(minutes=1),
             max_age_seconds=30,
         )
         self.assertTrue(recovered["ready"])
@@ -853,7 +853,7 @@ class GoldMTelegramApprovalTests(unittest.TestCase):
             action_type="risk_change",
             payload={"settings": {"trade.risk_pct": 1.0}},
             requested_by="100",
-            expires_at=datetime(2000, 1, 1, tzinfo=timezone.utc),
+            expires_at=datetime(2000, 1, 1, tzinfo=UTC),
         )
 
         self.worker.process_update(self._callback_update(1, "100", "ctl:confirm:expired"))
@@ -878,7 +878,7 @@ class GoldMTelegramApprovalTests(unittest.TestCase):
         self.assertEqual(settings["trade.live_consent"], "")
 
     def test_health_is_green_only_with_fresh_matching_session_evidence(self) -> None:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         self.store.record_mt5_bridge_health(
             session_fingerprint="a" * 64,
             files_discovered=1,
@@ -903,7 +903,7 @@ class GoldMTelegramApprovalTests(unittest.TestCase):
             matched_events=1,
             mismatched_events=0,
             provider_failures=0,
-            observed_at=datetime.now(timezone.utc) - timedelta(minutes=31),
+            observed_at=datetime.now(UTC) - timedelta(minutes=31),
         )
 
         self.worker.process_update(self._message_update(1, "100", "/health"))
@@ -917,7 +917,7 @@ class GoldMTelegramApprovalTests(unittest.TestCase):
             "GOLD.i#",
             "BUY",
             4320.0,
-            datetime(2026, 8, 13, 8, 0, tzinfo=timezone.utc),
+            datetime(2026, 8, 13, 8, 0, tzinfo=UTC),
         )
         self.store.save_setup(record)
         self.store.enqueue(
@@ -939,7 +939,7 @@ class GoldMTelegramApprovalTests(unittest.TestCase):
             "GOLD.i#",
             side,
             4320.0,
-            datetime(2026, 8, 13, 8, 0, tzinfo=timezone.utc),
+            datetime(2026, 8, 13, 8, 0, tzinfo=UTC),
         )
         self.store.save_setup(record)
         self.store.enqueue(
