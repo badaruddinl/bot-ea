@@ -380,6 +380,58 @@ class GlobalOrchestratorTests(unittest.TestCase):
         self.runtime.handle_command(actor_id="999", text="/goldm_on")
         self.assertNotIn("goldm", self.runtime._children)
 
+    def test_approval_only_mode_cannot_start_python_order_workers(self) -> None:
+        locked = replace(
+            self.config,
+            workers={},
+            worker_control_enabled=False,
+            expected_bot_username="new_gold_notify_bot",
+        )
+        runtime = GlobalOrchestrator(
+            locked,
+            telegram_client=self.telegram,
+            popen_factory=FakeProcess,
+            monotonic=lambda: self.now,
+        )
+
+        runtime.handle_command(actor_id="123", text="/goldm_on")
+        self.assertEqual(runtime._children, {})
+        self.assertIn("native G20 owns execution", self.telegram.sent[-1][1])
+        self.assertIn("Order authority: NONE", runtime.approval_status_text())
+
+        runtime.handle_command(
+            actor_id="-999",
+            text="/start",
+            chat={"id": -999, "title": "G20 Viewers", "type": "group"},
+        )
+        self.assertIn("-999", runtime._state["goldi_pending"])
+
+    def test_approval_only_menu_excludes_worker_controls(self) -> None:
+        locked = replace(self.config, workers={}, worker_control_enabled=False)
+        runtime = GlobalOrchestrator(
+            locked,
+            telegram_client=self.telegram,
+            popen_factory=FakeProcess,
+            monotonic=lambda: self.now,
+        )
+        runtime.publish_command_menu()
+        admin_commands, chat_ids = self.telegram.command_menus[-1]
+
+        self.assertEqual(chat_ids, {"123"})
+        self.assertEqual(
+            {item["command"] for item in admin_commands},
+            {"status", "pending", "subscribers", "help"},
+        )
+        runtime.handle_callback(
+            {
+                "id": "worker-disabled",
+                "from": {"id": 123},
+                "data": "worker:prompt:goldm_on",
+            }
+        )
+        self.assertTrue(self.telegram.callback_answers[-1]["show_alert"])
+        self.assertEqual(runtime._children, {})
+
     def test_failed_callback_isolated_and_later_update_still_processed(self) -> None:
         original_edit = self.telegram.edit_message_text
 

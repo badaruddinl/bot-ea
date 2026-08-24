@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "production_real_orders": "DISABLED",
   "startup_mode": "PASSWORD_AT_STARTUP",
   "poll_seconds": 15,
@@ -47,11 +47,21 @@
   "bridge": {
     "enabled": false,
     "executable_path": "%LocalAppData%\\Programs\\Python\\Python314\\pythonw.exe",
+    "runner_path": "C:\\bot-ea\\scripts\\run-gold-event-bridge.py",
     "arguments": "-m gold_event_bridge.cli --goldi-spool REPLACE --goldm-spool REPLACE --database REPLACE",
     "token_secret_path": "%ProgramData%\\bot-ea\\g20\\telegram-token.dpapi",
     "admin_chat_ids": [],
     "expected_bot_username": "REPLACE_WITH_NEW_BOT_USERNAME",
     "subscriber_state_path": "%ProgramData%\\bot-ea\\orchestrator\\state.json",
     "health_path": "%ProgramData%\\bot-ea\\bridge\\health.json"
+  },
+  "telegram_control": {
+    "enabled": false,
+    "executable_path": "%LocalAppData%\\Programs\\Python\\Python314\\pythonw.exe",
+    "runner_path": "C:\\bot-ea\\scripts\\run-g20-telegram-control.py",
+    "state_path": "%ProgramData%\\bot-ea\\orchestrator\\state.json",
+    "audit_path": "%ProgramData%\\bot-ea\\orchestrator\\audit.jsonl",
+    "poll_timeout_seconds": 20,
+    "order_authority": "NONE"
   }
 }

@@ -15,6 +15,10 @@ back silently to the previous bot.
 
 The G20 bridge config must also contain `expected_bot_username`, the DPAPI
 secret path, administrator IDs, and the orchestrator `subscriber_state_path`.
+G20 also starts one approval-only `telegram_control` process. It is the sole
+owner of Telegram `getUpdates`, shares the subscriber state with the delivery
+bridge, and has no MT5 adapter or order authority. The delivery bridge never
+polls Telegram.
 
 ## Approval flow
 

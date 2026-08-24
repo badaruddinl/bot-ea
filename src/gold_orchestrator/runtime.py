@@ -39,6 +39,12 @@ ORCHESTRATOR_BOT_COMMANDS: tuple[dict[str, str], ...] = (
     {"command": "subscribers", "description": "Active GOLD.i subscribers"},
     {"command": "help", "description": "Orchestrator command list"},
 )
+APPROVAL_BOT_COMMANDS: tuple[dict[str, str], ...] = (
+    {"command": "status", "description": "Telegram approval service status"},
+    {"command": "pending", "description": "Pending GOLD.i access requests"},
+    {"command": "subscribers", "description": "Active GOLD.i subscribers"},
+    {"command": "help", "description": "Approval command list"},
+)
 AUDIT_MAX_BYTES = 5 * 1024 * 1024
 AUDIT_BACKUPS = 3
 
@@ -88,11 +94,18 @@ class GlobalOrchestrator:
         try:
             while not self._stop_event.is_set():
                 now = self._monotonic()
-                if now - self._last_supervision >= self.config.supervision_interval_seconds:
+                if (
+                    self.config.worker_control_enabled
+                    and now - self._last_supervision >= self.config.supervision_interval_seconds
+                ):
                     self.supervise_once(now=now)
                     self._last_supervision = now
                 if now - self._last_heartbeat >= self.config.heartbeat_seconds:
-                    self._send_all(self.status_text(title="SCHEDULED HEARTBEAT"))
+                    self._send_all(
+                        self.status_text(title="SCHEDULED HEARTBEAT")
+                        if self.config.worker_control_enabled
+                        else self.approval_status_text(title="SCHEDULED HEARTBEAT")
+                    )
                     self._last_heartbeat = now
                 try:
                     self.poll_once(timeout=self.config.poll_timeout_seconds)
@@ -151,7 +164,11 @@ class GlobalOrchestrator:
             chat_ids=set(),
         )
         self.telegram.replace_commands(
-            commands=ORCHESTRATOR_BOT_COMMANDS,
+            commands=(
+                ORCHESTRATOR_BOT_COMMANDS
+                if self.config.worker_control_enabled
+                else APPROVAL_BOT_COMMANDS
+            ),
             chat_ids=set(self.config.admin_chat_ids),
             include_default=False,
         )
@@ -163,7 +180,16 @@ class GlobalOrchestrator:
             self._safe_set_subscription_menu(chat_id, "approved")
         self._audit(
             "TELEGRAM_COMMAND_MENU_UPDATED",
-            {"commands": [item["command"] for item in ORCHESTRATOR_BOT_COMMANDS]},
+            {
+                "commands": [
+                    item["command"]
+                    for item in (
+                        ORCHESTRATOR_BOT_COMMANDS
+                        if self.config.worker_control_enabled
+                        else APPROVAL_BOT_COMMANDS
+                    )
+                ]
+            },
         )
 
     def _set_subscription_menu(self, chat_id: str, state: str) -> None:
@@ -247,19 +273,37 @@ class GlobalOrchestrator:
         if command in {"/start", "/help"}:
             response = self.help_text()
         elif command in {"/status", "/workers", "/heartbeat"}:
-            self.supervise_once(now=self._monotonic())
-            self._send_worker_panel(actor_id)
-            return
+            if self.config.worker_control_enabled:
+                self.supervise_once(now=self._monotonic())
+                self._send_worker_panel(actor_id)
+                return
+            response = self.approval_status_text()
         elif command in {"/goldi_on", "/goldm_on"}:
+            if not self.config.worker_control_enabled:
+                response = "Worker control is disabled; native G20 owns execution."
+                self.telegram.send_message(chat_id=actor_id, text=response)
+                return
             name = command[1:].removesuffix("_on")
             response = self.set_desired(name, True)
         elif command in {"/goldi_off", "/goldm_off"}:
+            if not self.config.worker_control_enabled:
+                response = "Worker control is disabled; native G20 owns execution."
+                self.telegram.send_message(chat_id=actor_id, text=response)
+                return
             name = command[1:].removesuffix("_off")
             response = self.set_desired(name, False)
         elif command == "/all_on":
+            if not self.config.worker_control_enabled:
+                response = "Worker control is disabled; native G20 owns execution."
+                self.telegram.send_message(chat_id=actor_id, text=response)
+                return
             responses = [self.set_desired(name, True) for name in ("goldi", "goldm")]
             response = "\n".join(responses)
         elif command == "/all_off":
+            if not self.config.worker_control_enabled:
+                response = "Worker control is disabled; native G20 owns execution."
+                self.telegram.send_message(chat_id=actor_id, text=response)
+                return
             responses = [self.set_desired(name, False) for name in ("goldi", "goldm")]
             response = "\n".join(responses)
         elif command == "/pending":
@@ -294,6 +338,13 @@ class GlobalOrchestrator:
             self._audit("UNAUTHORIZED_CALLBACK", {"actor_id": actor_id})
             return
         if data.startswith("worker:"):
+            if not self.config.worker_control_enabled:
+                self._safe_answer_callback(
+                    callback_id,
+                    "Worker control is disabled; native G20 owns execution.",
+                    show_alert=True,
+                )
+                return
             self._handle_worker_callback(callback)
             return
         parts = data.split(":", 2)
@@ -1013,8 +1064,27 @@ class GlobalOrchestrator:
             )
         return "\n".join(lines)
 
-    @staticmethod
-    def help_text() -> str:
+    def approval_status_text(self, *, title: str = "TELEGRAM APPROVAL STATUS") -> str:
+        pending = len(dict(self._state.get("goldi_pending") or {}))
+        subscribers = len(list(self._state.get("goldi_subscribers") or []))
+        return (
+            f"{self.config.orchestrator_id}\n"
+            f"{title}\n"
+            "Mode: APPROVAL_ONLY\n"
+            f"Pending GOLD.i requests: {pending}\n"
+            f"Approved GOLD.i subscribers: {subscribers}\n"
+            "Order authority: NONE"
+        )
+
+    def help_text(self) -> str:
+        if not self.config.worker_control_enabled:
+            return (
+                "GOLD.i Telegram approval (admin only)\n"
+                "/status - approval poller status\n"
+                "/pending /subscribers - GOLD.i audience\n"
+                "/approve ID /deny ID /remove ID - manage GOLD.i access\n"
+                "Native G20 owns execution; this process has no order authority."
+            )
         return (
             "GOLD worker control (admin only)\n"
             "/workers or /status - full status\n"
@@ -1031,6 +1101,8 @@ class GlobalOrchestrator:
         self._audit("SHUTDOWN_NOTICE", {"detail": detail})
 
     def _desired_summary(self) -> str:
+        if not self.config.worker_control_enabled:
+            return "approval-only"
         desired = dict(self._state.get("desired") or {})
         return ",".join(
             f"{name}={'ON' if desired.get(name, spec.enabled_on_first_boot) else 'OFF'}"
