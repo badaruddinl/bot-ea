@@ -1,0 +1,21 @@
+{
+  "release_id": "dual-profile-lifecyclefix1",
+  "source_commit": "204aad3c5e30fa7a4b4966a94b7b2324b96ae31a",
+  "profile_version": "1.1.0",
+  "production_real_orders": "DISABLED",
+  "changes": [
+    "pause entry without permanent authority loss while a same-symbol manual or external position exists",
+    "emit one TRADING_PAUSED transition and one TRADING_RESUMED transition",
+    "emit human-readable ENTRY_READY, POSITION_OPENED, and POSITION_CLOSED payloads"
+  ],
+  "artifacts": {
+    "GOLDI": {
+      "path": "release/GoldEngine-GOLDi-v1.1.0-lifecyclefix1.ex5",
+      "sha256": "5a73ce29dab35a6f44d84e3da3bd361c5a02efeef4be65e392d299d85f94f2ae"
+    },
+    "GOLDM": {
+      "path": "release/GoldEngine-GOLDm-v1.1.0-lifecyclefix1.ex5",
+      "sha256": "f5dd7bcfba432bbc3860223fe1bf57166f5e331dc44ef81dfb87be424dc18ffd"
+    }
+  }
+}
