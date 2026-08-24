@@ -83,6 +83,7 @@ jobs:
         with:
           name: goldm-python-evidence-${{ github.sha }}
           path: .ci-evidence
+          include-hidden-files: true
           if-no-files-found: error
           retention-days: 30
 
@@ -124,5 +125,6 @@ jobs:
         with:
           name: goldm-mt5-release-evidence-${{ github.sha }}
           path: .ci-evidence
+          include-hidden-files: true
           if-no-files-found: error
           retention-days: 90

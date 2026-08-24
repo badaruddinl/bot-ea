@@ -6,9 +6,10 @@ import os
 import tempfile
 import unittest
 from dataclasses import replace
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
+from goldm_signal import windows_research_security
 from goldm_signal.research_environment import PortableCloneEvidence
 from goldm_signal.research_network import (
     FirewallRuleSnapshot,
@@ -17,7 +18,6 @@ from goldm_signal.research_network import (
     expected_firewall_rule_names,
     verify_firewall_isolation_evidence,
 )
-from goldm_signal import windows_research_security
 
 
 def _sha256(path: Path) -> str:
@@ -94,7 +94,7 @@ class GoldMResearchNetworkTests(unittest.TestCase):
             clone=self.clone,
             rule_probe=self._probe,
             output_path=self.output,
-            verified_at=datetime(2026, 8, 15, tzinfo=timezone.utc),
+            verified_at=datetime(2026, 8, 15, tzinfo=UTC),
         )
         self.assertEqual(evidence.path, self.output)
         self.assertEqual(evidence.rules, self.rules)
@@ -208,9 +208,7 @@ class GoldMResearchNetworkTests(unittest.TestCase):
 
     def test_network_cli_has_no_research_process_launch_or_uninstall_mode(self) -> None:
         script = (
-            Path(__file__).resolve().parents[1]
-            / "scripts"
-            / "secure-goldm-research-network.py"
+            Path(__file__).resolve().parents[1] / "scripts" / "secure-goldm-research-network.py"
         ).read_text(encoding="utf-8")
         self.assertNotIn("Start-Process", script)
         self.assertNotIn("subprocess", script)
@@ -221,15 +219,18 @@ class GoldMResearchNetworkTests(unittest.TestCase):
     def test_all_embedded_windows_security_scripts_parse_without_execution(self) -> None:
         parser = r"""
 $ErrorActionPreference = 'Stop'
-$tokens = $null
-$errors = $null
-[void][System.Management.Automation.Language.Parser]::ParseInput(
-  $env:GOLDM_RESEARCH_PROBE_ARG0,
-  [ref]$tokens,
-  [ref]$errors
-)
-if ($errors.Count -ne 0) {
-  throw (($errors | ForEach-Object {$_.Message}) -join '; ')
+$scripts = @($env:GOLDM_RESEARCH_PROBE_ARG0 | ConvertFrom-Json)
+foreach ($script in $scripts) {
+  $tokens = $null
+  $errors = $null
+  [void][System.Management.Automation.Language.Parser]::ParseInput(
+    [string]$script,
+    [ref]$tokens,
+    [ref]$errors
+  )
+  if ($errors.Count -ne 0) {
+    throw (($errors | ForEach-Object {$_.Message}) -join '; ')
+  }
 }
 [ordered]@{ ok = $true } | ConvertTo-Json -Compress
 """
@@ -242,13 +243,16 @@ if ($errors.Count -ne 0) {
             windows_research_security._REMOVE_RULE_SCRIPT,
             windows_research_security._PROBE_RULE_SCRIPT,
         )
-        for script in scripts:
-            self.assertEqual(
-                windows_research_security._single_json(
-                    windows_research_security._run_system_powershell(parser, script)
-                ),
-                {"ok": True},
-            )
+        self.assertEqual(
+            windows_research_security._single_json(
+                windows_research_security._run_system_powershell(
+                    parser,
+                    json.dumps(scripts),
+                    timeout_seconds=120,
+                )
+            ),
+            {"ok": True},
+        )
 
 
 if __name__ == "__main__":
