@@ -1,0 +1,30 @@
+corpus/current_behavior/*.jsonl text eol=lf
+corpus/current_behavior/*.sha256 text eol=lf
+corpus/revised_parity/*.json text eol=lf
+corpus/revised_parity/*.sha256 text eol=lf
+corpus/bear_parity/*.json text eol=lf
+corpus/bear_parity/*.sha256 text eol=lf
+evidence/G13-bear-parity/*.json text eol=lf
+evidence/G13-bear-parity/*.sha256 text eol=lf
+evidence/G13-bear-parity/native/*.json text eol=lf
+evidence/G13-bear-parity/native/*.sha256 text eol=lf
+evidence/G14-execution-lifecycle/*.json text eol=lf
+evidence/G14-execution-lifecycle/*.sha256 text eol=lf
+evidence/G14-execution-lifecycle/native/*.json text eol=lf
+evidence/G14-execution-lifecycle/native/*.sha256 text eol=lf
+mt5/Experts/bot-ea/fixtures/G13BearM15Oracle.mqh text eol=lf
+evidence/G09-causal-tick-replay/*-report.json text eol=lf
+evidence/G09-causal-tick-replay/*-report.sha256 text eol=lf
+evidence/G10-reference-live-validation/prerequisites.json text eol=lf
+evidence/G10-reference-live-validation/prerequisites.sha256 text eol=lf
+evidence/G10-reference-live-validation/acceptance.json text eol=lf
+evidence/G10-reference-live-validation/acceptance.sha256 text eol=lf
+release/*.md text eol=lf
+release/*.json text eol=lf
+release/*.sha256 text eol=lf
+release/*.txt text eol=lf
+release/*.ex5 -text
+release/rollback/*.ex5 -text
+evidence/G21-final-release/*.json text eol=lf
+evidence/G21-final-release/*.sha256 text eol=lf
+evidence/G21-final-release/*.md text eol=lf

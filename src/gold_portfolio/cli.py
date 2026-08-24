@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Sequence
 
 from .config import load_worker_config
+from .locking import SingleInstanceLock
 from .worker import CompositePortfolioWorker
 
 
@@ -49,7 +50,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         finally:
             worker.session.close()
         return 0
-    worker.run_forever()
+    lock_path = config.state_path.with_name("worker.lock")
+    with SingleInstanceLock(lock_path):
+        worker.run_forever()
     return 0
 
 

@@ -1,0 +1,18 @@
+{
+  "account_login": 108098316,
+  "account_mode": "DEMO",
+  "captured_at_utc": "2026-08-21T06:45:04.854851+00:00",
+  "captured_log": "goldi-e2e.log",
+  "captured_log_sha256": "8ce133a39633b8b3f8ffed93bddc7c12b83a8d774993c798e85512fe3367e409",
+  "chain_id": "G17|GOLDI|1787305242",
+  "event_count": 6,
+  "order_authority": "DEMO_E2E_ONLY",
+  "order_id": "902855238",
+  "position_id": "902855238",
+  "positions_after": 0,
+  "positions_before": 0,
+  "production_real_orders": "DISABLED",
+  "profile_id": "GOLDI",
+  "server": "XMGlobal-MT5 5",
+  "symbol": "GOLD.i#"
+}

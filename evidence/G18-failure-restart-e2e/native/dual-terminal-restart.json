@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "status": "PASS",
+  "result": "PASS",
+  "goldi_profile": "GOLDI",
+  "goldm_profile": "GOLDM",
+  "goldi_account": 108098316,
+  "goldm_account": 391425346,
+  "one_profile_restart_isolated": true,
+  "other_profile_generation_advanced": true,
+  "other_profile_identity_stable": true,
+  "both_profiles_recovered": true,
+  "goldi_identity_changed": true,
+  "goldm_identity_changed": true,
+  "goldi_authority": "DISABLED",
+  "goldm_authority": "DISABLED",
+  "production_real_orders": "DISABLED"
+}

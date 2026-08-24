@@ -3,28 +3,47 @@ from __future__ import annotations
 import json
 import os
 import time
+from bisect import bisect_left, bisect_right
+from collections.abc import Sequence
 from dataclasses import asdict, replace
 from datetime import datetime, timedelta
+from decimal import ROUND_CEILING, ROUND_FLOOR, ROUND_HALF_UP, Decimal
 from pathlib import Path
 from typing import Any
 
-from goldm_bear.multitimeframe import BearMultiTimeframeReplay, BearV4Config
+from gold_engine_core import (
+    ProfileConfig,
+    Side,
+    SignalPlan,
+    load_execution_policy,
+    load_named_profile,
+)
+from gold_engine_core.profile import TradeMode
+from gold_engine_core.rules.bear_incremental import (
+    BearIncrementalMachine,
+    BearIncrementalOutput,
+    BearIncrementalPhase,
+)
+from goldm_bear.engine import BearBar
+from goldm_bear.multitimeframe import BearMultiTimeframeReplay, BearV4Config, BearV4Report
 from goldm_revised.engine import (
+    RevisedDecision,
     RevisedEngine,
     RevisedEngineConfig,
     RevisedSide,
     RevisedSnapshot,
     RevisedState,
 )
-from goldm_revised.setup import RevisedSetupDetector
+from goldm_revised.setup import RevisedDetectorState, RevisedSetupDetector
 from goldm_signal.notify.telegram import TelegramBotClient
 
-from .config import PortfolioWorkerConfig
-from .models import SignalPlan
+from .config import PortfolioWorkerConfig, TelegramConfig
+from .models import WatchEvent
 from .mt5_session import BoundMt5Session
 
-
 ROOT = Path(__file__).resolve().parents[2]
+AUDIT_MAX_BYTES = 5 * 1024 * 1024
+AUDIT_BACKUPS = 3
 
 
 def _json(path: str | Path) -> dict[str, Any]:
@@ -38,7 +57,8 @@ def _json(path: str | Path) -> dict[str, Any]:
 
 
 class TelegramBroadcast:
-    def __init__(self, config) -> None:
+    def __init__(self, config: TelegramConfig) -> None:
+        self.config = config
         self.chat_ids = config.chat_ids
         self.client = (
             TelegramBotClient(bot_token=config.bot_token)
@@ -50,11 +70,31 @@ class TelegramBroadcast:
     def configured(self) -> bool:
         return self.client is not None
 
-    def send(self, text: str) -> None:
+    def send(self, text: str, *, include_subscribers: bool = False) -> None:
         if self.client is None:
             return
-        for chat_id in self.chat_ids:
+        recipients = set(self.chat_ids)
+        if include_subscribers and self.config.audience == "goldi_approved":
+            recipients.update(self._approved_goldi_subscribers())
+        for chat_id in sorted(recipients):
             self.client.send_message(chat_id=chat_id, text=text)
+
+    def _approved_goldi_subscribers(self) -> set[str]:
+        path = self.config.subscriber_state_path
+        if path is None:
+            return set()
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return set()
+        values = payload.get("goldi_subscribers") if isinstance(payload, dict) else []
+        normalized: set[str] = set()
+        for item in values or []:
+            text = str(item).strip()
+            digits = text[1:] if text.startswith("-") else text
+            if text.isascii() and digits.isdecimal() and int(text) != 0:
+                normalized.add(str(int(text)))
+        return normalized
 
 
 class CompositePortfolioWorker:
@@ -62,7 +102,7 @@ class CompositePortfolioWorker:
         self,
         config: PortfolioWorkerConfig,
         *,
-        mt5_module=None,
+        mt5_module: Any | None = None,
         telegram: TelegramBroadcast | None = None,
     ) -> None:
         self.config = config
@@ -78,8 +118,38 @@ class CompositePortfolioWorker:
             stop_multiplier=float(config.bear.get("stop_multiplier") or 1.0),
             target_multiplier=float(config.bear.get("target_multiplier") or 1.0),
         )
-        self.bear_replay = BearMultiTimeframeReplay(BearV4Config(**bear_values))
+        self.bear_replay = BearMultiTimeframeReplay(
+            BearV4Config(**bear_values),
+            symbol=config.symbol,
+        )
+        profile_id = {"goldi": "GOLDI", "goldm": "GOLDM"}.get(config.group)
+        if profile_id is None:
+            raise ValueError(f"unsupported final worker group: {config.group!r}")
+        self.profile = ProfileConfig.from_manifest(
+            load_named_profile(ROOT, profile_id),
+            tick_size=Decimal(str(self.bear_replay.config.price_tick)),
+        )
+        self.execution_policy = load_execution_policy(
+            ROOT / "config" / "execution_profiles" / f"{profile_id}.json"
+        )
+        if self.execution_policy.profile_fingerprint != self.profile.manifest_fingerprint:
+            raise ValueError("execution policy does not match worker profile manifest")
+        self.bear_incremental = BearIncrementalMachine(self.profile, self.bear_replay)
+        self.bear_incremental_state = self.bear_incremental.initial_state(
+            datetime(1970, 1, 1, tzinfo=self.session.server_timezone)
+        )
         self.state = self._load_state()
+        detector_payload = self.state.get("revised_detector")
+        if detector_payload is not None:
+            detector_state = RevisedDetectorState.from_payload(detector_payload)
+            expected_maximum = self.revised_engine.config.watch_max_m1_bars
+            if detector_state.maximum_m1_bars != expected_maximum:
+                raise ValueError("persisted Revised detector window differs from engine config")
+            self.revised_detector = RevisedSetupDetector.from_state(detector_state)
+        self.health_path = self.config.state_path.with_name("health.json")
+        self._last_error_key = ""
+        self._last_error_notification_at = 0.0
+        self._revised_detector_warmed = False
 
     def _revised_engine_config(self) -> RevisedEngineConfig:
         source = _json(str(self.config.revised["engine_config_path"]))
@@ -103,23 +173,32 @@ class CompositePortfolioWorker:
                 "symbol": self.config.symbol,
                 "latest_m1": latest_m1,
                 "signals": [],
+                "watches": [],
+                "watch_events": [],
                 "events": [],
                 "closed_events": closed_events,
                 "new_bar": False,
             }
         signals: list[SignalPlan] = []
-        revised = self._evaluate_revised(latest)
+        watches: list[WatchEvent] = []
+        revised, revised_watch = self._evaluate_revised(latest)
         if revised is not None:
             signals.append(revised)
-        bear = self._evaluate_bear(latest_m1)
+        if revised_watch is not None:
+            watches.append(revised_watch)
+        bear, bear_watch = self._evaluate_bear(latest_m1)
         if bear is not None:
             signals.append(bear)
+        if bear_watch is not None:
+            watches.append(bear_watch)
+        watch_events = [
+            event for watch in watches if (event := self._process_watch(watch)) is not None
+        ]
         events = []
         for signal in signals:
             if self._seen(signal.event_id):
                 continue
             self._remember(signal.event_id)
-            self.telegram.send(self._format_signal(signal))
             execution = self.session.execute(signal)
             event = {
                 "time": datetime.now(tz=self.session.server_timezone).isoformat(),
@@ -131,8 +210,12 @@ class CompositePortfolioWorker:
             events.append(event)
             if execution.get("status") == "EXECUTED":
                 self._track_open_position(signal, execution)
-            if execution.get("status") not in {"SIGNAL_ONLY"}:
-                self.telegram.send(self._format_execution(signal, execution))
+            notification = (
+                self._format_signal(signal)
+                if execution.get("status") == "SIGNAL_ONLY"
+                else self._format_execution(signal, execution)
+            )
+            self.telegram.send(notification, include_subscribers=True)
         self.state["last_m1"] = latest_m1.isoformat()
         self._save_state()
         return {
@@ -140,24 +223,33 @@ class CompositePortfolioWorker:
             "symbol": self.config.symbol,
             "latest_m1": latest_m1,
             "signals": signals,
+            "watches": watches,
+            "watch_events": watch_events,
             "events": events,
             "closed_events": closed_events,
             "new_bar": True,
         }
 
     def run_forever(self) -> None:
-        self.session.connect()
-        if self.config.telegram.send_health:
-            account = self.session.account_info()
-            self.telegram.send(
-                f"{self.config.portfolio_id} STARTED\n"
-                f"symbol={self.config.symbol} mode={self.config.execution_mode}\n"
-                f"login={account.login} server={account.server} balance={account.balance:.2f}"
-            )
+        started_notified = False
         try:
             while True:
                 try:
-                    self.run_once()
+                    result = self.run_once()
+                    self._last_error_key = ""
+                    self._write_health(
+                        "RUNNING",
+                        "new bar" if result.get("new_bar") else "waiting for closed M1",
+                    )
+                    if not started_notified and self.config.telegram.send_health:
+                        account = self.session.account_info()
+                        self.telegram.send(
+                            f"{self.config.portfolio_id} STARTED\n"
+                            f"symbol={self.config.symbol} mode={self.config.execution_mode}\n"
+                            f"login={account.login} server={account.server} "
+                            f"balance={account.balance:.2f}"
+                        )
+                        started_notified = True
                 except Exception as exc:
                     self._audit(
                         {
@@ -166,11 +258,21 @@ class CompositePortfolioWorker:
                             "error": str(exc),
                         }
                     )
-                    if self.config.telegram.send_health:
+                    self._write_health("ERROR", str(exc))
+                    now = time.monotonic()
+                    error_key = f"{type(exc).__name__}:{exc}"
+                    should_notify = (
+                        error_key != self._last_error_key
+                        or now - self._last_error_notification_at >= 300.0
+                    )
+                    if self.config.telegram.send_health and should_notify:
                         self.telegram.send(f"{self.config.portfolio_id} ERROR\n{exc}")
+                        self._last_error_key = error_key
+                        self._last_error_notification_at = now
                     self.session.close()
                 time.sleep(self.config.poll_seconds)
         finally:
+            self._write_health("STOPPED", "worker stopped")
             self.session.close()
 
     def _revised_snapshot(self) -> RevisedSnapshot:
@@ -190,15 +292,35 @@ class CompositePortfolioWorker:
             d1_bars=d1,
         )
 
-    def _evaluate_revised(self, latest: RevisedSnapshot) -> SignalPlan | None:
+    def _evaluate_revised(
+        self,
+        latest: RevisedSnapshot,
+    ) -> tuple[SignalPlan | None, WatchEvent | None]:
+        self._warm_revised_detector(latest)
         setup = self.revised_detector.update(
             latest.m5_bars,
             current_m1_time=latest.m1_bars[-1].time,
             side=RevisedSide.BUY,
         )
         if setup is None:
-            self.revised_detector.pop_termination(RevisedSide.BUY)
-            return None
+            termination = self.revised_detector.pop_termination(RevisedSide.BUY)
+            if termination is None:
+                return None, None
+            terminated_setup, reason = termination
+            state = "EXPIRED" if reason == "WATCH_WINDOW_EXPIRED" else "CANCELLED"
+            return None, WatchEvent(
+                watch_id=self._revised_watch_id(terminated_setup.trigger_time),
+                component="revised",
+                symbol=self.config.symbol,
+                side="BUY",
+                state=state,
+                stage="M1_CONFIRMATION",
+                time=latest.m1_bars[-1].time,
+                trigger_time=terminated_setup.trigger_time,
+                reason=reason,
+                level=terminated_setup.level,
+                invalidation=terminated_setup.invalidation,
+            )
         snapshot = replace(
             latest,
             m5_trigger_time=setup.trigger_time,
@@ -209,10 +331,47 @@ class CompositePortfolioWorker:
             invalidation=setup.invalidation,
         )
         decision = self.revised_engine.evaluate(snapshot)
+        watch = WatchEvent(
+            watch_id=self._revised_watch_id(setup.trigger_time),
+            component="revised",
+            symbol=self.config.symbol,
+            side="BUY",
+            state=(
+                "ENTRY_READY"
+                if decision.state is RevisedState.ENTRY_READY
+                else "CANCELLED"
+                if decision.state is RevisedState.CANCELLED
+                else "WATCH"
+            ),
+            stage="M1_CONFIRMATION",
+            time=decision.time,
+            trigger_time=setup.trigger_time,
+            reason=decision.reason,
+            level=setup.level,
+            invalidation=setup.invalidation,
+            entry=decision.entry,
+            stop=decision.stop,
+            target=decision.target,
+            mode=decision.mode.value if decision.mode is not None else None,
+            touch_count=decision.touch_count,
+            rejection_count=decision.rejection_count,
+            evidence={
+                "validation_status": decision.validation_status,
+                "confidence": decision.confidence,
+                "m1_votes": decision.m1_votes,
+                "acceptance_count": decision.acceptance_count,
+                "exhausted": decision.exhausted,
+                "first_obstacle": decision.first_obstacle,
+                "first_obstacle_kind": decision.first_obstacle_kind,
+                "first_obstacle_r": decision.first_obstacle_r,
+            },
+        )
         if decision.state is not RevisedState.ENTRY_READY:
-            return None
+            if decision.state is RevisedState.CANCELLED:
+                self.revised_detector.consume(RevisedSide.BUY, setup.trigger_time)
+            return None, watch
         if decision.entry is None or decision.stop is None or decision.target is None:
-            return None
+            return None, watch
         self.revised_detector.consume(RevisedSide.BUY, setup.trigger_time)
         risk = abs(decision.entry - decision.stop)
         reward = abs(decision.target - decision.entry)
@@ -220,69 +379,473 @@ class CompositePortfolioWorker:
         target_multiplier = float(self.config.revised.get("target_multiplier") or 1.0)
         stop = decision.entry - risk * stop_multiplier
         target = decision.entry + reward * target_multiplier
-        return SignalPlan(
-            event_id=f"revised:{decision.time.isoformat()}:{decision.entry:.2f}",
+        return self._create_signal_plan(
             component="revised",
-            symbol=self.config.symbol,
-            side="BUY",
-            time=decision.time,
+            strategy_id="GOLDM_REVISED",
+            strategy_version="0.6.0",
+            setup_id=self._revised_watch_id(setup.trigger_time),
+            setup_created_at=setup.trigger_time,
+            signal_id=f"revised:{decision.time.isoformat()}:{decision.entry:.2f}",
+            side=Side.BUY,
+            entry_ready_at=decision.time,
             entry=decision.entry,
-            stop=round(stop, 2),
-            target=round(target, 2),
+            stop=stop,
+            target=target,
             reason=decision.reason,
+            minimum_executable_rr=self._revised_minimum_executable_rr(decision),
+        ), watch
+
+    def _revised_minimum_executable_rr(self, decision: RevisedDecision) -> float:
+        if decision.entry_profile == "SCALPER":
+            return float(self.revised_engine.config.scalper_min_obstacle_r)
+        if decision.mode is not None and decision.mode.value == "MOMENTUM":
+            return float(self.revised_engine.config.first_obstacle_strict_r)
+        return float(self.revised_engine.config.first_obstacle_reject_r)
+
+    def _warm_revised_detector(self, latest: RevisedSnapshot) -> None:
+        if self._revised_detector_warmed:
+            return
+        bars = latest.m5_bars
+        start = max(2, len(bars) - 24)
+        for end in range(start, len(bars) + 1):
+            bar_close = bars[end - 1].time + timedelta(minutes=5)
+            causal_m1_time = min(
+                latest.m1_bars[-1].time,
+                bar_close + timedelta(minutes=1),
+            )
+            self.revised_detector.update(
+                bars[:end],
+                current_m1_time=causal_m1_time,
+                side=RevisedSide.BUY,
+            )
+        self._revised_detector_warmed = True
+
+    @staticmethod
+    def _revised_watch_id(trigger_time: datetime) -> str:
+        return f"revised:BUY:{trigger_time.isoformat()}"
+
+    def _evaluate_bear(
+        self,
+        latest_m1: datetime,
+    ) -> tuple[SignalPlan | None, WatchEvent | None]:
+        end = latest_m1 + timedelta(minutes=1)
+        start = end - self.bear_incremental.maximum_warmup_span
+        m1_bars = self.session.bear_bars_range("TIMEFRAME_M1", start, end)
+        m5_bars = self.session.bear_bars_range("TIMEFRAME_M5", start, end)
+        m15_bars = self.session.bear_bars_range("TIMEFRAME_M15", start, end)
+        h1_bars = self.session.bear_bars_range("TIMEFRAME_H1", start, end)
+        output = self.bear_incremental.feed_closed_batches(
+            self.bear_incremental_state,
+            m1_bars=tuple(m1_bars),
+            m5_bars=tuple(m5_bars),
+            m15_bars=tuple(m15_bars),
+            h1_bars=tuple(h1_bars),
+            available_at=end,
+            emit_after=latest_m1,
+        )
+        self.bear_incremental_state = output.next_state
+        signal = None
+        if output.signal is not None:
+            candidate = output.signal
+            signal = self._create_signal_plan(
+                component="bear",
+                strategy_id="GOLDM_BEAR",
+                strategy_version="4.0.0",
+                setup_id=candidate.setup_id,
+                setup_created_at=candidate.setup_time,
+                signal_id=candidate.signal_id,
+                side=Side.SELL,
+                entry_ready_at=candidate.opened_at,
+                entry=candidate.entry,
+                stop=candidate.stop,
+                target=candidate.target,
+                reason=candidate.reason,
+                minimum_executable_rr=self._bear_minimum_executable_rr(candidate.reason),
+            )
+        watch = self._bear_incremental_watch(latest_m1, output)
+        return signal, watch
+
+    def _create_signal_plan(
+        self,
+        *,
+        component: str,
+        strategy_id: str,
+        strategy_version: str,
+        setup_id: str,
+        setup_created_at: datetime,
+        signal_id: str,
+        side: Side,
+        entry_ready_at: datetime,
+        entry: float,
+        stop: float,
+        target: float,
+        reason: str,
+        minimum_executable_rr: float,
+    ) -> SignalPlan:
+        tick = self.profile.tick_size
+        planned_entry = self._round_price(Decimal(str(entry)), tick, ROUND_HALF_UP)
+        if side is Side.BUY:
+            planned_stop = self._round_price(Decimal(str(stop)), tick, ROUND_FLOOR)
+            planned_target = self._round_price(Decimal(str(target)), tick, ROUND_FLOOR)
+        else:
+            planned_stop = self._round_price(Decimal(str(stop)), tick, ROUND_CEILING)
+            planned_target = self._round_price(Decimal(str(target)), tick, ROUND_CEILING)
+        account = self.session.account_info()
+        volume = Decimal(str(self.session.select_lot()))
+        trade_mode: TradeMode = "real" if self.config.execution_mode == "real" else "demo"
+        return SignalPlan(
+            profile_id=self.profile.profile_id,
+            profile_version=self.profile.profile_version,
+            profile_fingerprint=self.profile.manifest_fingerprint,
+            strategy_id=strategy_id,
+            strategy_version=strategy_version,
+            component=component,
+            reason=reason,
+            setup_id=setup_id,
+            signal_id=signal_id,
+            side=side,
+            symbol=self.profile.symbol,
+            setup_created_at=setup_created_at,
+            entry_ready_at=entry_ready_at,
+            valid_until=entry_ready_at
+            + timedelta(seconds=self.execution_policy.maximum_signal_age_seconds),
+            planned_entry=planned_entry,
+            stop=planned_stop,
+            target=planned_target,
+            planned_risk=abs(planned_entry - planned_stop),
+            invalidation=planned_stop,
+            maximum_spread=self.execution_policy.maximum_spread,
+            minimum_executable_rr=Decimal(str(minimum_executable_rr)),
+            tick_size=tick,
+            volume=volume,
+            account_login=int(account.login),
+            account_server=str(account.server),
+            trade_mode=trade_mode,
+            terminal_identity=self.profile.terminal_identity,
+            magic=self.profile.magic,
         )
 
-    def _evaluate_bear(self, latest_m1: datetime) -> SignalPlan | None:
-        lookback_days = int(self.config.bear.get("lookback_days") or 30)
-        end = latest_m1 + timedelta(minutes=1)
-        start = end - timedelta(days=lookback_days)
-        report = self.bear_replay.run(
-            m1_bars=self.session.bear_bars_range("TIMEFRAME_M1", start, end),
-            m5_bars=self.session.bear_bars_range("TIMEFRAME_M5", start, end),
-            m15_bars=self.session.bear_bars_range("TIMEFRAME_M15", start, end),
-            h1_bars=self.session.bear_bars_range("TIMEFRAME_H1", start, end),
-            from_time=start,
-            to_time=end,
-        )
-        candidates = [
-            outcome
-            for outcome in report.outcomes
-            if outcome.opened_at >= latest_m1
-            and outcome.result == "END_OF_TEST"
-        ]
-        if not candidates:
+    def _bear_minimum_executable_rr(self, reason: str) -> float:
+        config = self.bear_replay.config
+        if "target_capped_at_nearest_psychological_support" in reason:
+            return float(config.minimum_psychological_reward_risk)
+        if "continuation_through_near_support" in reason:
+            return float(config.minimum_continuation_reward_risk)
+        return float(config.minimum_reward_risk)
+
+    @staticmethod
+    def _round_price(value: Decimal, tick: Decimal, rounding: str) -> Decimal:
+        return (value / tick).to_integral_value(rounding=rounding) * tick
+
+    def _bear_incremental_watch(
+        self,
+        latest_m1: datetime,
+        output: BearIncrementalOutput,
+    ) -> WatchEvent | None:
+        state = output.next_state
+        candidate = output.signal or state.signal
+        if candidate is not None:
+            return WatchEvent(
+                watch_id=candidate.setup_id,
+                component="bear",
+                symbol=self.config.symbol,
+                side="SELL",
+                state="ENTRY_READY",
+                stage="M1_CONFIRMATION",
+                time=candidate.opened_at,
+                trigger_time=candidate.setup_time + timedelta(minutes=15),
+                reason=candidate.reason,
+                level=state.level,
+                invalidation=candidate.stop,
+                entry=candidate.entry,
+                stop=candidate.stop,
+                target=candidate.target,
+                mode="RANGE",
+                touch_count=candidate.m5_touches,
+                rejection_count=candidate.m5_rejections,
+                evidence={"m1_touches": candidate.m1_touches},
+            )
+        if state.phase is BearIncrementalPhase.IDLE or state.setup_id is None:
             return None
-        outcome = max(candidates, key=lambda item: item.opened_at)
-        return SignalPlan(
-            event_id=f"bear:{outcome.opened_at.isoformat()}:{outcome.entry:.2f}",
+        stage, default_reason = {
+            BearIncrementalPhase.WATCH_H1: (
+                "H1_CONTEXT",
+                "H1_BEARISH_CONTEXT_PENDING",
+            ),
+            BearIncrementalPhase.WATCH_M5: (
+                "M5_VALIDATION",
+                "M5_RETEST_CONFIRMATION_PENDING",
+            ),
+            BearIncrementalPhase.WATCH_M1: (
+                "M1_CONFIRMATION",
+                "M1_RETEST_CONFIRMATION_PENDING",
+            ),
+            BearIncrementalPhase.CANCELLED: (
+                "TERMINAL",
+                "BEAR_INCREMENTAL_CANCELLED",
+            ),
+            BearIncrementalPhase.ENTRY_READY: (
+                "M1_CONFIRMATION",
+                "M1_ENTRY_CONFIRMATION_READY",
+            ),
+        }[state.phase]
+        reason = output.events[-1].reason if output.events else default_reason
+        evidence = {item.name: item.value for item in state.evidence}
+        return WatchEvent(
+            watch_id=state.setup_id,
             component="bear",
             symbol=self.config.symbol,
             side="SELL",
-            time=outcome.opened_at,
-            entry=outcome.entry,
-            stop=outcome.stop,
-            target=outcome.target,
-            reason=outcome.setup_reason,
+            state=("CANCELLED" if state.phase is BearIncrementalPhase.CANCELLED else "WATCH"),
+            stage=stage,
+            time=latest_m1,
+            trigger_time=(state.setup_time or latest_m1) + timedelta(minutes=15),
+            reason=reason,
+            level=state.level,
+            invalidation=state.invalidation,
+            entry=(state.entry_zone[0] if state.entry_zone is not None else None),
+            stop=state.invalidation,
+            target=(state.setup.take_profit if state.setup is not None else None),
+            mode="RANGE",
+            touch_count=state.touches,
+            rejection_count=state.rejections,
+            evidence={**evidence, "acceptance": state.acceptance},
         )
+
+    def _bear_watch_event(
+        self,
+        *,
+        latest_m1: datetime,
+        end: datetime,
+        start: datetime,
+        m1_bars: Sequence[BearBar],
+        m5_bars: Sequence[BearBar],
+        m15_bars: Sequence[BearBar],
+        h1_bars: Sequence[BearBar],
+        report: BearV4Report,
+        signal: SignalPlan | None,
+    ) -> WatchEvent | None:
+        setups = [
+            setup
+            for setup in self.bear_replay.setup_engine.scan(m15_bars)
+            if start <= setup.time < end
+        ]
+        if not setups:
+            return None
+        setup = max(setups, key=lambda item: item.time)
+        watch_id = f"bear:SELL:{setup.time.isoformat()}"
+        setup_available = setup.time + timedelta(minutes=15)
+        matching_outcomes = [
+            outcome for outcome in report.outcomes if outcome.setup_time == setup.time
+        ]
+        if matching_outcomes:
+            if signal is not None and signal.time == matching_outcomes[-1].opened_at:
+                return WatchEvent(
+                    watch_id=watch_id,
+                    component="bear",
+                    symbol=self.config.symbol,
+                    side="SELL",
+                    state="ENTRY_READY",
+                    stage="M1_CONFIRMATION",
+                    time=signal.time,
+                    trigger_time=setup_available,
+                    reason=signal.reason,
+                    level=setup.resistance,
+                    invalidation=float(signal.stop),
+                    entry=float(signal.entry),
+                    stop=float(signal.stop),
+                    target=float(signal.target),
+                )
+            return None
+        h1_close_times = [bar.time + timedelta(hours=1) for bar in h1_bars]
+        h1_index = bisect_right(h1_close_times, setup_available)
+        h1_history = h1_bars[
+            max(0, h1_index - self.bear_replay.config.h1_sma_period - 2) : h1_index
+        ]
+        base = {
+            "watch_id": watch_id,
+            "component": "bear",
+            "symbol": self.config.symbol,
+            "side": "SELL",
+            "time": latest_m1,
+            "trigger_time": setup_available,
+            "level": setup.resistance,
+            "invalidation": setup.stop,
+            "entry": setup.entry,
+            "stop": setup.stop,
+            "target": setup.take_profit,
+            "mode": "RANGE",
+        }
+        if latest_m1 < setup_available:
+            return WatchEvent(
+                **base,
+                state="WATCH",
+                stage="M15_CLOSE",
+                reason="M15_SETUP_AWAITING_CAUSAL_CLOSE",
+            )
+        if not self.bear_replay._h1_bearish(h1_history):
+            return WatchEvent(
+                **base,
+                state="CANCELLED",
+                stage="H1_CONTEXT",
+                reason="H1_BEARISH_CONTEXT_REJECTED",
+            )
+        m5_times = [bar.time for bar in m5_bars]
+        m5_index = bisect_left(m5_times, setup_available)
+        validation_start = max(0, m5_index - 3)
+        m5_candidates = m5_bars[
+            validation_start : validation_start + self.bear_replay.config.m5_watch_bars
+        ]
+        m5_result = self.bear_replay._arm_on_m5(
+            setup,
+            m5_bars[max(0, validation_start - 20) : validation_start],
+            m5_candidates,
+            setup_available,
+        )
+        m5_state = str(m5_result.get("state") or "EXPIRED")
+        touches = int(m5_result.get("touches") or 0)
+        rejections = int(m5_result.get("rejections") or 0)
+        if m5_state == "CANCELLED":
+            return WatchEvent(
+                **base,
+                state="CANCELLED",
+                stage="M5_VALIDATION",
+                reason=str(m5_result.get("reason") or "M5_VALIDATION_CANCELLED"),
+                touch_count=touches,
+                rejection_count=rejections,
+            )
+        if m5_state != "ARMED":
+            complete_window = len(m5_candidates) >= self.bear_replay.config.m5_watch_bars
+            return WatchEvent(
+                **base,
+                state="EXPIRED" if complete_window else "WATCH",
+                stage="M5_VALIDATION",
+                reason=(
+                    "M5_WATCH_WINDOW_EXPIRED"
+                    if complete_window
+                    else "M5_RETEST_CONFIRMATION_PENDING"
+                ),
+                touch_count=touches,
+                rejection_count=rejections,
+                evidence={"observed_m5_bars": len(m5_candidates)},
+            )
+        armed_at = m5_result["armed_at"]
+        m1_times = [bar.time for bar in m1_bars]
+        m1_index = bisect_left(m1_times, armed_at)
+        m1_candidates = m1_bars[m1_index : m1_index + self.bear_replay.config.m1_entry_bars]
+        entry_plan = self.bear_replay._entry_on_m1(
+            setup,
+            m5_result,
+            m1_bars[max(0, m1_index - 20) : m1_index],
+            m1_candidates,
+        )
+        if entry_plan is not None:
+            ready_fields = dict(base)
+            ready_fields.update(
+                time=entry_plan["opened_at"],
+                entry=float(entry_plan["entry"]),
+                stop=float(entry_plan["stop"]),
+                target=float(entry_plan["target"]),
+            )
+            return WatchEvent(
+                **ready_fields,
+                state="ENTRY_READY",
+                stage="M1_CONFIRMATION",
+                reason="M1_ENTRY_CONFIRMATION_READY",
+                touch_count=touches,
+                rejection_count=rejections,
+            )
+        complete_m1_window = len(m1_candidates) >= self.bear_replay.config.m1_entry_bars
+        return WatchEvent(
+            **base,
+            state="EXPIRED" if complete_m1_window else "WATCH",
+            stage="M1_CONFIRMATION",
+            reason=(
+                "M1_WATCH_WINDOW_EXPIRED_OR_INVALIDATED"
+                if complete_m1_window
+                else "M1_RETEST_CONFIRMATION_PENDING"
+            ),
+            touch_count=touches,
+            rejection_count=rejections,
+            evidence={
+                "armed_at": armed_at.isoformat(),
+                "observed_m1_bars": len(m1_candidates),
+            },
+        )
+
+    def _process_watch(self, watch: WatchEvent) -> dict[str, Any] | None:
+        active = dict(self.state.get("active_watches") or {})
+        key = f"{watch.component}:{watch.side}"
+        if watch.state in {"ENTRY_READY", "CANCELLED", "EXPIRED"}:
+            active.pop(key, None)
+            self.state["active_watches"] = active
+            return None
+        active[key] = {
+            "watch_id": watch.watch_id,
+            "stage": watch.stage,
+            "reason": watch.reason,
+            "server_time": watch.time.isoformat(),
+            "level": watch.level,
+            "invalidation": watch.invalidation,
+            "mode": watch.mode,
+            "touches": watch.touch_count,
+            "rejections": watch.rejection_count,
+        }
+        self.state["active_watches"] = active
+        return None
 
     def _format_signal(self, signal: SignalPlan) -> str:
         account = self.session.account_info()
+        vm_time = datetime.now().astimezone()
         return (
-            f"{self.config.portfolio_id} SIGNAL\n"
-            f"engine={signal.component} side={signal.side} symbol={signal.symbol}\n"
-            f"entry={signal.entry:.2f} sl={signal.stop:.2f} tp={signal.target:.2f}\n"
-            f"balance={float(account.balance):.2f} equity={float(account.equity):.2f}\n"
-            f"time={signal.time.isoformat()}\nreason={signal.reason}"
+            f"🟡 ENTRY SIAP — {signal.symbol} {signal.side}\n"
+            f"Engine: {signal.component.title()}\n"
+            f"Akun: {account.login} ({self.config.execution_mode.upper()})\n\n"
+            f"Rencana transaksi\n"
+            f"• Entry: {signal.entry:.2f}\n"
+            f"• Stop Loss: {signal.stop:.2f}\n"
+            f"• Take Profit: {signal.target:.2f}\n\n"
+            f"Identitas\n"
+            f"• ID sinyal: {signal.event_id}\n"
+            f"• Instrumen: {signal.symbol}\n\n"
+            f"Waktu\n"
+            f"• Server broker: {self._human_time(signal.time)}\n"
+            f"• VM: {self._human_time(vm_time)}\n\n"
+            f"Alasan: {self._human_reason(signal.reason)}\n"
+            f"Kode: {signal.reason}"
         )
 
     def _format_execution(self, signal: SignalPlan, execution: dict[str, Any]) -> str:
+        account = self.session.account_info()
+        status = str(execution.get("status") or "UNKNOWN")
+        if status == "EXECUTED":
+            heading = f"✅ ENTRY DIBUKA — {self.config.execution_mode.upper()}"
+        elif status == "BLOCKED":
+            heading = "⛔ ENTRY DIBLOKIR"
+        else:
+            heading = "❌ ENTRY DITOLAK"
         return (
-            f"{self.config.portfolio_id} ORDER {execution.get('status')}\n"
-            f"engine={signal.component} side={signal.side} symbol={signal.symbol}\n"
-            f"volume={execution.get('volume', '-')} price={execution.get('price', '-')}\n"
-            f"sl={execution.get('sl', '-')} tp={execution.get('tp', '-')}\n"
-            f"balance={execution.get('balance', '-')}\n"
-            f"retcode={execution.get('retcode', '-')} {execution.get('comment', execution.get('reason', ''))}"
+            f"{heading}\n"
+            f"{signal.symbol} • {signal.side} • {signal.component.title()}\n"
+            f"Akun: {account.login}\n\n"
+            f"Eksekusi\n"
+            f"• Volume: {execution.get('volume', '-')} lot\n"
+            f"• Harga: {execution.get('price', '-')}\n"
+            f"• Stop Loss: {execution.get('sl', '-')}\n"
+            f"• Take Profit: {execution.get('tp', '-')}\n"
+            f"• Saldo setelah entry: {execution.get('balance', '-')} USD\n\n"
+            f"Identitas\n"
+            f"• ID sinyal: {signal.event_id}\n"
+            f"• ID order: {execution.get('order', '-')}\n"
+            f"• ID deal: {execution.get('deal', '-')}\n"
+            f"• ID request: {execution.get('request_id', '-')}\n"
+            f"• Instrumen: {signal.symbol}\n\n"
+            f"Waktu\n"
+            f"• Server broker: {self._human_time(execution.get('server_time'))}\n"
+            f"• VM: {self._human_time(execution.get('vm_time'))}\n\n"
+            f"Keputusan: {self._human_reason(signal.reason)}\n"
+            f"Status broker: {status} • retcode {execution.get('retcode', '-')}\n"
+            f"Catatan: {execution.get('comment', execution.get('reason', '-'))}"
         )
 
     def _track_open_position(
@@ -294,9 +857,16 @@ class CompositePortfolioWorker:
         if ticket <= 0:
             return
         positions = dict(self.state.get("open_positions") or {})
+        opened_at = (
+            execution.get("server_time")
+            or datetime.now(tz=self.session.server_timezone).isoformat()
+        )
         positions[str(ticket)] = {
             "signal": asdict(signal),
-            "opened_at": datetime.now(tz=self.session.server_timezone).isoformat(),
+            "opened_at": opened_at,
+            "order_id": ticket,
+            "deal_id": int(execution.get("deal") or 0),
+            "request_id": int(execution.get("request_id") or 0),
             "fill_price": float(execution.get("price") or signal.entry),
             "volume": float(execution.get("volume") or 0.0),
             "sl": float(execution.get("sl") or signal.stop),
@@ -325,15 +895,14 @@ class CompositePortfolioWorker:
             reward_price = abs(tp - fill)
             planned_rr = reward_price / risk_price if risk_price > 0 else 0.0
             risk_cash = risk_price * float(info.trade_contract_size) * volume
-            realized_r = (
-                float(result["profit_loss"]) / risk_cash if risk_cash > 0 else 0.0
-            )
+            realized_r = float(result["profit_loss"]) / risk_cash if risk_cash > 0 else 0.0
             signal = dict(tracked.get("signal") or {})
             close_event = {
                 **result,
                 "component": signal.get("component"),
                 "side": signal.get("side"),
                 "reason": signal.get("reason"),
+                "event_id": signal.get("event_id"),
                 "opened_at": opened_at,
                 "duration_seconds": duration_seconds,
                 "planned_rr": planned_rr,
@@ -343,7 +912,10 @@ class CompositePortfolioWorker:
                 "tp": tp,
                 "volume": volume,
             }
-            self.telegram.send(self._format_close(close_event))
+            self.telegram.send(
+                self._format_close(close_event),
+                include_subscribers=True,
+            )
             self._audit(
                 {
                     "time": close_time.isoformat(),
@@ -360,17 +932,76 @@ class CompositePortfolioWorker:
         duration = int(event["duration_seconds"])
         hours, remainder = divmod(duration, 3600)
         minutes, seconds = divmod(remainder, 60)
+        account = self.session.account_info()
+        vm_time = datetime.now().astimezone()
+        profit_loss = float(event["profit_loss"])
+        result_label = "PROFIT" if profit_loss >= 0 else "LOSS"
+        icon = "✅" if profit_loss >= 0 else "🔻"
         return (
-            f"{self.config.portfolio_id} CLOSED\n"
-            f"engine={event.get('component')} side={event.get('side')} symbol={self.config.symbol}\n"
-            f"entry={event['entry_price']:.2f} close={event['close_price']:.2f} "
-            f"volume={event['volume']:.2f}\n"
-            f"P/L={event['profit_loss']:+.2f} USD realized_R={event['realized_r']:+.2f} "
-            f"planned_RR={event['planned_rr']:.2f}\n"
-            f"duration={hours:02d}:{minutes:02d}:{seconds:02d} "
-            f"balance={event['balance']:.2f} equity={event['equity']:.2f}\n"
-            f"decision={event.get('reason', '-') }"
+            f"{icon} POSISI DITUTUP — {result_label}\n"
+            f"{self.config.symbol} • {event.get('side')} • "
+            f"{str(event.get('component') or '-').title()}\n"
+            f"Akun: {account.login} ({self.config.execution_mode.upper()})\n\n"
+            f"Hasil transaksi\n"
+            f"• Entry: {event['entry_price']:.2f}\n"
+            f"• Close: {event['close_price']:.2f}\n"
+            f"• Volume: {event['volume']:.2f} lot\n"
+            f"• P/L: {profit_loss:+.2f} USD\n"
+            f"• Realized R: {event['realized_r']:+.2f}R\n"
+            f"• R:R rencana: {event['planned_rr']:.2f}\n"
+            f"• Durasi: {hours:02d}:{minutes:02d}:{seconds:02d}\n"
+            f"• Saldo: {event['balance']:.2f} USD\n"
+            f"• Equity: {event['equity']:.2f} USD\n\n"
+            f"Identitas\n"
+            f"• ID sinyal: {event.get('event_id', '-')}\n"
+            f"• ID posisi: {event.get('position_ticket', '-')}\n"
+            f"• Instrumen: {self.config.symbol}\n\n"
+            f"Waktu\n"
+            f"• Server broker: {self._human_time(event['close_time'])}\n"
+            f"• VM: {self._human_time(vm_time)}\n\n"
+            f"Keputusan awal: {self._human_reason(str(event.get('reason') or '-'))}"
         )
+
+    @staticmethod
+    def _human_reason(reason: str) -> str:
+        return reason.replace("_", " ").strip().capitalize()
+
+    @staticmethod
+    def _human_time(value: object) -> str:
+        if value in {None, "", "-"}:
+            return "-"
+        if isinstance(value, datetime):
+            parsed = value
+        else:
+            try:
+                parsed = datetime.fromisoformat(str(value))
+            except ValueError:
+                return str(value)
+        months = (
+            "Jan",
+            "Feb",
+            "Mar",
+            "Apr",
+            "Mei",
+            "Jun",
+            "Jul",
+            "Agu",
+            "Sep",
+            "Okt",
+            "Nov",
+            "Des",
+        )
+        offset = parsed.utcoffset()
+        if offset is None:
+            zone = str(parsed.tzname() or "tanpa timezone")
+        else:
+            total_minutes = int(offset.total_seconds() // 60)
+            sign = "+" if total_minutes >= 0 else "-"
+            absolute = abs(total_minutes)
+            zone = f"GMT{sign}{absolute // 60}"
+            if absolute % 60:
+                zone += f":{absolute % 60:02d}"
+        return f"{parsed.day:02d} {months[parsed.month - 1]} {parsed.year} {parsed:%H:%M:%S} {zone}"
 
     def _load_state(self) -> dict[str, Any]:
         if not self.config.state_path.exists():
@@ -379,6 +1010,7 @@ class CompositePortfolioWorker:
         return payload if isinstance(payload, dict) else {"seen": []}
 
     def _save_state(self) -> None:
+        self.state["revised_detector"] = self.revised_detector.snapshot().to_payload()
         self.config.state_path.parent.mkdir(parents=True, exist_ok=True)
         temporary = self.config.state_path.with_suffix(".tmp")
         temporary.write_text(
@@ -397,5 +1029,59 @@ class CompositePortfolioWorker:
 
     def _audit(self, payload: dict[str, Any]) -> None:
         self.config.audit_path.parent.mkdir(parents=True, exist_ok=True)
+        self._rotate_audit()
         with self.config.audit_path.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(payload, sort_keys=True, default=str) + "\n")
+
+    def _rotate_audit(self) -> None:
+        path = self.config.audit_path
+        try:
+            if path.stat().st_size < AUDIT_MAX_BYTES:
+                return
+        except FileNotFoundError:
+            return
+        oldest = Path(f"{path}.{AUDIT_BACKUPS}")
+        if oldest.exists():
+            oldest.unlink()
+        for index in range(AUDIT_BACKUPS - 1, 0, -1):
+            source = Path(f"{path}.{index}")
+            if source.exists():
+                os.replace(source, Path(f"{path}.{index + 1}"))
+        os.replace(path, Path(f"{path}.1"))
+
+    def _write_health(self, status: str, detail: str) -> None:
+        self.health_path.parent.mkdir(parents=True, exist_ok=True)
+        account_fields: dict[str, Any] = {}
+        if self.session.connected:
+            try:
+                account = self.session.mt5.account_info()
+            except Exception:
+                account = None
+            if account is not None:
+                account_fields = {
+                    "login": int(account.login),
+                    "server": str(account.server),
+                    "balance": float(account.balance),
+                    "equity": float(account.equity),
+                }
+        temporary = self.health_path.with_suffix(".tmp")
+        temporary.write_text(
+            json.dumps(
+                {
+                    "pid": os.getpid(),
+                    "group": self.config.group,
+                    "portfolio_id": self.config.portfolio_id,
+                    "symbol": self.config.symbol,
+                    "execution_mode": self.config.execution_mode,
+                    "status": status,
+                    "detail": detail,
+                    **account_fields,
+                    "updated_at": datetime.now(tz=self.session.server_timezone).isoformat(),
+                },
+                indent=2,
+                sort_keys=True,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        os.replace(temporary, self.health_path)

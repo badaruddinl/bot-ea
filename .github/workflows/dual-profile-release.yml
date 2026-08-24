@@ -1,0 +1,75 @@
+name: dual-profile-release
+
+on:
+  pull_request:
+    branches: [feature/global-orchestrator, feature/mql5-*]
+  push:
+    branches: [feature/global-orchestrator, feature/mql5-*]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  python-gates:
+    name: ${{ matrix.gate }}
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        gate:
+          - validate-unit
+          - validate-profile-contracts
+          - validate-causality
+          - validate-replay
+          - validate-incremental
+          - validate-execution-guards
+          - validate-python-parity
+          - validate-mql5-parity-goldi
+          - validate-mql5-parity-goldm
+          - validate-cross-profile
+          - validate-event-contract
+          - validate-e2e
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: "3.14"
+          cache: pip
+      - name: Install dependencies
+        shell: pwsh
+        run: python -m pip install -e ".[live,dev]"
+      - name: Run named gate
+        shell: pwsh
+        run: python scripts/validate_goal_gate.py "${{ matrix.gate }}"
+
+  validate-mql5-build:
+    name: validate-mql5-build
+    runs-on: [self-hosted, Windows, X64, goldm-mt5]
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - name: Compile both profile-locked EAs
+        shell: pwsh
+        run: python scripts/validate_goal_gate.py validate-mql5-build
+
+  validate-release:
+    name: validate-release
+    needs: [python-gates, validate-mql5-build]
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: "3.14"
+      - name: Install validation dependencies
+        shell: pwsh
+        run: python -m pip install -e ".[dev]"
+      - name: Verify complete release
+        shell: pwsh
+        run: python scripts/validate_goal_gate.py validate-release

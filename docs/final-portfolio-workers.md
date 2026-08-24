@@ -7,11 +7,12 @@ the existing `goldm_revised` BUY component and `goldm_bear` SELL component as a
 single unit with shared state and, where applicable, shared balance sizing.
 
 ```text
-GOLD.i worker (signal_only)       GOLDm worker (real)
+GOLD.i worker (demo execution)    GOLDm worker (real)
 ├─ Revised BUY                    ├─ Revised BUY
 ├─ Bear SELL                      ├─ Bear SELL
-├─ Telegram sender only           ├─ shared Aggressive sizing
-└─ no order API                   ├─ MT5 order_check/order_send
+├─ adaptive 0.01→2.0 sizing       ├─ adaptive 0.1→100 sizing
+├─ approved GOLD.i audience       ├─ admin-only Telegram
+└─ checked demo orders            ├─ MT5 order_check/order_send
                                   └─ Telegram lifecycle sender
 ```
 
@@ -29,9 +30,10 @@ one-way senders and the existing production poller remains the only poller.
 
 ## Signal and order lifecycle
 
-No promotion, approval, or fallback validation is performed. Engine
-`ENTRY_READY` is immediately formatted and sent. GOLD.i stops there. GOLDm
-selects one lot from the shared realized balance tiers, performs MT5
+No promotion or fallback validation is performed. Engine `ENTRY_READY` is
+immediately formatted and sent. GOLD.i validates its demo account and sends a
+checked demo order. GOLDm selects one lot from the shared realized balance
+tiers, performs MT5
 `order_check`, revalidates account identity as the final read, and calls
 `order_send`.
 
@@ -39,6 +41,16 @@ When a managed position closes, the worker queries MT5 history by position ID
 and sends: component decision/reason, entry/close, SL/TP, volume, total P/L
 including swap/commission/fee, planned R:R, realized R, duration, and current
 balance/equity. State and deduplication are persisted separately per group.
+
+Before entry, each worker persists a compact internal WATCH snapshot. Revised
+tracks M5 trigger and M1 range/momentum evidence. Bear tracks its M15 setup, H1
+context, M5 arm/retest, and M1 confirmation stage. WATCH never sends Telegram
+and never executes an order. Telegram gets only one final entry/order result and
+the close result in a human-readable format. Instrument, signal/order/position
+IDs, broker-server time, and VM-local time remain included for debugging.
+
+The state file overwrites WATCH data instead of growing. JSONL audit files
+rotate at 5 MiB and retain three backups.
 
 ## Required environment
 
@@ -57,9 +69,9 @@ GOLDM_REAL_MT5_LOGIN=391425346
 GOLDM_REAL_MT5_SERVER=XMGlobal-MT5 14
 ```
 
-Both terminals must be open. The GOLDm terminal must have Algo Trading enabled;
-the real worker refuses to start otherwise. GOLD.i is signal-only but still
-requires exact path/login/server binding so it cannot read the GOLDm terminal.
+Both terminals must be open with Algo Trading enabled. GOLDm refuses a non-real
+account, while GOLD.i refuses a non-demo account. Both require exact
+path/login/server binding so neither can read or trade the other terminal.
 
 ## Launch
 

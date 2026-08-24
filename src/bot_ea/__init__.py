@@ -1,5 +1,6 @@
 """bot-ea core package."""
 
+from .codex_cli_engine import CodexCLIEngine
 from .models import (
     AccountSnapshot,
     Bar,
@@ -13,29 +14,52 @@ from .models import (
     SymbolSnapshot,
     TradingStyle,
 )
-from .codex_cli_engine import CodexCLIEngine
-from .desktop_runtime import DesktopRuntimeConfig, DesktopRuntimeCoordinator, DesktopRuntimeEvent
-from .mt5_adapter import AccountFingerprintSnapshot, LiveMT5Adapter, MockMT5Adapter, MT5Adapter, MutationAccountBinding, OrderSendResult, OrderValidationResult, PriceTickSnapshot, SymbolCapabilitySnapshot, TerminalStatusSnapshot
+from .mt5_adapter import (
+    AccountFingerprintSnapshot,
+    LiveMT5Adapter,
+    MockMT5Adapter,
+    MT5Adapter,
+    MutationAccountBinding,
+    OrderSendResult,
+    OrderValidationResult,
+    PriceTickSnapshot,
+    SymbolCapabilitySnapshot,
+    TerminalStatusSnapshot,
+)
 from .mt5_execution_runtime import MT5ExecutionRuntime
 from .mt5_snapshots import build_account_snapshot, build_symbol_snapshot
-from .polling_runtime import AIIntent, DecisionAction, MT5SnapshotProvider, PollingConfig, PollingRuntime, PollingCycleResult, RuntimeSnapshot
+from .polling_runtime import (
+    AIIntent,
+    DecisionAction,
+    MT5SnapshotProvider,
+    PollingConfig,
+    PollingCycleResult,
+    PollingRuntime,
+    RuntimeSnapshot,
+)
 from .risk_engine import RiskEngine
 from .runtime_store import RuntimeStore
-from .stop_policy import SessionPerformance, StopDecision, StopPolicy, StopReason, evaluate_stop_policy
+from .stop_policy import (
+    SessionPerformance,
+    StopDecision,
+    StopPolicy,
+    StopReason,
+    evaluate_stop_policy,
+)
 from .validation import (
     ExecutionQualitySummary,
     OOSWindowResult,
+    PromotionAuditRecord,
     PromotionCandidate,
     PromotionCheckResult,
     PromotionDecision,
     PromotionGateThresholds,
-    PromotionAuditRecord,
     RuntimeValidationReport,
     TradeRecord,
     ValidationSummary,
+    build_promotion_audit_record,
     build_runtime_validation_report,
     build_trade_records_from_runtime,
-    build_promotion_audit_record,
     evaluate_cost_realism,
     evaluate_promotion_gate,
     export_promotion_audit_json,
@@ -46,25 +70,22 @@ from .validation import (
 )
 
 __all__ = [
-    "AccountSnapshot",
-    "AccountFingerprintSnapshot",
     "AIIntent",
+    "AccountFingerprintSnapshot",
+    "AccountSnapshot",
     "Bar",
     "CapitalAllocation",
     "CapitalAllocationMode",
     "CodexCLIEngine",
-    "DesktopRuntimeConfig",
-    "DesktopRuntimeCoordinator",
-    "DesktopRuntimeEvent",
     "DecisionAction",
     "ExecutionGateResult",
     "ExecutionQualitySummary",
     "LiveMT5Adapter",
-    "MT5ExecutionRuntime",
-    "MockMT5Adapter",
     "MT5Adapter",
-    "MutationAccountBinding",
+    "MT5ExecutionRuntime",
     "MT5SnapshotProvider",
+    "MockMT5Adapter",
+    "MutationAccountBinding",
     "OOSWindowResult",
     "OperatingMode",
     "OrderSendResult",
@@ -80,29 +101,29 @@ __all__ = [
     "PromotionCheckResult",
     "PromotionDecision",
     "PromotionGateThresholds",
-    "RuntimeValidationReport",
     "RiskEngine",
     "RiskPolicy",
     "RuntimeSnapshot",
     "RuntimeStore",
+    "RuntimeValidationReport",
     "SessionPerformance",
-    "SymbolSnapshot",
-    "SymbolCapabilitySnapshot",
-    "TerminalStatusSnapshot",
     "StopDecision",
     "StopPolicy",
     "StopReason",
+    "SymbolCapabilitySnapshot",
+    "SymbolSnapshot",
+    "TerminalStatusSnapshot",
     "TradeRecord",
     "TradingStyle",
     "ValidationSummary",
-    "build_runtime_validation_report",
-    "build_trade_records_from_runtime",
-    "build_promotion_audit_record",
     "build_account_snapshot",
+    "build_promotion_audit_record",
+    "build_runtime_validation_report",
     "build_symbol_snapshot",
-    "evaluate_stop_policy",
+    "build_trade_records_from_runtime",
     "evaluate_cost_realism",
     "evaluate_promotion_gate",
+    "evaluate_stop_policy",
     "export_promotion_audit_json",
     "export_promotion_audit_markdown",
     "export_summary_markdown",

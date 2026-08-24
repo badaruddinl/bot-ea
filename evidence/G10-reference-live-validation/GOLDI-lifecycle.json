@@ -1,0 +1,27 @@
+{
+  "profile_id": "GOLDI",
+  "validation_profile_id": "GOLDI_DEMO_VALIDATION",
+  "profile_fingerprint": "7af1d75e1be54ba4505b32cedcf53f4317dea0a90a2a0636510884d0d408c5b5",
+  "symbol": "GOLD.i#",
+  "production_real_orders": "DISABLED",
+  "shadow_event_count": 6,
+  "entry_count": 1,
+  "close_count": 1,
+  "restart_count": 1,
+  "duplicate_count": 0,
+  "state_bleed_count": 0,
+  "privacy_bleed_count": 0,
+  "live_replay_calls": 0,
+  "latency_ms_p50": 0.324,
+  "latency_ms_p95": 1.02125,
+  "shadow_started_at": "2026-08-21T05:42:28.798274+00:00",
+  "guarded_started_at": "2026-08-21T06:45:04.854851+00:00",
+  "finished_at": "2026-08-21T07:45:44.940362+00:00",
+  "lineage": {
+    "shadow_engine": "evidence/G15-full-parity/native/goldi-execution-lifecycle-g15-tester.json",
+    "guarded_demo": "evidence/G17-happy-path-e2e/native/goldi-e2e.json",
+    "event_chain": "evidence/G17-happy-path-e2e/native/bridge-live-demo.json",
+    "restart": "evidence/G18-failure-restart-e2e/native/open-position-restart.json",
+    "latency": "external:G19-resource-storage-latency/resource-analysis-actual-latency.json"
+  }
+}

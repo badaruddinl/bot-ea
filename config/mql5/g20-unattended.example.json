@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "production_real_orders": "DISABLED",
+  "startup_mode": "PASSWORD_AT_STARTUP",
+  "poll_seconds": 15,
+  "health_path": "%ProgramData%\\bot-ea\\g20\\health.json",
+  "audit_path": "%ProgramData%\\bot-ea\\g20\\audit.jsonl",
+  "lock_marker_path": "%ProgramData%\\bot-ea\\g20\\lock-marker.json",
+  "forbidden_task_names": [
+    "Gold Global Orchestrator",
+    "Gold Global Shutdown Notice"
+  ],
+  "terminals": [
+    {
+      "profile_id": "GOLDI",
+      "terminal_path": "C:\\Program Files\\MetaTrader 5\\terminal64.exe",
+      "arguments": "",
+      "ea_binary_path": "%APPDATA%\\MetaQuotes\\Terminal\\REPLACE_GOLDI_TERMINAL_ID\\MQL5\\Experts\\bot-ea\\GoldEngine-GOLDi.ex5",
+      "ea_sha256": "REPLACE_WITH_CERTIFIED_GOLDI_SHA256",
+      "expected_account_login": 108098316,
+      "expected_account_server": "XMGlobal-MT5 5",
+      "expected_profile_fingerprint": "7af1d75e1be54ba4505b32cedcf53f4317dea0a90a2a0636510884d0d408c5b5",
+      "expected_symbol": "GOLD.i#",
+      "expected_trade_mode": 0,
+      "expected_order_authority": "ENABLED",
+      "data_path": "%APPDATA%\\MetaQuotes\\Terminal\\REPLACE_GOLDI_TERMINAL_ID",
+      "startup_chart_repair": true,
+      "spool_path": "%APPDATA%\\MetaQuotes\\Terminal\\Common\\Files\\bot-ea\\spool\\GOLDI.jsonl"
+    },
+    {
+      "profile_id": "GOLDM",
+      "terminal_path": "C:\\Program Files\\MetaTrader 5 GOLDm\\terminal64.exe",
+      "arguments": "",
+      "ea_binary_path": "%APPDATA%\\MetaQuotes\\Terminal\\REPLACE_GOLDM_TERMINAL_ID\\MQL5\\Experts\\bot-ea\\GoldEngine-GOLDm.ex5",
+      "ea_sha256": "REPLACE_WITH_CERTIFIED_GOLDM_SHA256",
+      "expected_account_login": 391425346,
+      "expected_account_server": "XMGlobal-MT5 14",
+      "expected_profile_fingerprint": "704b383f959298c8a1b1dd5c21665ffb7a022dc9831c7498e68cc37f607d4c24",
+      "expected_symbol": "GOLDm#",
+      "expected_trade_mode": 2,
+      "expected_order_authority": "DISABLED",
+      "data_path": "%APPDATA%\\MetaQuotes\\Terminal\\REPLACE_GOLDM_TERMINAL_ID",
+      "startup_chart_repair": false,
+      "spool_path": "%APPDATA%\\MetaQuotes\\Terminal\\Common\\Files\\bot-ea\\spool\\GOLDM.jsonl"
+    }
+  ],
+  "bridge": {
+    "enabled": false,
+    "executable_path": "%LocalAppData%\\Programs\\Python\\Python314\\pythonw.exe",
+    "arguments": "-m gold_event_bridge.cli --goldi-spool REPLACE --goldm-spool REPLACE --database REPLACE",
+    "token_secret_path": "%ProgramData%\\bot-ea\\g20\\telegram-token.dpapi",
+    "admin_chat_ids": [],
+    "health_path": "%ProgramData%\\bot-ea\\bridge\\health.json"
+  }
+}

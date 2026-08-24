@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "goal_id": "BOT-EA-LIVE-ENGINE-MQL5-DUAL-PROFILE-E2E",
+  "remote": "https://github.com/badaruddinl/bot-ea.git",
+  "remote_ref": "refs/remotes/origin/feature/global-orchestrator",
+  "commit": "b042d51cfc3b2ea1f9aa048054af03d79d79726e",
+  "parent": "02cf5dd342c85e70fe81524dfc678c873366e869",
+  "tree": "ff84bce1ae72cebe77b7bd10328e9343fb7e1df3",
+  "author_time": "2026-08-20T07:42:13+07:00",
+  "subject": "fix: isolate Telegram updates and scope menus",
+  "baseline_worktree": "E:\\mnt\\e\\luthfi\\project\\bot-ea-baseline-b042d51",
+  "baseline_detached": true,
+  "baseline_clean": true,
+  "integration_branch": "feature/mql5-dual-profile-engine",
+  "integration_worktree": "E:\\mnt\\e\\luthfi\\project\\bot-ea-mql5-integration",
+  "external_evidence_root": "E:\\luthfi\\project\\bot-ea-evidence\\BOT-EA-LIVE-ENGINE-MQL5-DUAL-PROFILE-E2E\\b042d51cfc3b2ea1f9aa048054af03d79d79726e",
+  "real_orders": "DISABLED"
+}

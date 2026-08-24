@@ -1,0 +1,28 @@
+{
+  "orchestrator_id": "GOLD_GLOBAL_ORCHESTRATOR",
+  "bot_token_env": "TELEGRAM_BOT_TOKEN",
+  "admin_chat_ids_env": "TELEGRAM_ADMIN_CHAT_IDS",
+  "fallback_chat_id_env": "TELEGRAM_CHAT_ID",
+  "poll_timeout_seconds": 20,
+  "supervision_interval_seconds": 5,
+  "heartbeat_seconds": 3600,
+  "restart_delay_seconds": 15,
+  "health_stale_seconds": 120,
+  "shutdown_grace_seconds": 15,
+  "state_path": "runtime_data/final/orchestrator/state.json",
+  "audit_path": "runtime_data/final/orchestrator/audit.jsonl",
+  "workers": {
+    "goldi": {
+      "config_path": "config/final/goldi/worker.json",
+      "enabled_on_first_boot": false,
+      "health_path": "runtime_data/final/goldi/health.json",
+      "log_path": "runtime_data/final/goldi/worker.log"
+    },
+    "goldm": {
+      "config_path": "config/final/goldm/worker.json",
+      "enabled_on_first_boot": false,
+      "health_path": "runtime_data/final/goldm/health.json",
+      "log_path": "runtime_data/final/goldm/worker.log"
+    }
+  }
+}

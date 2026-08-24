@@ -1,0 +1,12 @@
+{
+  "captured_at_utc": "2026-08-21T01:41:40.190376+00:00",
+  "captured_log": "goldm-strategy-tester.log",
+  "captured_log_sha256": "001b71107332b6451cd24f4349e71667918726f6cfb1708dcebe3ee7b39e103a",
+  "profile_id": "GOLDM",
+  "real_order_authority": "DISABLED",
+  "server": "XMGlobal-MT5 14",
+  "source_log": "C:\\Users\\badaruddinl\\AppData\\Roaming\\MetaQuotes\\Terminal\\D0E8209F77C8CF37AD8BF550E51FF075\\Tester\\logs\\20260821.log",
+  "source_log_sha256": "2328f335497bbefa08922e45709093874125715538497ed2fb11972bcede3566",
+  "symbol": "GOLDm#",
+  "timeframe": "M15"
+}

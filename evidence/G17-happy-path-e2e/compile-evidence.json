@@ -1,0 +1,23 @@
+{
+  "gate": "G17",
+  "metaeditor_build": 6090,
+  "result": "PASS",
+  "source_commit": "d7f6b8e",
+  "artifacts": {
+    "GoldEngine-GOLDi.ex5": "cf8ea0de6296c69a9f28291d955cebb4179eca12ddccb771a64a5e777ab7c9ba",
+    "GoldEngine-GOLDm.ex5": "238238cc8ad7f77cfed27b8f2ba839ef0c3b0db6a5a64257c2feece8beec232c",
+    "GoldEngineExecutionLifecycleHarness.ex5": "59e2b0ea046b6c4ec7a3bc88ddae756fd8923a75153c2728e2bb7929d8c2853a",
+    "GoldEngineExecutionLifecycleGoldmHarness.ex5": "76f8105aa8929f1716a1e57e579e94e2c1104d8f6acb3f6d45a6a3aa9d399eb1",
+    "GoldEngineGoldmRefusalHarness.ex5": "d29c07d6b026fa887a48f34af2fbab285ca5e60b5157b7f2ebc890341a92af8e"
+  },
+  "compile_logs": {
+    "GoldEngine-GOLDi.compile.log": "abab1a774c49f68339deb145b66d139d64ad41e2fd49fa681cae3a7f2fac4e6f",
+    "GoldEngine-GOLDm.compile.log": "a48e92acebfe570a9e0268c7e53e7b20ef665c9966816e2036f5680b034bfb4e",
+    "GoldEngineExecutionLifecycleHarness.compile.log": "0397c4f504f741f5cbc3b4e7ff81dc6b9e9aae8d84edb664115531b7de958742",
+    "GoldEngineExecutionLifecycleGoldmHarness.compile.log": "1ee8f5cd5f80397837a06800c93e5df0b03fbb257e7b65730f43adf5587f70e3",
+    "GoldEngineGoldmRefusalHarness.compile.log": "179fe7a51ddae97556e68fc12f88692906ab340c9fe23e636bf0ca59f85a5ba3"
+  },
+  "errors": 0,
+  "warnings": 0,
+  "production_real_order_authority": "DISABLED"
+}

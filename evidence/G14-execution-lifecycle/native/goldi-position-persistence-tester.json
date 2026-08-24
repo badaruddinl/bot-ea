@@ -1,0 +1,16 @@
+{
+  "captured_at_utc": "2026-08-21T05:09:07.308131+00:00",
+  "captured_log": "goldi-position-persistence-tester.log",
+  "captured_log_sha256": "036b94866b39419c58d4d0d3ee8775679951ff2e08e9dc6fd1c28f0e789c7382",
+  "order_authority": "DISABLED",
+  "profile_matrix": [
+    "GOLDI",
+    "GOLDM"
+  ],
+  "proof": "position",
+  "server": "XMGlobal-MT5 5",
+  "source_log": "E:\\mnt\\e\\luthfi\\project\\bot-ea-mql5-integration\\.mt5-g12-portable\\Tester\\logs\\20260821.log",
+  "source_log_sha256": "9131914124ed01cba62a65b3acd98bb0f7e074f9c292b9a225b412e6962531a0",
+  "symbol": "GOLD.i#",
+  "timeframe": "M15"
+}

@@ -1,0 +1,19 @@
+{
+  "gate": "G14",
+  "metaeditor_build": 6090,
+  "result": "PASS",
+  "source_commit": "4ae8ec7",
+  "artifacts": {
+    "GoldEngine-GOLDi.ex5": "081d18a5a46d30a29d250c4413b4f069a7ef1be820bfaccbed2af08b1521556e",
+    "GoldEngine-GOLDm.ex5": "b39e9ad28a0222611b226a516e63288105f5726e7afa3593400dd6554e61a7e0",
+    "GoldEnginePositionPersistenceHarness.ex5": "3609a0fd282a6dcab58ffb9a66508ef7fa22d9bcc3837dc3dfd1439426bfa225"
+  },
+  "compile_logs": {
+    "GoldEngine-GOLDi.compile.log": "3e7f4d4fa29dcd749242e0d8532c52fe065f9ea1dd14ddefe591b0d3cdfa972b",
+    "GoldEngine-GOLDm.compile.log": "754f3d65127278d33dcb222cae7d89da8ee13d3f4d411ea4f1a2e09bf9dd3d5b",
+    "GoldEnginePositionPersistenceHarness.compile.log": "de68d2c2a1c8993f58456b208fb81070a3412c7388536dbc6afeed1af1396028"
+  },
+  "errors": 0,
+  "warnings": 0,
+  "real_order_authority": "DISABLED"
+}
