@@ -8,6 +8,7 @@
 #include "GoldEngineBearPersistence.mqh"
 #include "GoldEngineExecutionBroker.mqh"
 #include "GoldEnginePositionPersistence.mqh"
+#include "GoldEnginePositionLifecycle.mqh"
 #include "GoldEngineOutbox.mqh"
 #include "GoldEngineInstanceLease.mqh"
 #include "GoldEngineScheduler.mqh"
@@ -157,7 +158,11 @@ private:
                                 const datetime closed_at,
                                 const double close_price,
                                 const double closed_volume,
-                                const double profit_loss) const
+                                const double remaining_volume,
+                                const double profit_loss,
+                                const ulong deal_ticket,
+                                const string close_reason,
+                                const bool partial) const
      {
       const double risk=MathAbs(position.entry_price-position.stop_loss);
       const double price_move=side==ENGINE_SIDE_BUY ?
@@ -168,18 +173,43 @@ private:
       const double rr=risk>0.0 ?
          MathAbs(position.take_profit-position.entry_price)/risk : 0.0;
       return StringFormat(
-         "{\"strategy\":\"%s\",\"side\":\"%s\","
+         "{\"payload_version\":2,\"strategy\":\"%s\",\"side\":\"%s\","
          "\"entry\":%.8f,\"stop_loss\":%.8f,\"take_profit\":%.8f,"
-         "\"close_price\":%.8f,\"volume\":%.8f,\"rr\":%.8f,"
+         "\"close_price\":%.8f,\"closed_volume\":%.8f,"
+         "\"remaining_volume\":%.8f,\"rr\":%.8f,"
          "\"profit_loss\":%.8f,\"realized_r\":%.8f,"
+         "\"deal_id\":%I64u,\"close_reason\":\"%s\","
+         "\"partial\":%s,"
          "\"duration_seconds\":%I64d,\"balance\":%.2f,\"equity\":%.2f,"
          "\"server_time_text\":\"%s\",\"vm_time_text\":\"%s\"}",
          StrategyText(position.signal_id),SideText(side),
          position.entry_price,position.stop_loss,position.take_profit,
-         close_price,closed_volume,rr,profit_loss,realized_r,
+         close_price,closed_volume,remaining_volume,rr,profit_loss,realized_r,
+         deal_ticket,OutboxJsonEscape(close_reason),partial ? "true" : "false",
          duration_seconds,AccountInfoDouble(ACCOUNT_BALANCE),
          AccountInfoDouble(ACCOUNT_EQUITY),
          OutboxJsonEscape(TimeToString(closed_at,TIME_DATE|TIME_SECONDS)),
+         OutboxJsonEscape(TimeToString(TimeLocal(),TIME_DATE|TIME_SECONDS)));
+     }
+
+   string RecoveredPositionPayload(const ExpectedPositionState &position,
+                                   const ManagedPosition &actual,
+                                   const datetime server_time) const
+     {
+      const double risk=MathAbs(actual.entry_price-actual.stop_loss);
+      const double reward=MathAbs(actual.take_profit-actual.entry_price);
+      const double rr=risk>0.0 ? reward/risk : 0.0;
+      return StringFormat(
+         "{\"payload_version\":2,\"strategy\":\"%s\",\"side\":\"%s\","
+         "\"entry\":%.8f,\"stop_loss\":%.8f,\"take_profit\":%.8f,"
+         "\"volume\":%.8f,\"rr\":%.8f,\"recovery_kind\":\"RESTART\","
+         "\"balance\":%.2f,\"equity\":%.2f,"
+         "\"server_time_text\":\"%s\",\"vm_time_text\":\"%s\"}",
+         StrategyText(position.signal_id),SideText(actual.side),
+         actual.entry_price,actual.stop_loss,actual.take_profit,
+         actual.volume,rr,AccountInfoDouble(ACCOUNT_BALANCE),
+         AccountInfoDouble(ACCOUNT_EQUITY),
+         OutboxJsonEscape(TimeToString(server_time,TIME_DATE|TIME_SECONDS)),
          OutboxJsonEscape(TimeToString(TimeLocal(),TIME_DATE|TIME_SECONDS)));
      }
 
@@ -225,6 +255,7 @@ private:
       PositionStateReset(m_expected_position);
       m_expected_position.active=true;
       m_expected_position.ticket=position.ticket;
+      m_expected_position.identifier=position.identifier;
       m_expected_position.signal_id=plan.signal_id;
       m_expected_position.volume=position.volume;
       m_expected_position.entry_price=position.entry_price;
@@ -344,7 +375,8 @@ private:
          ExecutionReceiptPayload(plan),plan.setup_id,plan.signal_id);
      }
 
-   bool RecoverOwnedPositions(const datetime server_time)
+   bool RecoverOwnedPositions(const datetime server_time,
+                              const bool announce_recovery=false)
      {
       string reason="";
       if(!m_execution_broker.DiscoverOwnedPositions(
@@ -396,8 +428,28 @@ private:
             SetEvent(ENGINE_EVENT_ERROR,server_time,reason);
             return true;
            }
+         if(m_expected_position.identifier==0 ||
+            m_expected_position.ticket!=m_owned_positions[0].ticket)
+           {
+            m_expected_position.ticket=m_owned_positions[0].ticket;
+            m_expected_position.identifier=m_owned_positions[0].identifier;
+            if(!m_position_store.Save(m_expected_position))
+              {
+               m_execution_broker.DisableAuthority();
+               SetEvent(ENGINE_EVENT_ERROR,server_time,
+                  "POSITION_STATE_MIGRATION_FAILED");
+               return false;
+              }
+           }
          m_state.phase=ENGINE_PHASE_POSITION_OPEN;
-         SetEvent(ENGINE_EVENT_POSITION,server_time,"POSITION_RECOVERED");
+         if(announce_recovery)
+           {
+            const string payload=RecoveredPositionPayload(
+               m_expected_position,m_owned_positions[0],server_time);
+            SetEvent(ENGINE_EVENT_POSITION,server_time,"POSITION_RECOVERED",
+               payload,"",m_expected_position.signal_id,"",
+               IntegerToString((long)m_expected_position.ticket));
+           }
         }
       else
         {
@@ -412,6 +464,87 @@ private:
            }
          m_state.phase=ENGINE_PHASE_IDLE;
         }
+      return true;
+     }
+
+   bool ReconcileClosingDeal(const ExpectedPositionState &previous,
+                             const EngineSide side,
+                             const datetime opened_at,
+                             const datetime closed_at,
+                             const double close_price,
+                             const double closed_volume,
+                             const double profit_loss,
+                             const ulong deal_ticket,
+                             const ulong order_ticket,
+                             const string close_reason)
+     {
+      string reason="";
+      if(!m_execution_broker.DiscoverOwnedPositions(
+            m_owned_positions,m_ownership_conflict,reason))
+        {
+         SetEvent(ENGINE_EVENT_ERROR,closed_at,reason);
+         return false;
+        }
+      if(m_ownership_conflict || ArraySize(m_owned_positions)>1)
+        {
+         m_execution_broker.DisableAuthority();
+         m_ownership_conflict=true;
+         SetEvent(ENGINE_EVENT_ERROR,closed_at,
+            "POSITION_CLOSE_RECONCILIATION_AMBIGUOUS");
+         return false;
+        }
+
+      const bool partial=ArraySize(m_owned_positions)==1;
+      double remaining_volume=0.0;
+      if(partial)
+        {
+         const ManagedPosition actual=m_owned_positions[0];
+         if(actual.identifier!=previous.identifier)
+           {
+            m_execution_broker.DisableAuthority();
+            m_ownership_conflict=true;
+            SetEvent(ENGINE_EVENT_ERROR,closed_at,
+               "POSITION_CLOSE_IDENTIFIER_MISMATCH");
+            return false;
+           }
+         m_expected_position=previous;
+         m_expected_position.active=true;
+         m_expected_position.ticket=actual.ticket;
+         m_expected_position.identifier=actual.identifier;
+         m_expected_position.volume=actual.volume;
+         m_expected_position.entry_price=actual.entry_price;
+         m_expected_position.stop_loss=actual.stop_loss;
+         m_expected_position.take_profit=actual.take_profit;
+         remaining_volume=actual.volume;
+         if(!m_position_store.Save(m_expected_position))
+           {
+            m_execution_broker.DisableAuthority();
+            SetEvent(ENGINE_EVENT_ERROR,closed_at,
+               "POSITION_PARTIAL_STATE_SAVE_FAILED");
+            return false;
+           }
+         m_state.phase=ENGINE_PHASE_POSITION_OPEN;
+        }
+      else
+        {
+         if(!m_position_store.Clear(m_expected_position))
+           {
+            m_execution_broker.DisableAuthority();
+            SetEvent(ENGINE_EVENT_ERROR,closed_at,
+               "POSITION_STATE_CLEAR_FAILED");
+            return false;
+           }
+         m_state.phase=ENGINE_PHASE_IDLE;
+        }
+      m_position_state_status=POSITION_STATE_VALID;
+
+      const string payload=ClosedPositionPayload(
+         previous,side,opened_at,closed_at,close_price,closed_volume,
+         remaining_volume,profit_loss,deal_ticket,close_reason,partial);
+      SetEvent(ENGINE_EVENT_POSITION,closed_at,
+         PositionCloseEventReason(close_reason,partial),payload,"",previous.signal_id,
+         IntegerToString((long)order_ticket),
+         IntegerToString((long)previous.identifier));
       return true;
      }
 
@@ -460,10 +593,15 @@ private:
             EmitTransition("ORDER_SUBMITTED",setup_id,signal_id,order_id,
                position_id,payload);
          else if(reason=="POSITION_MODIFIED") EmitTransition("POSITION_MODIFIED");
-         else if(reason=="POSITION_CLOSED")
+         else if(StringFind(reason,"POSITION_CLOSED_")==0)
             EmitTransition("POSITION_CLOSED",setup_id,signal_id,order_id,
                position_id,payload);
-         else if(reason=="POSITION_RECOVERED") EmitTransition("RECOVERY_COMPLETED");
+         else if(StringFind(reason,"POSITION_PARTIALLY_CLOSED_")==0)
+            EmitTransition("POSITION_PARTIALLY_CLOSED",setup_id,signal_id,
+               order_id,position_id,payload);
+         else if(reason=="POSITION_RECOVERED")
+            EmitTransition("RECOVERY_COMPLETED",setup_id,signal_id,order_id,
+               position_id,payload);
         }
       else if(type==ENGINE_EVENT_ERROR)
          EmitTransition("ENGINE_ERROR",setup_id,signal_id,order_id,
@@ -826,7 +964,7 @@ public:
          m_revised_detector.SeedWarmup(
             m_m5_history[m5_count-1].open_time);
       SetEvent(ENGINE_EVENT_RUNTIME_READY,TimeCurrent(),"WARMUP_COMPLETE");
-      if(!RecoverOwnedPositions(TimeCurrent()))
+      if(!RecoverOwnedPositions(TimeCurrent(),true))
          return INIT_FAILED;
       // Health evidence must remain live while the market is closed and no
       // ticks arrive. The timer only emits observability events; strategy and
@@ -949,6 +1087,7 @@ public:
       double close_price=0.0;
       double closed_volume=0.0;
       double profit_loss=0.0;
+      string close_reason="";
       if(previous.active &&
          transaction.type==TRADE_TRANSACTION_DEAL_ADD &&
          transaction.deal>0 && HistoryDealSelect(transaction.deal))
@@ -957,10 +1096,11 @@ public:
             transaction.deal,DEAL_ENTRY);
          const string deal_symbol=HistoryDealGetString(
             transaction.deal,DEAL_SYMBOL);
-         const long deal_magic=HistoryDealGetInteger(
-            transaction.deal,DEAL_MAGIC);
+         const ulong deal_position_identifier=(ulong)HistoryDealGetInteger(
+            transaction.deal,DEAL_POSITION_ID);
          closing_deal=(entry==DEAL_ENTRY_OUT || entry==DEAL_ENTRY_OUT_BY) &&
-            deal_symbol==m_profile.symbol && deal_magic==m_profile.magic;
+            deal_symbol==m_profile.symbol && PositionExitBelongsToExpected(
+               previous,transaction.position,deal_position_identifier);
          if(closing_deal)
            {
             closed_at=(datetime)HistoryDealGetInteger(transaction.deal,DEAL_TIME);
@@ -970,21 +1110,20 @@ public:
                HistoryDealGetDouble(transaction.deal,DEAL_SWAP)+
                HistoryDealGetDouble(transaction.deal,DEAL_COMMISSION)+
                HistoryDealGetDouble(transaction.deal,DEAL_FEE);
+            close_reason=PositionCloseReasonCode((ENUM_DEAL_REASON)HistoryDealGetInteger(
+               transaction.deal,DEAL_REASON));
            }
         }
 
-      RecoverOwnedPositions(TimeCurrent());
-      if(closing_deal && previous.active &&
-         !m_expected_position.active && ArraySize(m_owned_positions)==0)
+      if(closing_deal)
         {
-         const string close_payload=ClosedPositionPayload(
+         ReconcileClosingDeal(
             previous,previous_side,opened_at,closed_at,close_price,
-            closed_volume,profit_loss);
-         SetEvent(ENGINE_EVENT_POSITION,closed_at,"POSITION_CLOSED",
-            close_payload,"",previous.signal_id,
-            IntegerToString((long)transaction.order),
-            IntegerToString((long)previous.ticket));
+            closed_volume,profit_loss,transaction.deal,transaction.order,
+            close_reason);
+         return;
         }
+      RecoverOwnedPositions(TimeCurrent(),false);
      }
 
    bool ModifyOwnedPosition(const ulong ticket,
@@ -1010,6 +1149,7 @@ public:
       const ManagedPosition position=m_owned_positions[0];
       m_expected_position.active=true;
       m_expected_position.ticket=position.ticket;
+      m_expected_position.identifier=position.identifier;
       m_expected_position.volume=position.volume;
       m_expected_position.entry_price=position.entry_price;
       m_expected_position.stop_loss=position.stop_loss;
@@ -1031,16 +1171,9 @@ public:
       if(m_ownership_conflict ||
          !m_execution_broker.CloseOwnedPosition(ticket,receipt,reason))
          return false;
-      if(!m_position_store.Clear(m_expected_position))
-        {
-         m_execution_broker.DisableAuthority();
-         SetEvent(ENGINE_EVENT_ERROR,TimeCurrent(),
-            "POSITION_STATE_CLEAR_FAILED");
-         return false;
-        }
-      ArrayResize(m_owned_positions,0);
-      m_state.phase=ENGINE_PHASE_IDLE;
-      SetEvent(ENGINE_EVENT_POSITION,TimeCurrent(),"POSITION_CLOSED");
+      // The actual DEAL_ADD transaction is the sole lifecycle authority for
+      // clearing state and emitting close telemetry. This keeps EA, SL/TP,
+      // and manually initiated closes on the same broker-confirmed path.
       return true;
      }
 

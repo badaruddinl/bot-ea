@@ -149,6 +149,7 @@ void OnTick(void)
    ExpectedPositionState expected;PositionStateReset(expected);
    expected.active=true;
    expected.ticket=position.ticket;
+   expected.identifier=position.identifier;
    expected.signal_id=plan.signal_id;
    expected.volume=position.volume;
    expected.entry_price=position.entry_price;

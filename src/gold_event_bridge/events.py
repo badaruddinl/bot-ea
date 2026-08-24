@@ -41,6 +41,7 @@ class EngineEventEnvelope:
             "ORDER_SUBMITTED",
             "POSITION_OPENED",
             "POSITION_MODIFIED",
+            "POSITION_PARTIALLY_CLOSED",
             "POSITION_CLOSED",
             "ENGINE_ERROR",
             "RECOVERY_COMPLETED",
