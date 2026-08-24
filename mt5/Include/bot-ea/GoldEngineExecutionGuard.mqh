@@ -169,7 +169,14 @@ bool ValidateExecution(const SignalPlan &plan,
    if(!quote_ok || !side_ok || !ExecutionFinitePositive(plan.risk_price))
       ExecutionReject(result.reject_mask,EXECUTION_REJECT_GEOMETRY);
    else
-      result.drift_r=MathAbs(executable-plan.planned_entry)/plan.risk_price;
+      // Signal geometry comes from MT5 bars (Bid).  BUY execution uses Ask,
+      // but spread is validated independently below and must not be counted a
+      // second time as price drift.
+      {
+       const double drift_reference=(plan.profile_id=="GOLDI" ?
+                                     context.quote.bid : executable);
+       result.drift_r=MathAbs(drift_reference-plan.planned_entry)/plan.risk_price;
+      }
 
    if(plan.profile_id!=profile.profile_id ||
       plan.profile_version!=profile.profile_version ||

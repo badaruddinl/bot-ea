@@ -193,6 +193,59 @@ def test_profile_policy_age_drift_spread_and_invalidation_guards() -> None:
     )
 
 
+def test_buy_spread_is_not_double_counted_as_market_drift() -> None:
+    value = replace(
+        plan("GOLDI"),
+        stop=D("4399.00"),
+        planned_risk=D("1.00"),
+        invalidation=D("4399.00"),
+    )
+    base = context("GOLDI")
+    spread_only = replace(
+        base,
+        quote=Tick(base.quote.time, D("4400.00"), D("4400.20")),
+    )
+
+    result = validate_execution(value, profile("GOLDI"), policy("GOLDI"), spread_only)
+
+    assert result.allowed is True
+    assert result.drift_r == D("0")
+    assert result.order is not None
+    assert result.order.price == D("4400.20")
+
+
+def test_bid_movement_still_triggers_drift_guard_for_buy() -> None:
+    value = replace(
+        plan("GOLDI"),
+        stop=D("4399.00"),
+        planned_risk=D("1.00"),
+        invalidation=D("4399.00"),
+    )
+    base = context("GOLDI")
+    moved = replace(
+        base,
+        quote=Tick(base.quote.time, D("4400.20"), D("4400.40")),
+    )
+
+    assert_rejected(ExecutionReject.DRIFT, value, moved)
+
+
+def test_goldm_drift_semantics_remain_unchanged() -> None:
+    value = replace(
+        plan("GOLDM"),
+        stop=D("4399.00"),
+        planned_risk=D("1.00"),
+        invalidation=D("4399.00"),
+    )
+    base = context("GOLDM")
+    spread_only = replace(
+        base,
+        quote=Tick(base.quote.time, D("4400.00"), D("4400.20")),
+    )
+
+    assert_rejected(ExecutionReject.DRIFT, value, spread_only)
+
+
 def test_identity_exposure_margin_duplicate_and_broker_guards() -> None:
     value = plan("GOLDI")
     base = context("GOLDI")

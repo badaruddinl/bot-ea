@@ -70,12 +70,23 @@ def test_guard_contains_every_reference_reject_and_no_mutation_authority() -> No
         assert forbidden not in value
 
 
+def test_guard_uses_bid_reference_and_guards_spread_separately() -> None:
+    value = GUARD.read_text(encoding="utf-8")
+
+    assert 'plan.profile_id=="GOLDI"' in value
+    assert "context.quote.bid : executable" in value
+    assert "MathAbs(drift_reference-plan.planned_entry)/plan.risk_price" in value
+    assert "MathAbs(executable-plan.planned_entry)/plan.risk_price" not in value
+    assert "spread>profile.maximum_spread" in value
+
+
 def test_harness_is_dual_profile_and_asserts_all_guard_classes() -> None:
     value = HARNESS.read_text(encoding="utf-8")
     assert 'TestProfile("GOLDI")' in value
     assert 'TestProfile("GOLDM")' in value
     assert "reasons=18" in value
     assert "structural_geometry=true" in value
+    assert "spread_reference=true" in value
     assert "order_authority=DISABLED" in value
     assert value.count("AssertRejected(") >= 19
     for forbidden in ("OrderSend", "CTrade", "PositionModify", "PositionClose"):

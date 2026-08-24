@@ -215,7 +215,11 @@ def validate_execution(
 ) -> ExecutionValidation:
     reasons: list[ExecutionReject] = []
     executable = context.quote.ask if plan.side is Side.BUY else context.quote.bid
-    drift_r = abs(executable - plan.planned_entry) / plan.planned_risk
+    # Strategy entries are derived from MT5 bars, whose reference price is Bid.
+    # Spread has its own independent guard and must not be counted again as
+    # market drift for BUY orders (which execute at Ask).
+    drift_reference = context.quote.bid if plan.profile_id == "GOLDI" else executable
+    drift_r = abs(drift_reference - plan.planned_entry) / plan.planned_risk
 
     if (
         plan.profile_id != profile.profile_id
