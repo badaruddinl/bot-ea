@@ -44,8 +44,8 @@ def test_export_copies_only_exact_certified_profile_binaries(tmp_path: Path) -> 
 
     assert receipt["status"] == "PASS"
     assert receipt["production_real_orders"] == "DISABLED"
-    assert (tmp_path / "release" / "GoldEngine-GOLDi-v1.1.0.ex5").read_bytes() == b"goldi"
-    assert (tmp_path / "release" / "GoldEngine-GOLDm-v1.1.0.ex5").read_bytes() == b"goldm"
+    assert (tmp_path / "release" / "GoldEngine-GOLDi-v1.1.1.ex5").read_bytes() == b"goldi"
+    assert (tmp_path / "release" / "GoldEngine-GOLDm-v1.1.1.ex5").read_bytes() == b"goldm"
     assert (tmp_path / "release" / "vm-binary-export.sha256").is_file()
 
 

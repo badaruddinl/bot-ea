@@ -69,8 +69,15 @@ struct ExecutionValidation
    bool           allowed;
    ulong          reject_mask;
    string         primary_reason;
-   double         drift_r;
+   double         adverse_drift_r;
+   double         maximum_adverse_drift_r;
    double         executable_price;
+   double         quote_bid;
+   double         quote_ask;
+   long           quote_time_msc;
+   double         actual_risk;
+   double         actual_reward;
+   double         actual_rr;
    ExecutionOrder order;
   };
 
@@ -89,7 +96,7 @@ string ExecutionRejectName(const ExecutionRejectFlag flag)
    if(flag==EXECUTION_REJECT_PROFILE) return "PROFILE_MISMATCH";
    if(flag==EXECUTION_REJECT_POLICY) return "POLICY_MISMATCH";
    if(flag==EXECUTION_REJECT_AGE) return "SIGNAL_AGE_INVALID";
-   if(flag==EXECUTION_REJECT_DRIFT) return "ENTRY_DRIFT_EXCEEDED";
+   if(flag==EXECUTION_REJECT_DRIFT) return "EXECUTABLE_RR_BELOW_STRATEGY_MIN";
    if(flag==EXECUTION_REJECT_SPREAD) return "SPREAD_EXCEEDED";
    if(flag==EXECUTION_REJECT_INVALIDATION) return "SETUP_INVALIDATED";
    if(flag==EXECUTION_REJECT_ACCOUNT) return "ACCOUNT_MISMATCH";
@@ -154,8 +161,15 @@ bool ValidateExecution(const SignalPlan &plan,
    result.allowed=false;
    result.reject_mask=0;
    result.primary_reason="";
-   result.drift_r=0.0;
+   result.adverse_drift_r=0.0;
+   result.maximum_adverse_drift_r=0.0;
    result.executable_price=0.0;
+   result.quote_bid=context.quote.bid;
+   result.quote_ask=context.quote.ask;
+   result.quote_time_msc=context.quote.time_msc;
+   result.actual_risk=0.0;
+   result.actual_reward=0.0;
+   result.actual_rr=0.0;
    ExecutionZeroOrder(result.order);
 
    const bool quote_ok=context.quote.time_msc>0 &&
@@ -166,16 +180,31 @@ bool ValidateExecution(const SignalPlan &plan,
    const double executable=(plan.side==ENGINE_SIDE_BUY ?
                             context.quote.ask : context.quote.bid);
    result.executable_price=executable;
-   if(!quote_ok || !side_ok || !ExecutionFinitePositive(plan.risk_price))
+   if(!quote_ok || !side_ok || !ExecutionFinitePositive(plan.risk_price) ||
+      !ExecutionFinitePositive(plan.minimum_executable_rr))
       ExecutionReject(result.reject_mask,EXECUTION_REJECT_GEOMETRY);
    else
-      // Signal geometry comes from MT5 bars (Bid).  BUY execution uses Ask,
-      // but spread is validated independently below and must not be counted a
-      // second time as price drift.
       {
-       const double drift_reference=(plan.profile_id=="GOLDI" ?
-                                     context.quote.bid : executable);
-       result.drift_r=MathAbs(drift_reference-plan.planned_entry)/plan.risk_price;
+       result.actual_risk=(plan.side==ENGINE_SIDE_BUY ?
+                           executable-plan.stop_loss :
+                           plan.stop_loss-executable);
+       result.actual_reward=(plan.side==ENGINE_SIDE_BUY ?
+                             plan.take_profit-executable :
+                             executable-plan.take_profit);
+       if(result.actual_risk>0.0 && result.actual_reward>0.0)
+          result.actual_rr=result.actual_reward/result.actual_risk;
+       const double adverse_distance=(plan.side==ENGINE_SIDE_BUY ?
+          MathMax(0.0,executable-plan.planned_entry) :
+          MathMax(0.0,plan.planned_entry-executable));
+       result.adverse_drift_r=adverse_distance/plan.risk_price;
+       const double rr_boundary=
+          (plan.take_profit+plan.minimum_executable_rr*plan.stop_loss)/
+          (1.0+plan.minimum_executable_rr);
+       const double maximum_adverse_distance=(plan.side==ENGINE_SIDE_BUY ?
+          MathMax(0.0,rr_boundary-plan.planned_entry) :
+          MathMax(0.0,plan.planned_entry-rr_boundary));
+       result.maximum_adverse_drift_r=
+          maximum_adverse_distance/plan.risk_price;
       }
 
    if(plan.profile_id!=profile.profile_id ||
@@ -183,8 +212,7 @@ bool ValidateExecution(const SignalPlan &plan,
       plan.profile_fingerprint!=profile.profile_fingerprint)
       ExecutionReject(result.reject_mask,EXECUTION_REJECT_PROFILE);
 
-   if(plan.maximum_drift_r!=profile.maximum_drift_r ||
-      plan.maximum_spread!=profile.maximum_spread)
+   if(plan.maximum_spread!=profile.maximum_spread)
       ExecutionReject(result.reject_mask,EXECUTION_REJECT_POLICY);
 
    const datetime quote_time=(datetime)(context.quote.time_msc/1000);
@@ -193,8 +221,9 @@ bool ValidateExecution(const SignalPlan &plan,
       plan.valid_until<plan.entry_ready_at)
       ExecutionReject(result.reject_mask,EXECUTION_REJECT_AGE);
 
-   if(!MathIsValidNumber(result.drift_r) ||
-      result.drift_r>profile.maximum_drift_r)
+   if(result.actual_risk>0.0 && result.actual_reward>0.0 &&
+      (!MathIsValidNumber(result.actual_rr) ||
+       result.actual_rr<plan.minimum_executable_rr))
       ExecutionReject(result.reject_mask,EXECUTION_REJECT_DRIFT);
 
    const double spread=context.quote.ask-context.quote.bid;
@@ -231,6 +260,9 @@ bool ValidateExecution(const SignalPlan &plan,
 
    const double minimum_distance=
       MathMax(context.stops_level_points,context.freeze_level_points)*context.point;
+   const double planned_risk=MathAbs(plan.planned_entry-plan.stop_loss);
+   const double planned_reward=MathAbs(plan.take_profit-plan.planned_entry);
+   const double planned_rr=planned_risk>0.0 ? planned_reward/planned_risk : 0.0;
    const bool constraints_ok=plan.executable && context.trade_enabled &&
       context.tick_size==profile.tick_size && plan.tick_size==profile.tick_size &&
       ExecutionFinitePositive(context.volume_minimum) &&
@@ -241,6 +273,8 @@ bool ValidateExecution(const SignalPlan &plan,
       ExecutionAligned(plan.planned_entry,context.tick_size) &&
       ExecutionAligned(plan.stop_loss,context.tick_size) &&
       ExecutionAligned(plan.take_profit,context.tick_size) &&
+      MathAbs(planned_risk-plan.risk_price)<=context.tick_size/2.0 &&
+      planned_rr>=plan.minimum_executable_rr &&
       MathAbs(executable-plan.stop_loss)>=minimum_distance &&
       MathAbs(plan.take_profit-executable)>=minimum_distance;
    if(!constraints_ok)

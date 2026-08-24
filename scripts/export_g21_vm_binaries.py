@@ -8,8 +8,8 @@ from pathlib import Path
 from typing import cast
 
 _RELEASE_NAMES = {
-    "GOLDI": "GoldEngine-GOLDi-v1.1.0.ex5",
-    "GOLDM": "GoldEngine-GOLDm-v1.1.0.ex5",
+    "GOLDI": "GoldEngine-GOLDi-v1.1.1.ex5",
+    "GOLDM": "GoldEngine-GOLDm-v1.1.1.ex5",
 }
 
 

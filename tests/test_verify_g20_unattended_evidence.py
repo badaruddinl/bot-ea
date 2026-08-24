@@ -212,7 +212,7 @@ def test_real_disabled_profile_allows_explicit_manual_intervention_safety_event(
     ]
 
 
-@pytest.mark.parametrize("reason", ["ENTRY_DRIFT_EXCEEDED", "POSITION_STATE_INVALID"])
+@pytest.mark.parametrize("reason", ["EXECUTABLE_RR_BELOW_STRATEGY_MIN", "POSITION_STATE_INVALID"])
 def test_real_disabled_profile_rejects_unlisted_engine_errors(reason: str) -> None:
     config, preboot, postboot = _autologon_evidence()
     goldm = next(item for item in config["terminals"] if item["profile_id"] == "GOLDM")

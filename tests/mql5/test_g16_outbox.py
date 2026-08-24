@@ -27,6 +27,7 @@ def test_runtime_emits_transitions_but_never_writes_spool_on_every_tick() -> Non
         "ENGINE_STARTED",
         "PROFILE_VALIDATED",
         "ENTRY_READY",
+        "ENTRY_REJECTED",
         "ORDER_SUBMITTED",
         "POSITION_OPENED",
         "POSITION_MODIFIED",
@@ -42,7 +43,8 @@ def test_runtime_emits_transitions_but_never_writes_spool_on_every_tick() -> Non
 def test_native_harness_proves_profile_routing_without_order_authority() -> None:
     source = HARNESS.read_text(encoding="utf-8")
 
-    assert "goldi_audience=goldi_approved" in source
+    assert "goldi_entry_ready_audience=internal" in source
+    assert "goldi_open_close_audience=goldi_approved" in source
     assert "goldm_audience=admin_only" in source
     assert "order_authority=DISABLED" in source
     assert "G16_OUTBOX" in source

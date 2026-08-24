@@ -67,6 +67,15 @@ private:
              (side==ENGINE_SIDE_SELL ? "SELL" : "UNKNOWN");
      }
 
+   double RevisedMinimumExecutableRr(const RevisedDecision &decision) const
+     {
+      if(decision.entry_profile=="SCALPER")
+         return 0.50;
+      if(decision.mode==REVISED_MODE_MOMENTUM)
+         return 1.50;
+      return 1.00;
+     }
+
    string StrategyText(const string identity) const
      {
       return StringFind(identity,":REVISED:")>=0 ? "REVISED" : "BEAR";
@@ -77,35 +86,69 @@ private:
                             const double actual_volume,
                             const bool include_latency=false) const
      {
-      const double risk=MathAbs(plan.planned_entry-plan.stop_loss);
-      const double reward=MathAbs(plan.take_profit-plan.planned_entry);
+      const double risk=MathAbs(actual_entry-plan.stop_loss);
+      const double reward=MathAbs(plan.take_profit-actual_entry);
       const double rr=risk>0.0 ? reward/risk : 0.0;
+      const datetime payload_server_time=
+         include_latency && m_last_execution_receipt.quote_time_msc>0 ?
+         (datetime)(m_last_execution_receipt.quote_time_msc/1000) :
+         plan.entry_ready_at;
       string payload=StringFormat(
-         "{\"strategy\":\"%s\",\"side\":\"%s\","
+         "{\"payload_version\":2,\"strategy\":\"%s\",\"side\":\"%s\","
          "\"planned_entry\":%.8f,\"entry\":%.8f,"
          "\"stop_loss\":%.8f,\"take_profit\":%.8f,"
-         "\"risk_price\":%.8f,\"rr\":%.8f,\"volume\":%.8f,"
+         "\"risk_price\":%.8f,\"rr\":%.8f,"
+         "\"minimum_executable_rr\":%.8f,\"volume\":%.8f,"
          "\"balance\":%.2f,\"equity\":%.2f,"
          "\"server_time_text\":\"%s\",\"vm_time_text\":\"%s\"}",
          StrategyText(plan.setup_id),SideText(plan.side),
          plan.planned_entry,actual_entry,plan.stop_loss,plan.take_profit,
-         risk,rr,actual_volume,
+         risk,rr,plan.minimum_executable_rr,actual_volume,
          AccountInfoDouble(ACCOUNT_BALANCE),
          AccountInfoDouble(ACCOUNT_EQUITY),
          OutboxJsonEscape(TimeToString(
-            plan.entry_ready_at,TIME_DATE|TIME_SECONDS)),
+            payload_server_time,TIME_DATE|TIME_SECONDS)),
          OutboxJsonEscape(TimeToString(TimeLocal(),TIME_DATE|TIME_SECONDS)));
       if(!include_latency)
          return payload;
       return StringSubstr(payload,0,StringLen(payload)-1)+StringFormat(
-         ",\"bar_close_to_detection_ms\":%I64u,"
+         ",\"quote_time_msc\":%I64d,\"quote_bid\":%.8f,"
+         "\"quote_ask\":%.8f,\"requested_entry\":%.8f,"
+         "\"actual_risk\":%.8f,\"actual_reward\":%.8f,"
+         "\"actual_rr\":%.8f,\"adverse_drift_r\":%.8f,"
+         "\"maximum_adverse_drift_r\":%.8f,"
+         "\"preflight_to_submit_us\":%I64u,"
+         "\"bar_close_to_detection_ms\":%I64u,"
          "\"detection_to_decision_us\":%I64u,"
          "\"entry_ready_to_submit_us\":%I64u,"
          "\"submit_to_broker_ack_us\":%I64u}",
+         m_last_execution_receipt.quote_time_msc,
+         m_last_execution_receipt.quote_bid,
+         m_last_execution_receipt.quote_ask,
+         m_last_execution_receipt.requested_price,
+         m_last_execution_receipt.actual_risk,
+         m_last_execution_receipt.actual_reward,
+         m_last_execution_receipt.actual_rr,
+         m_last_execution_receipt.adverse_drift_r,
+         m_last_execution_receipt.maximum_adverse_drift_r,
+         m_last_execution_receipt.preflight_to_submit_us,
          m_last_bar_close_to_detection_ms,
          m_last_detection_to_decision_us,
          m_last_entry_ready_to_submit_us,
          m_last_execution_receipt.submit_to_broker_ack_us);
+     }
+
+   string ExecutionReceiptPayload(const SignalPlan &plan) const
+     {
+      const double price=m_last_execution_receipt.requested_price>0.0 ?
+         m_last_execution_receipt.requested_price : plan.planned_entry;
+      string payload=SignalPlanPayload(plan,price,plan.volume,true);
+      return StringSubstr(payload,0,StringLen(payload)-1)+StringFormat(
+         ",\"reject_mask\":%I64u,\"broker_retcode\":%u,"
+         "\"execution_reason\":\"%s\"}",
+         m_last_execution_receipt.reject_mask,
+         m_last_execution_receipt.retcode,
+         OutboxJsonEscape(m_last_execution_receipt.reason));
      }
 
    string ClosedPositionPayload(const ExpectedPositionState &position,
@@ -206,6 +249,7 @@ private:
                         const double entry,
                         const double stop_loss,
                         const double take_profit,
+                        const double minimum_executable_rr,
                         SignalPlan &plan)
      {
       ZeroMemory(plan);
@@ -227,14 +271,15 @@ private:
       plan.valid_until=entry_ready_at+m_profile.maximum_signal_age_seconds;
       plan.volume=ResolveProfileLot(m_profile,AccountInfoDouble(ACCOUNT_BALANCE));
       plan.tick_size=m_profile.tick_size;
-      plan.maximum_drift_r=m_profile.maximum_drift_r;
       plan.maximum_spread=m_profile.maximum_spread;
+      plan.minimum_executable_rr=minimum_executable_rr;
       plan.planned_entry=entry;
       plan.stop_loss=stop_loss;
       plan.take_profit=take_profit;
       plan.invalidation=stop_loss;
       plan.risk_price=MathAbs(entry-stop_loss);
-      plan.executable=plan.volume>0.0 && plan.risk_price>0.0;
+      plan.executable=plan.volume>0.0 && plan.risk_price>0.0 &&
+         plan.minimum_executable_rr>0.0;
       // The GOLDM engineering exception remains unreachable outside Strategy
       // Tester: no input or persisted state can enable this flag live.
       plan.engineering_tester=(bool)MQLInfoInteger(MQL_TESTER);
@@ -253,20 +298,30 @@ private:
          return;
         }
       string reason="";
-      m_last_entry_ready_to_submit_us=
-         GetMicrosecondCount()-entry_ready_started_us;
       m_has_execution_receipt=true;
+      const ulong broker_pipeline_started_us=GetMicrosecondCount();
       const bool submitted=m_execution_broker.Submit(
          plan,m_last_execution_receipt,reason);
+      m_last_entry_ready_to_submit_us=
+         m_last_execution_receipt.preflight_to_submit_us>0 ?
+         broker_pipeline_started_us-entry_ready_started_us+
+         m_last_execution_receipt.preflight_to_submit_us :
+         GetMicrosecondCount()-entry_ready_started_us;
+      const datetime execution_server_time=
+         m_last_execution_receipt.quote_time_msc>0 ?
+         (datetime)(m_last_execution_receipt.quote_time_msc/1000) : server_time;
       if(submitted)
         {
-         if(!PersistSubmittedPosition(plan,server_time))
+         if(!PersistSubmittedPosition(plan,execution_server_time))
             return;
          m_state.phase=ENGINE_PHASE_POSITION_OPEN;
-         SetEvent(ENGINE_EVENT_POSITION,server_time,"ORDER_SENT");
          const string opened_payload=SignalPlanPayload(
             plan,m_expected_position.entry_price,
             m_expected_position.volume,true);
+         SetEvent(ENGINE_EVENT_POSITION,execution_server_time,"ORDER_SENT",
+            opened_payload,plan.setup_id,plan.signal_id,
+            IntegerToString((long)m_last_execution_receipt.order_ticket),
+            IntegerToString((long)m_expected_position.ticket));
          EmitTransition("POSITION_OPENED",plan.setup_id,plan.signal_id,
             IntegerToString((long)m_last_execution_receipt.order_ticket),
             IntegerToString((long)m_expected_position.ticket),opened_payload);
@@ -277,7 +332,16 @@ private:
          SetEvent(ENGINE_EVENT_BAR_CLOSED,server_time,"ORDER_AUTHORITY_DISABLED");
          return;
         }
-      SetEvent(ENGINE_EVENT_ERROR,server_time,reason);
+      if(m_last_execution_receipt.state==EXECUTION_SUBMIT_REJECTED ||
+         (m_last_execution_receipt.state==EXECUTION_SUBMIT_FAILED &&
+          StringFind(reason,"ORDER_SEND_FAILED:")==0))
+        {
+         SetEvent(ENGINE_EVENT_ENTRY_REJECTED,execution_server_time,reason,
+            ExecutionReceiptPayload(plan),plan.setup_id,plan.signal_id);
+         return;
+        }
+      SetEvent(ENGINE_EVENT_ERROR,execution_server_time,reason,
+         ExecutionReceiptPayload(plan),plan.setup_id,plan.signal_id);
      }
 
    bool RecoverOwnedPositions(const datetime server_time)
@@ -388,9 +452,13 @@ private:
          EmitTransition("ENGINE_HEARTBEAT","","","","",RuntimeEvidencePayload());
       else if(type==ENGINE_EVENT_ENTRY_READY)
          EmitTransition("ENTRY_READY",setup_id,signal_id,"","",payload);
+      else if(type==ENGINE_EVENT_ENTRY_REJECTED)
+         EmitTransition("ENTRY_REJECTED",setup_id,signal_id,"","",payload);
       else if(type==ENGINE_EVENT_POSITION)
         {
-         if(reason=="ORDER_SENT") EmitTransition("ORDER_SUBMITTED");
+         if(reason=="ORDER_SENT")
+            EmitTransition("ORDER_SUBMITTED",setup_id,signal_id,order_id,
+               position_id,payload);
          else if(reason=="POSITION_MODIFIED") EmitTransition("POSITION_MODIFIED");
          else if(reason=="POSITION_CLOSED")
             EmitTransition("POSITION_CLOSED",setup_id,signal_id,order_id,
@@ -398,7 +466,8 @@ private:
          else if(reason=="POSITION_RECOVERED") EmitTransition("RECOVERY_COMPLETED");
         }
       else if(type==ENGINE_EVENT_ERROR)
-         EmitTransition("ENGINE_ERROR");
+         EmitTransition("ENGINE_ERROR",setup_id,signal_id,order_id,
+            position_id,payload);
      }
 
    bool LoadHistory(const ENUM_TIMEFRAMES timeframe,
@@ -540,7 +609,8 @@ private:
             SignalPlan plan;
             BuildSignalPlan(side,setup_id,signal_id,setup.trigger_time,
                m_last_revised_decision.time,m_last_revised_decision.entry,
-               m_last_revised_decision.stop,m_last_revised_decision.target,plan);
+               m_last_revised_decision.stop,m_last_revised_decision.target,
+               RevisedMinimumExecutableRr(m_last_revised_decision),plan);
             SetEvent(
                ENGINE_EVENT_ENTRY_READY,m_last_revised_decision.time,
                m_last_revised_decision.reason,
@@ -592,7 +662,7 @@ private:
          SignalPlan plan;
          BuildSignalPlan(ENGINE_SIDE_SELL,setup_id,signal_id,
             signal.armed_at,signal.opened_at,signal.entry,signal.stop,
-            signal.target,plan);
+            signal.target,m_bear_machine.MinimumExecutableRr(),plan);
          SetEvent(
             ENGINE_EVENT_ENTRY_READY,signal.opened_at,
             "M1_ENTRY_CONFIRMATION_READY",

@@ -70,6 +70,18 @@ void LoadBearM15Config(BearM15Config &c,const double spread_floor)
    c.exhaustion_min_signals=2;
   }
 
+double BearMinimumExecutableRr(const BearSetup &setup)
+  {
+   BearM15Config config;
+   LoadBearM15Config(config,0.01);
+   if(StringFind(
+         setup.reason,"target_capped_at_nearest_psychological_support")>=0)
+      return config.minimum_psychological_reward_risk;
+   if(StringFind(setup.reason,"continuation_through_near_support")>=0)
+      return config.minimum_continuation_reward_risk;
+   return config.minimum_reward_risk;
+  }
+
 double BearLinearSlope(const double &values[])
   {
    const int n=ArraySize(values);

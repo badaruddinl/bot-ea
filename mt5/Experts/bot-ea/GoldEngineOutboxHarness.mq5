@@ -60,7 +60,9 @@ int OnInit(void)
       goldi_outbox.Healthy() && goldm_outbox.Healthy();
    Print("G16_OUTBOX passed=",HarnessPassed,
          " goldi_append=",entry_written," goldm_append=",watch_written,
-         " goldi_audience=goldi_approved goldm_audience=admin_only",
+         " goldi_entry_ready_audience=internal"
+         " goldi_open_close_audience=goldi_approved"
+         " goldm_audience=admin_only",
          " order_authority=DISABLED");
    FileDelete(goldi_outbox.Path(),FILE_COMMON);
    FileDelete(goldm_outbox.Path(),FILE_COMMON);

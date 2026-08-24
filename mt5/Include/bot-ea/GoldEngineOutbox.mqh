@@ -26,11 +26,11 @@ private:
      {
       if(m_profile.profile_id=="GOLDM")
          return "admin_only";
-      if(event_type=="WATCH_UPDATED" || event_type=="SETUP_CREATED")
+      if(event_type=="WATCH_UPDATED" || event_type=="SETUP_CREATED" ||
+         event_type=="ENTRY_READY")
          return "internal";
       if(m_profile.profile_id=="GOLDI" &&
-         (event_type=="ENTRY_READY" || event_type=="POSITION_OPENED" ||
-          event_type=="POSITION_CLOSED"))
+         (event_type=="POSITION_OPENED" || event_type=="POSITION_CLOSED"))
          return "goldi_approved";
       return "admin_only";
      }

@@ -75,7 +75,6 @@ void LoadBuildProfile(ProfileConfig &config)
    config.order_authority_default=false;
    config.deviation_points=30;
    config.tick_size=0.01;
-   config.maximum_drift_r=0.15;
 #ifdef BUILD_PROFILE_GOLDI
    config.maximum_spread=0.60;
 #else

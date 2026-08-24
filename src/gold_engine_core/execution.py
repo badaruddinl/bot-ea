@@ -20,7 +20,7 @@ class ExecutionReject(StrEnum):
     PROFILE = "PROFILE_MISMATCH"
     POLICY = "POLICY_MISMATCH"
     AGE = "SIGNAL_AGE_INVALID"
-    DRIFT = "ENTRY_DRIFT_EXCEEDED"
+    DRIFT = "EXECUTABLE_RR_BELOW_STRATEGY_MIN"
     SPREAD = "SPREAD_EXCEEDED"
     INVALIDATION = "SETUP_INVALIDATED"
     ACCOUNT = "ACCOUNT_MISMATCH"
@@ -43,18 +43,16 @@ class ExecutionPolicy:
     profile_id: str
     profile_fingerprint: str
     policy_version: str
-    maximum_drift_r: Decimal
     maximum_spread: Decimal
     maximum_signal_age_seconds: int
 
     def __post_init__(self) -> None:
-        if self.schema_version != 1:
-            raise ExecutionContractError("execution policy schema_version must equal 1")
+        if self.schema_version != 2:
+            raise ExecutionContractError("execution policy schema_version must equal 2")
         if not self.profile_id or not self.policy_version:
             raise ExecutionContractError("execution policy identity is required")
         if len(self.profile_fingerprint) != 64:
             raise ExecutionContractError("execution policy profile fingerprint is invalid")
-        _positive(self.maximum_drift_r, "policy.maximum_drift_r", allow_zero=True)
         _positive(self.maximum_spread, "policy.maximum_spread")
         if self.maximum_signal_age_seconds < 1:
             raise ExecutionContractError("maximum_signal_age_seconds must be positive")
@@ -63,7 +61,6 @@ class ExecutionPolicy:
     def from_payload(cls, payload: object) -> ExecutionPolicy:
         data = _mapping(payload, "execution_policy")
         expected = {
-            "maximum_drift_r",
             "maximum_signal_age_seconds",
             "maximum_spread",
             "policy_version",
@@ -84,14 +81,12 @@ class ExecutionPolicy:
             profile_id=_string(data["profile_id"], "profile_id"),
             profile_fingerprint=_string(data["profile_fingerprint"], "profile_fingerprint"),
             policy_version=_string(data["policy_version"], "policy_version"),
-            maximum_drift_r=_decimal(data["maximum_drift_r"], "maximum_drift_r"),
             maximum_spread=_decimal(data["maximum_spread"], "maximum_spread"),
             maximum_signal_age_seconds=age,
         )
 
     def to_payload(self) -> dict[str, object]:
         return {
-            "maximum_drift_r": str(self.maximum_drift_r),
             "maximum_signal_age_seconds": self.maximum_signal_age_seconds,
             "maximum_spread": str(self.maximum_spread),
             "policy_version": self.policy_version,
@@ -198,8 +193,14 @@ class ExecutionOrder:
 class ExecutionValidation:
     allowed: bool
     reasons: tuple[ExecutionReject, ...]
-    drift_r: Decimal
+    adverse_drift_r: Decimal
+    maximum_adverse_drift_r: Decimal
     executable_price: Decimal
+    quote_bid: Decimal
+    quote_ask: Decimal
+    actual_risk: Decimal
+    actual_reward: Decimal
+    actual_rr: Decimal
     order: ExecutionOrder | None = None
 
     def __post_init__(self) -> None:
@@ -215,11 +216,32 @@ def validate_execution(
 ) -> ExecutionValidation:
     reasons: list[ExecutionReject] = []
     executable = context.quote.ask if plan.side is Side.BUY else context.quote.bid
-    # Strategy entries are derived from MT5 bars, whose reference price is Bid.
-    # Spread has its own independent guard and must not be counted again as
-    # market drift for BUY orders (which execute at Ask).
-    drift_reference = context.quote.bid if plan.profile_id == "GOLDI" else executable
-    drift_r = abs(drift_reference - plan.planned_entry) / plan.planned_risk
+    actual_risk = (
+        executable - plan.planned_stop if plan.side is Side.BUY else plan.planned_stop - executable
+    )
+    actual_reward = (
+        plan.planned_target - executable
+        if plan.side is Side.BUY
+        else executable - plan.planned_target
+    )
+    actual_rr = (
+        actual_reward / actual_risk if actual_risk > 0 and actual_reward > 0 else Decimal("0")
+    )
+    adverse_distance = (
+        max(Decimal("0"), executable - plan.planned_entry)
+        if plan.side is Side.BUY
+        else max(Decimal("0"), plan.planned_entry - executable)
+    )
+    adverse_drift_r = adverse_distance / plan.planned_risk
+    rr_boundary = (plan.planned_target + plan.minimum_executable_rr * plan.planned_stop) / (
+        Decimal("1") + plan.minimum_executable_rr
+    )
+    maximum_adverse_distance = (
+        max(Decimal("0"), rr_boundary - plan.planned_entry)
+        if plan.side is Side.BUY
+        else max(Decimal("0"), plan.planned_entry - rr_boundary)
+    )
+    maximum_adverse_drift_r = maximum_adverse_distance / plan.planned_risk
 
     if (
         plan.profile_id != profile.profile_id
@@ -230,7 +252,6 @@ def validate_execution(
     if (
         policy.profile_id != profile.profile_id
         or policy.profile_fingerprint != profile.manifest_fingerprint
-        or plan.maximum_drift_r != policy.maximum_drift_r
         or plan.maximum_spread != policy.maximum_spread
     ):
         reasons.append(ExecutionReject.POLICY)
@@ -241,7 +262,7 @@ def validate_execution(
         or plan.valid_until - plan.entry_ready_at > maximum_age
     ):
         reasons.append(ExecutionReject.AGE)
-    if drift_r > policy.maximum_drift_r:
+    if actual_risk > 0 and actual_reward > 0 and actual_rr < plan.minimum_executable_rr:
         reasons.append(ExecutionReject.DRIFT)
     if context.quote.spread > policy.maximum_spread:
         reasons.append(ExecutionReject.SPREAD)
@@ -325,8 +346,14 @@ def validate_execution(
     return ExecutionValidation(
         allowed=not unique_reasons,
         reasons=unique_reasons,
-        drift_r=drift_r,
+        adverse_drift_r=adverse_drift_r,
+        maximum_adverse_drift_r=maximum_adverse_drift_r,
         executable_price=executable,
+        quote_bid=context.quote.bid,
+        quote_ask=context.quote.ask,
+        actual_risk=max(Decimal("0"), actual_risk),
+        actual_reward=max(Decimal("0"), actual_reward),
+        actual_rr=actual_rr,
         order=order,
     )
 

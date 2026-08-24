@@ -27,6 +27,7 @@ from gold_engine_core.rules.bear_incremental import (
 from goldm_bear.engine import BearBar
 from goldm_bear.multitimeframe import BearMultiTimeframeReplay, BearV4Config, BearV4Report
 from goldm_revised.engine import (
+    RevisedDecision,
     RevisedEngine,
     RevisedEngineConfig,
     RevisedSide,
@@ -391,7 +392,15 @@ class CompositePortfolioWorker:
             stop=stop,
             target=target,
             reason=decision.reason,
+            minimum_executable_rr=self._revised_minimum_executable_rr(decision),
         ), watch
+
+    def _revised_minimum_executable_rr(self, decision: RevisedDecision) -> float:
+        if decision.entry_profile == "SCALPER":
+            return float(self.revised_engine.config.scalper_min_obstacle_r)
+        if decision.mode is not None and decision.mode.value == "MOMENTUM":
+            return float(self.revised_engine.config.first_obstacle_strict_r)
+        return float(self.revised_engine.config.first_obstacle_reject_r)
 
     def _warm_revised_detector(self, latest: RevisedSnapshot) -> None:
         if self._revised_detector_warmed:
@@ -451,6 +460,7 @@ class CompositePortfolioWorker:
                 stop=candidate.stop,
                 target=candidate.target,
                 reason=candidate.reason,
+                minimum_executable_rr=self._bear_minimum_executable_rr(candidate.reason),
             )
         watch = self._bear_incremental_watch(latest_m1, output)
         return signal, watch
@@ -470,6 +480,7 @@ class CompositePortfolioWorker:
         stop: float,
         target: float,
         reason: str,
+        minimum_executable_rr: float,
     ) -> SignalPlan:
         tick = self.profile.tick_size
         planned_entry = self._round_price(Decimal(str(entry)), tick, ROUND_HALF_UP)
@@ -504,7 +515,7 @@ class CompositePortfolioWorker:
             planned_risk=abs(planned_entry - planned_stop),
             invalidation=planned_stop,
             maximum_spread=self.execution_policy.maximum_spread,
-            maximum_drift_r=self.execution_policy.maximum_drift_r,
+            minimum_executable_rr=Decimal(str(minimum_executable_rr)),
             tick_size=tick,
             volume=volume,
             account_login=int(account.login),
@@ -513,6 +524,14 @@ class CompositePortfolioWorker:
             terminal_identity=self.profile.terminal_identity,
             magic=self.profile.magic,
         )
+
+    def _bear_minimum_executable_rr(self, reason: str) -> float:
+        config = self.bear_replay.config
+        if "target_capped_at_nearest_psychological_support" in reason:
+            return float(config.minimum_psychological_reward_risk)
+        if "continuation_through_near_support" in reason:
+            return float(config.minimum_continuation_reward_risk)
+        return float(config.minimum_reward_risk)
 
     @staticmethod
     def _round_price(value: Decimal, tick: Decimal, rounding: str) -> Decimal:

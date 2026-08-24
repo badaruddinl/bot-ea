@@ -17,7 +17,7 @@ def event(
     event_id: str,
     *,
     profile: str = "GOLDI",
-    event_type: str = "ENTRY_READY",
+    event_type: str = "POSITION_OPENED",
     audience: str | None = None,
 ) -> dict[str, object]:
     return {
@@ -246,8 +246,10 @@ def test_routing_is_profile_isolated_and_watch_is_suppressed(tmp_path: Path) -> 
     spool = tmp_path / "events.jsonl"
     append(
         spool,
-        event("goldi:entry"),
-        event("goldm:entry", profile="GOLDM"),
+        event("goldi:entry", event_type="POSITION_OPENED"),
+        event("goldm:entry", profile="GOLDM", event_type="POSITION_OPENED"),
+        event("goldi:ready", event_type="ENTRY_READY", audience="internal"),
+        event("goldi:reject", event_type="ENTRY_REJECTED", audience="admin_only"),
         event("goldi:watch", event_type="WATCH_UPDATED", audience="internal"),
     )
     store = EventStore(tmp_path / "events.db")
@@ -260,13 +262,20 @@ def test_routing_is_profile_isolated_and_watch_is_suppressed(tmp_path: Path) -> 
     try:
         store.ingest_spool(spool)
         delivered, failed = bridge.deliver_pending()
-        assert (delivered, failed) == (3, 0)
-        assert [chat for chat, message in sent if "GOLDI" in message] == ["admin", "subscriber"]
-        assert [chat for chat, message in sent if "GOLDM" in message] == ["admin"]
-        watch_state = store.connection.execute(
-            "SELECT delivery_state FROM engine_events WHERE event_id='goldi:watch'"
-        ).fetchone()[0]
-        assert watch_state == "SUPPRESSED"
+        assert (delivered, failed) == (4, 0)
+        assert [chat for chat, message in sent if "ORDER OPEN — GOLD.i#" in message] == [
+            "admin",
+            "subscriber",
+        ]
+        assert [chat for chat, message in sent if "ORDER OPEN — GOLDm#" in message] == ["admin"]
+        assert [chat for chat, message in sent if "ENTRY DITOLAK" in message] == ["admin"]
+        suppressed = {
+            row[0]
+            for row in store.connection.execute(
+                "SELECT event_id FROM engine_events WHERE delivery_state='SUPPRESSED'"
+            )
+        }
+        assert suppressed == {"goldi:ready", "goldi:watch"}
     finally:
         store.close()
 
@@ -362,6 +371,37 @@ def test_trade_messages_are_human_readable_and_complete() -> None:
     assert "P/L: +50.00 USD" in close_message
     assert "Hasil R: +2.50R" in close_message
     assert "Durasi: 1 jam 1 menit 1 detik" in close_message
+
+
+def test_entry_rejection_is_admin_readable_and_contains_realtime_evidence() -> None:
+    rejected_value = event("goldi:rejected", event_type="ENTRY_REJECTED", audience="admin_only")
+    rejected_value["reason"] = "EXECUTABLE_RR_BELOW_STRATEGY_MIN"
+    rejected_value["payload"] = {
+        "strategy": "REVISED",
+        "side": "BUY",
+        "planned_entry": 4661.78,
+        "entry": 4664.30,
+        "requested_entry": 4664.30,
+        "stop_loss": 4660.87,
+        "take_profit": 4669.39,
+        "rr": 1.48,
+        "minimum_executable_rr": 1.5,
+        "quote_bid": 4664.28,
+        "quote_ask": 4664.30,
+        "adverse_drift_r": 2.769,
+        "maximum_adverse_drift_r": 2.745,
+        "broker_retcode": 10009,
+    }
+    rejected = EngineEventEnvelope.from_json_line(json.dumps(rejected_value))
+
+    message = EventBridge.format_message(rejected)
+
+    assert "⛔ ENTRY DITOLAK — GOLD.i# BUY" in message
+    assert "Harga request: 4664.30" in message
+    assert "R:R minimum: 1.50" in message
+    assert "Bid: 4664.28" in message
+    assert "Ask: 4664.30" in message
+    assert "Status: EXECUTABLE_RR_BELOW_STRATEGY_MIN" in message
 
 
 def test_telegram_failure_retries_only_undelivered_recipient(tmp_path: Path) -> None:

@@ -114,7 +114,7 @@ def executable_signal(
         planned_risk=abs(Decimal(str(entry)) - Decimal(str(stop))),
         invalidation=Decimal(str(stop)),
         maximum_spread=session.execution_policy.maximum_spread,
-        maximum_drift_r=session.execution_policy.maximum_drift_r,
+        minimum_executable_rr=Decimal("1.0"),
         tick_size=profile.tick_size,
         volume=Decimal(str(session.select_lot())),
         account_login=int(account.login),
@@ -430,11 +430,14 @@ def test_worker_builds_profile_owned_versioned_execution_plan(
         stop=stop,
         target=target,
         reason="owned plan",
+        minimum_executable_rr=1.0 if side is Side.BUY else 0.70,
     )
 
     assert value.profile_id == worker.profile.profile_id
     assert value.profile_fingerprint == worker.profile.manifest_fingerprint
-    assert value.maximum_drift_r == worker.execution_policy.maximum_drift_r
+    assert value.minimum_executable_rr == (
+        Decimal("1.0") if side is Side.BUY else Decimal("0.7")
+    )
     assert value.maximum_spread == worker.execution_policy.maximum_spread
     assert value.volume == volume
     assert value.magic == worker.profile.magic

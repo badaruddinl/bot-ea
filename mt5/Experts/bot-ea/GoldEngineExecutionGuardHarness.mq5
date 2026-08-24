@@ -25,7 +25,6 @@ void BuildHarnessProfile(const string profile_id,ProfileConfig &profile)
    profile.max_total_lot=(profile_id=="GOLDI" ? 4.0 : 200.0);
    profile.deviation_points=30;
    profile.tick_size=0.01;
-   profile.maximum_drift_r=0.15;
    profile.maximum_spread=(profile_id=="GOLDI" ? 0.60 : 0.72);
    profile.maximum_signal_age_seconds=60;
   }
@@ -53,13 +52,13 @@ void BuildHarnessPlan(const ProfileConfig &profile,
    plan.valid_until=D'2026.08.18 12:01:00';
    plan.volume=(profile.profile_id=="GOLDI" ? 0.02 : 2.0);
    plan.tick_size=profile.tick_size;
-   plan.maximum_drift_r=profile.maximum_drift_r;
+   plan.minimum_executable_rr=1.0;
    plan.maximum_spread=profile.maximum_spread;
    plan.planned_entry=(side==ENGINE_SIDE_BUY ? 100.10 : 100.20);
    plan.stop_loss=(side==ENGINE_SIDE_BUY ? 99.00 : 101.50);
    plan.take_profit=(side==ENGINE_SIDE_BUY ? 102.00 : 98.00);
    plan.invalidation=(side==ENGINE_SIDE_BUY ? 98.50 : 102.00);
-   plan.risk_price=1.0;
+   plan.risk_price=MathAbs(plan.planned_entry-plan.stop_loss);
    plan.executable=true;
   }
 
@@ -120,14 +119,8 @@ bool TestProfile(const string profile_id)
       return false;
    ExecutionContext spread_only=context;
    spread_only.quote.ask=100.30;
-   if(profile_id=="GOLDI")
-     {
-      if(!ValidateExecution(buy,profile,spread_only,result) ||
-         !result.allowed || result.drift_r!=0.0)
-         return false;
-     }
-   else if(!AssertRejected(
-              buy,profile,spread_only,EXECUTION_REJECT_DRIFT))
+   if(!ValidateExecution(buy,profile,spread_only,result) ||
+      !result.allowed || result.actual_rr<buy.minimum_executable_rr)
       return false;
 
    SignalPlan sell;BuildHarnessPlan(profile,ENGINE_SIDE_SELL,sell);
@@ -145,8 +138,8 @@ bool TestProfile(const string profile_id)
    changed=buy;changed.valid_until=D'2026.08.18 12:00:20';
    if(!AssertRejected(changed,profile,context,EXECUTION_REJECT_AGE)) return false;
    ExecutionContext mutated=context;
-   mutated.quote.bid=(profile_id=="GOLDI" ? 100.30 : 100.20);
-   mutated.quote.ask=mutated.quote.bid+0.10;
+   mutated.quote.bid=101.45;
+   mutated.quote.ask=101.55;
    if(!AssertRejected(buy,profile,mutated,EXECUTION_REJECT_DRIFT)) return false;
    mutated=context;mutated.quote.ask=context.quote.bid+profile.maximum_spread+0.01;
    if(!AssertRejected(buy,profile,mutated,EXECUTION_REJECT_SPREAD)) return false;
@@ -179,14 +172,36 @@ bool TestProfile(const string profile_id)
    return true;
   }
 
+bool TestAugust24GoldiMomentum(void)
+  {
+   ProfileConfig profile;BuildHarnessProfile("GOLDI",profile);
+   SignalPlan plan;BuildHarnessPlan(profile,ENGINE_SIDE_BUY,plan);
+   plan.planned_entry=4661.78;
+   plan.stop_loss=4660.87;
+   plan.take_profit=4669.39;
+   plan.invalidation=4660.87;
+   plan.risk_price=0.91;
+   plan.minimum_executable_rr=1.5;
+   ExecutionContext context;BuildHarnessContext(profile,plan,context);
+   context.quote.bid=4661.77;
+   context.quote.ask=4661.78;
+   ExecutionValidation validation;
+   return ValidateExecution(plan,profile,context,validation) &&
+      validation.allowed &&
+      !ExecutionHasReject(validation.reject_mask,EXECUTION_REJECT_DRIFT) &&
+      validation.actual_rr>=plan.minimum_executable_rr &&
+      validation.order.price==4661.78;
+  }
+
 int OnInit(void)
   {
    const bool goldi=TestProfile("GOLDI");
    const bool goldm=TestProfile("GOLDM");
-   HarnessPassed=goldi && goldm;
+   const bool august24=TestAugust24GoldiMomentum();
+   HarnessPassed=goldi && goldm && august24;
    Print("G14_EXECUTION_GUARD passed=",HarnessPassed,
-         " goldi=",goldi," goldm=",goldm,
-         " structural_geometry=true spread_reference=true reasons=18 "
+         " goldi=",goldi," goldm=",goldm," august24=",august24,
+         " structural_geometry=true dynamic_rr=true reasons=18 "
          "order_authority=DISABLED");
    return HarnessPassed ? INIT_SUCCEEDED : INIT_FAILED;
   }

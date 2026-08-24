@@ -613,6 +613,13 @@ public:
      {
       return m_setup_id;
      }
+
+   double MinimumExecutableRr(void) const
+     {
+      if(!m_has_setup)
+         return 0.0;
+      return BearMinimumExecutableRr(m_setup);
+     }
   };
 
 #endif

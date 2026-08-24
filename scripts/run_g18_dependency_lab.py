@@ -50,7 +50,7 @@ def run_lab(goldi_spool: Path, goldm_spool: Path, workspace: Path) -> dict[str, 
             telegram_down,
         )
         first_delivered, first_failed = failing.deliver_pending(limit=100)
-        if first_delivered != 0 or first_failed != 9:
+        if first_delivered != 0 or first_failed != 6:
             raise DependencyLabError("Telegram-down retry matrix is incorrect")
         recovered_calls: list[tuple[str, str]] = []
         recovered = EventBridge(
@@ -59,7 +59,7 @@ def run_lab(goldi_spool: Path, goldm_spool: Path, workspace: Path) -> dict[str, 
             lambda chat_id, message: recovered_calls.append((chat_id, message)),
         )
         second_delivered, second_failed = recovered.deliver_pending(limit=100)
-        if second_delivered != 9 or second_failed != 0:
+        if second_delivered != 6 or second_failed != 0:
             raise DependencyLabError("Telegram recovery did not drain retry state")
 
         with store.connection:
@@ -75,7 +75,7 @@ def run_lab(goldi_spool: Path, goldm_spool: Path, workspace: Path) -> dict[str, 
                 "SELECT delivery_state, COUNT(*) FROM engine_events GROUP BY delivery_state"
             )
         }
-        if states != {"DELIVERED": 6, "SUPPRESSED": 6}:
+        if states != {"DELIVERED": 4, "SUPPRESSED": 8}:
             raise DependencyLabError(f"unexpected final delivery states: {states}")
         after = {"GOLDI": _sha256(goldi_spool), "GOLDM": _sha256(goldm_spool)}
         return {

@@ -257,7 +257,7 @@ def signal(side: Side = Side.BUY) -> SignalPlan:
         D("10"),
         stop,
         policy.maximum_spread,
-        policy.maximum_drift_r,
+        D("1.0"),
         D("0.01"),
         D("0.01"),
         123456,

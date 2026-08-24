@@ -51,7 +51,7 @@ bool BuildRestartPlan(SignalPlan &plan,string &reason)
    plan.valid_until=now+HarnessProfile.maximum_signal_age_seconds;
    plan.volume=0.01;
    plan.tick_size=HarnessProfile.tick_size;
-   plan.maximum_drift_r=HarnessProfile.maximum_drift_r;
+   plan.minimum_executable_rr=1.0;
    plan.maximum_spread=HarnessProfile.maximum_spread;
    plan.planned_entry=RestartCeil(tick.ask,HarnessProfile.tick_size);
    plan.stop_loss=RestartFloor(tick.ask-3.0,HarnessProfile.tick_size);

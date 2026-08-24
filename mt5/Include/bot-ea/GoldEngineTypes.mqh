@@ -36,7 +36,8 @@ enum EngineEventType
    ENGINE_EVENT_ENTRY_READY = 4,
    ENGINE_EVENT_POSITION = 5,
    ENGINE_EVENT_ERROR = 6,
-   ENGINE_EVENT_HEARTBEAT = 7
+   ENGINE_EVENT_HEARTBEAT = 7,
+   ENGINE_EVENT_ENTRY_REJECTED = 8
   };
 
 struct EngineBar
@@ -78,7 +79,6 @@ struct ProfileConfig
    double                  max_total_lot;
    int                     deviation_points;
    double                  tick_size;
-   double                  maximum_drift_r;
    double                  maximum_spread;
    int                     maximum_signal_age_seconds;
   };
@@ -122,8 +122,8 @@ struct SignalPlan
    datetime   valid_until;
    double     volume;
    double     tick_size;
-   double     maximum_drift_r;
    double     maximum_spread;
+   double     minimum_executable_rr;
    double     planned_entry;
    double     stop_loss;
    double     take_profit;

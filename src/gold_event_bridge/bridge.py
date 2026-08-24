@@ -22,7 +22,7 @@ class RecipientPolicy:
             not in {
                 "ENGINE_STARTED",
                 "PROFILE_VALIDATED",
-                "ENTRY_READY",
+                "ENTRY_REJECTED",
                 "POSITION_OPENED",
                 "POSITION_CLOSED",
                 "ENGINE_ERROR",
@@ -34,7 +34,6 @@ class RecipientPolicy:
         if event.profile_id == "GOLDM":
             return tuple(dict.fromkeys(self.admin_chat_ids))
         if event.audience == "goldi_approved" and event.event_type in {
-            "ENTRY_READY",
             "POSITION_OPENED",
             "POSITION_CLOSED",
         }:
@@ -151,6 +150,7 @@ class EventBridge:
         side_suffix = f" {side}" if side in {"BUY", "SELL"} else ""
         title = {
             "ENTRY_READY": "🟡 SIGNAL SIAP",
+            "ENTRY_REJECTED": "⛔ ENTRY DITOLAK",
             "POSITION_OPENED": "✅ ORDER OPEN",
             "POSITION_CLOSED": "🏁 ORDER CLOSED",
             "ENGINE_ERROR": "⚠️ ENGINE ERROR",
@@ -200,6 +200,24 @@ class EventBridge:
             elif key == "realized_r":
                 suffix = "R"
             lines.append(f"{label}: {rendered}{suffix}")
+
+        if event.event_type in {"POSITION_OPENED", "ENTRY_REJECTED"}:
+            for label, key, digits in (
+                ("Harga request", "requested_entry", 2),
+                ("R:R minimum", "minimum_executable_rr", 2),
+            ):
+                if key in payload:
+                    lines.append(f"{label}: {cls._number(payload[key], digits=digits)}")
+        if event.event_type == "ENTRY_REJECTED":
+            for label, key, digits in (
+                ("Bid", "quote_bid", 2),
+                ("Ask", "quote_ask", 2),
+                ("Drift adverse", "adverse_drift_r", 3),
+                ("Batas drift dinamis", "maximum_adverse_drift_r", 3),
+                ("Broker retcode", "broker_retcode", 0),
+            ):
+                if key in payload:
+                    lines.append(f"{label}: {cls._number(payload[key], digits=digits)}")
 
         if "duration_seconds" in payload:
             lines.append(f"Durasi: {cls._duration(payload['duration_seconds'])}")

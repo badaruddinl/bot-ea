@@ -47,7 +47,7 @@ bool BuildDisabledHarnessPlan(const ProfileConfig &profile,
    plan.valid_until=now+profile.maximum_signal_age_seconds;
    plan.volume=ResolveProfileLot(profile,AccountInfoDouble(ACCOUNT_BALANCE));
    plan.tick_size=profile.tick_size;
-   plan.maximum_drift_r=profile.maximum_drift_r;
+   plan.minimum_executable_rr=1.0;
    plan.maximum_spread=profile.maximum_spread;
    plan.planned_entry=DisabledHarnessCeil(tick.ask,profile.tick_size);
    plan.stop_loss=DisabledHarnessFloor(tick.ask-2.0,profile.tick_size);

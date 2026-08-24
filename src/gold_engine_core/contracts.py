@@ -358,7 +358,7 @@ class SignalPlan:
     planned_risk: Decimal
     invalidation: Decimal
     maximum_spread: Decimal
-    maximum_drift_r: Decimal
+    minimum_executable_rr: Decimal
     tick_size: Decimal
     volume: Decimal
     account_login: int
@@ -404,9 +404,12 @@ class SignalPlan:
         ):
             _positive_decimal(amount, f"signal.{name}")
         _positive_decimal(self.maximum_spread, "signal.maximum_spread", allow_zero=True)
-        _positive_decimal(self.maximum_drift_r, "signal.maximum_drift_r", allow_zero=True)
+        _positive_decimal(self.minimum_executable_rr, "signal.minimum_executable_rr")
         if self.planned_risk != abs(self.planned_entry - self.stop):
             raise ContractError("signal.planned_risk must equal entry-stop distance")
+        planned_reward = abs(self.target - self.planned_entry)
+        if planned_reward / self.planned_risk < self.minimum_executable_rr:
+            raise ContractError("signal planned R:R is below minimum executable R:R")
         if self.side is Side.BUY and not self.stop < self.planned_entry < self.target:
             raise ContractError("BUY signal geometry is invalid")
         if self.side is Side.SELL and not self.target < self.planned_entry < self.stop:

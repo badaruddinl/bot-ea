@@ -20,7 +20,7 @@ def test_signal_plan_carries_complete_immutable_execution_identity() -> None:
         "valid_until",
         "volume",
         "tick_size",
-        "maximum_drift_r",
+        "minimum_executable_rr",
         "maximum_spread",
         "planned_entry",
         "stop_loss",
@@ -34,7 +34,7 @@ def test_signal_plan_carries_complete_immutable_execution_identity() -> None:
 def test_profile_locks_python_reference_execution_policy() -> None:
     value = PROFILE.read_text(encoding="utf-8")
     assert "config.tick_size=0.01;" in value
-    assert "config.maximum_drift_r=0.15;" in value
+    assert "maximum_drift_r" not in value
     assert "config.maximum_spread=0.60;" in value
     assert "config.maximum_spread=0.72;" in value
     assert "config.maximum_signal_age_seconds=60;" in value
@@ -47,7 +47,7 @@ def test_guard_contains_every_reference_reject_and_no_mutation_authority() -> No
         "PROFILE_MISMATCH",
         "POLICY_MISMATCH",
         "SIGNAL_AGE_INVALID",
-        "ENTRY_DRIFT_EXCEEDED",
+        "EXECUTABLE_RR_BELOW_STRATEGY_MIN",
         "SPREAD_EXCEEDED",
         "SETUP_INVALIDATED",
         "ACCOUNT_MISMATCH",
@@ -70,13 +70,13 @@ def test_guard_contains_every_reference_reject_and_no_mutation_authority() -> No
         assert forbidden not in value
 
 
-def test_guard_uses_bid_reference_and_guards_spread_separately() -> None:
+def test_guard_uses_dynamic_rr_boundary_and_guards_spread_separately() -> None:
     value = GUARD.read_text(encoding="utf-8")
 
-    assert 'plan.profile_id=="GOLDI"' in value
-    assert "context.quote.bid : executable" in value
-    assert "MathAbs(drift_reference-plan.planned_entry)/plan.risk_price" in value
-    assert "MathAbs(executable-plan.planned_entry)/plan.risk_price" not in value
+    assert "plan.minimum_executable_rr*plan.stop_loss" in value
+    assert "result.actual_rr<plan.minimum_executable_rr" in value
+    assert "result.adverse_drift_r=adverse_distance/plan.risk_price" in value
+    assert "maximum_adverse_distance/plan.risk_price" in value
     assert "spread>profile.maximum_spread" in value
 
 
@@ -86,7 +86,8 @@ def test_harness_is_dual_profile_and_asserts_all_guard_classes() -> None:
     assert 'TestProfile("GOLDM")' in value
     assert "reasons=18" in value
     assert "structural_geometry=true" in value
-    assert "spread_reference=true" in value
+    assert "dynamic_rr=true" in value
+    assert "TestAugust24GoldiMomentum" in value
     assert "order_authority=DISABLED" in value
     assert value.count("AssertRejected(") >= 19
     for forbidden in ("OrderSend", "CTrade", "PositionModify", "PositionClose"):

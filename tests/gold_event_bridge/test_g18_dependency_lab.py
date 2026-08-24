@@ -47,8 +47,8 @@ def test_dependency_lab_recovers_backlog_retry_and_duplicate_replay(tmp_path: Pa
 
     assert report["status"] == "PASS"
     assert report["db_down_failed_closed"]
-    assert report["telegram_down_failed_calls"] == 9
-    assert report["telegram_recovery_delivered_calls"] == 9
+    assert report["telegram_down_failed_calls"] == 6
+    assert report["telegram_recovery_delivered_calls"] == 6
     assert report["backlog_replay_duplicates"] == 12
     assert report["database_event_count"] == 12
     assert report["spool_unchanged"]

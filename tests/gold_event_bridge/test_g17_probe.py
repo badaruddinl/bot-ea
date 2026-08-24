@@ -52,5 +52,5 @@ def test_probe_correlates_dual_profile_spool_db_and_delivery(tmp_path: Path) -> 
     assert report["profiles"]["GOLDI"]["event_count"] == 6
     assert report["profiles"]["GOLDM"]["event_count"] == 6
     assert report["goldm_approved_leak_count"] == 0
-    assert report["delivery_calls"] == 9
+    assert report["delivery_calls"] == 6
     assert report["production_real_orders"] == "DISABLED"

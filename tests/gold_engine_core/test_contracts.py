@@ -113,7 +113,7 @@ def signal() -> SignalPlan:
         planned_risk=D("10.00"),
         invalidation=D("4390.00"),
         maximum_spread=D("0.40"),
-        maximum_drift_r=D("0.20"),
+        minimum_executable_rr=D("1.50"),
         tick_size=D("0.01"),
         volume=D("0.01"),
         account_login=123456,

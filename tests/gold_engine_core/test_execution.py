@@ -74,7 +74,7 @@ def plan(profile_id: str, *, side: Side = Side.BUY) -> SignalPlan:
         planned_risk=abs(entry - stop),
         invalidation=invalidation,
         maximum_spread=rule.maximum_spread,
-        maximum_drift_r=rule.maximum_drift_r,
+        minimum_executable_rr=D("1.5") if side is Side.BUY else D("0.70"),
         tick_size=config.tick_size,
         volume=D("0.01") if demo else D("0.1"),
         account_login=123456 if demo else 654321,
@@ -140,7 +140,10 @@ def test_valid_execution_keeps_structural_geometry_and_uses_current_quote(
         if side is Side.BUY
         else context(profile_id, side=side).quote.bid
     )
-    assert result.drift_r <= value.maximum_drift_r
+    assert result.actual_rr >= value.minimum_executable_rr
+    assert result.adverse_drift_r <= result.maximum_adverse_drift_r
+    assert result.quote_bid == context(profile_id, side=side).quote.bid
+    assert result.quote_ask == context(profile_id, side=side).quote.ask
 
 
 def assert_rejected(
@@ -179,7 +182,7 @@ def test_profile_policy_age_drift_spread_and_invalidation_guards() -> None:
     assert_rejected(
         ExecutionReject.DRIFT,
         value,
-        replace(base, quote=Tick(base.quote.time, D("4401.99"), D("4402.00"))),
+        replace(base, quote=Tick(base.quote.time, D("4404.00"), D("4404.01"))),
     )
     assert_rejected(
         ExecutionReject.SPREAD,
@@ -193,7 +196,7 @@ def test_profile_policy_age_drift_spread_and_invalidation_guards() -> None:
     )
 
 
-def test_buy_spread_is_not_double_counted_as_market_drift() -> None:
+def test_buy_spread_is_guarded_separately_from_dynamic_rr() -> None:
     value = replace(
         plan("GOLDI"),
         stop=D("4399.00"),
@@ -209,12 +212,13 @@ def test_buy_spread_is_not_double_counted_as_market_drift() -> None:
     result = validate_execution(value, profile("GOLDI"), policy("GOLDI"), spread_only)
 
     assert result.allowed is True
-    assert result.drift_r == D("0")
+    assert result.adverse_drift_r == D("0.20")
+    assert result.actual_rr > value.minimum_executable_rr
     assert result.order is not None
     assert result.order.price == D("4400.20")
 
 
-def test_bid_movement_still_triggers_drift_guard_for_buy() -> None:
+def test_adverse_buy_movement_is_allowed_until_strategy_rr_floor() -> None:
     value = replace(
         plan("GOLDI"),
         stop=D("4399.00"),
@@ -224,13 +228,21 @@ def test_bid_movement_still_triggers_drift_guard_for_buy() -> None:
     base = context("GOLDI")
     moved = replace(
         base,
-        quote=Tick(base.quote.time, D("4400.20"), D("4400.40")),
+        quote=Tick(base.quote.time, D("4403.70"), D("4403.90")),
     )
 
-    assert_rejected(ExecutionReject.DRIFT, value, moved)
+    result = validate_execution(value, profile("GOLDI"), policy("GOLDI"), moved)
+    assert result.allowed is True
+    assert result.actual_rr >= value.minimum_executable_rr
+
+    stale = replace(
+        base,
+        quote=Tick(base.quote.time, D("4414.80"), D("4415.00")),
+    )
+    assert_rejected(ExecutionReject.DRIFT, value, stale)
 
 
-def test_goldm_drift_semantics_remain_unchanged() -> None:
+def test_dynamic_rr_guard_is_profile_symmetric() -> None:
     value = replace(
         plan("GOLDM"),
         stop=D("4399.00"),
@@ -243,7 +255,34 @@ def test_goldm_drift_semantics_remain_unchanged() -> None:
         quote=Tick(base.quote.time, D("4400.00"), D("4400.20")),
     )
 
-    assert_rejected(ExecutionReject.DRIFT, value, spread_only)
+    result = validate_execution(value, profile("GOLDM"), policy("GOLDM"), spread_only)
+    assert result.allowed is True
+    assert result.actual_rr >= value.minimum_executable_rr
+
+
+def test_august_24_goldi_momentum_regression_accepts_valid_realtime_quote() -> None:
+    value = replace(
+        plan("GOLDI"),
+        planned_entry=D("4661.78"),
+        stop=D("4660.87"),
+        target=D("4669.39"),
+        planned_risk=D("0.91"),
+        invalidation=D("4660.87"),
+        minimum_executable_rr=D("1.5"),
+    )
+    base = context("GOLDI")
+    realtime = replace(
+        base,
+        quote=Tick(base.quote.time, D("4661.77"), D("4661.78")),
+    )
+
+    result = validate_execution(value, profile("GOLDI"), policy("GOLDI"), realtime)
+
+    assert result.allowed is True
+    assert ExecutionReject.DRIFT not in result.reasons
+    assert result.order is not None
+    assert result.order.price == D("4661.78")
+    assert result.actual_rr == D("7.61") / D("0.91")
 
 
 def test_identity_exposure_margin_duplicate_and_broker_guards() -> None:
@@ -353,8 +392,20 @@ def test_execution_policy_is_canonical_profile_bound_and_swap_rejected(tmp_path:
 
 def test_execution_contract_boundaries_are_strict() -> None:
     with pytest.raises(ExecutionContractError):
-        ExecutionPolicy(1, "GOLDI", "short", "1", D("0.15"), D("0.6"), 60)
+        ExecutionPolicy(2, "GOLDI", "short", "1", D("0.6"), 60)
     with pytest.raises(ExecutionContractError):
         ExecutionExposure(-1, D("0"))
     with pytest.raises(ExecutionContractError):
-        ExecutionValidation(True, (), D("0"), D("1"), None)
+        ExecutionValidation(
+            allowed=True,
+            reasons=(),
+            adverse_drift_r=D("0"),
+            maximum_adverse_drift_r=D("1"),
+            executable_price=D("1"),
+            quote_bid=D("1"),
+            quote_ask=D("1"),
+            actual_risk=D("1"),
+            actual_reward=D("1"),
+            actual_rr=D("1"),
+            order=None,
+        )

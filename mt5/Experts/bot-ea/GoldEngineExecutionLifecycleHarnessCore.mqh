@@ -72,7 +72,7 @@ bool BuildLifecyclePlan(const ProfileConfig &profile,
    plan.valid_until=now+profile.maximum_signal_age_seconds;
    plan.volume=ResolveProfileLot(profile,AccountInfoDouble(ACCOUNT_BALANCE));
    plan.tick_size=profile.tick_size;
-   plan.maximum_drift_r=profile.maximum_drift_r;
+   plan.minimum_executable_rr=1.0;
    plan.maximum_spread=profile.maximum_spread;
    plan.planned_entry=LifecycleCeil(tick.ask,profile.tick_size);
    plan.stop_loss=LifecycleFloor(tick.ask-3.0,profile.tick_size);

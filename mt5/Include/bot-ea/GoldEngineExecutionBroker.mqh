@@ -26,6 +26,16 @@ struct ExecutionReceipt
    ulong                deal_ticket;
    double               executed_price;
    double               executed_volume;
+   long                 quote_time_msc;
+   double               quote_bid;
+   double               quote_ask;
+   double               requested_price;
+   double               actual_risk;
+   double               actual_reward;
+   double               actual_rr;
+   double               adverse_drift_r;
+   double               maximum_adverse_drift_r;
+   ulong                preflight_to_submit_us;
    ulong                submit_to_broker_ack_us;
    string               reason;
   };
@@ -83,8 +93,34 @@ void ExecutionResetReceipt(ExecutionReceipt &receipt)
    receipt.deal_ticket=0;
    receipt.executed_price=0.0;
    receipt.executed_volume=0.0;
+   receipt.quote_time_msc=0;
+   receipt.quote_bid=0.0;
+   receipt.quote_ask=0.0;
+   receipt.requested_price=0.0;
+   receipt.actual_risk=0.0;
+   receipt.actual_reward=0.0;
+   receipt.actual_rr=0.0;
+   receipt.adverse_drift_r=0.0;
+   receipt.maximum_adverse_drift_r=0.0;
+   receipt.preflight_to_submit_us=0;
    receipt.submit_to_broker_ack_us=0;
    receipt.reason="";
+  }
+
+void ExecutionCaptureValidation(ExecutionReceipt &receipt,
+                                const ExecutionValidation &validation)
+  {
+   receipt.validation_allowed=validation.allowed;
+   receipt.reject_mask=validation.reject_mask;
+   receipt.quote_time_msc=validation.quote_time_msc;
+   receipt.quote_bid=validation.quote_bid;
+   receipt.quote_ask=validation.quote_ask;
+   receipt.requested_price=validation.executable_price;
+   receipt.actual_risk=validation.actual_risk;
+   receipt.actual_reward=validation.actual_reward;
+   receipt.actual_rr=validation.actual_rr;
+   receipt.adverse_drift_r=validation.adverse_drift_r;
+   receipt.maximum_adverse_drift_r=validation.maximum_adverse_drift_r;
   }
 
 bool ExecutionRetcodeSuccess(const uint retcode)
@@ -238,6 +274,7 @@ public:
                string &reason)
      {
       ExecutionResetReceipt(receipt);
+      const ulong preflight_started_us=GetMicrosecondCount();
       receipt.signal_id=plan.signal_id;
       if(!m_initialized)
         {
@@ -259,15 +296,14 @@ public:
       ExecutionValidation validation;
       if(!ValidateExecution(plan,m_profile,context,validation))
         {
+         ExecutionCaptureValidation(receipt,validation);
          receipt.state=EXECUTION_SUBMIT_REJECTED;
-         receipt.reject_mask=validation.reject_mask;
          receipt.retcode=preflight.check_result.retcode;
          receipt.reason=validation.primary_reason;
          reason=receipt.reason;
          return false;
         }
-      receipt.validation_allowed=true;
-      receipt.reject_mask=validation.reject_mask;
+      ExecutionCaptureValidation(receipt,validation);
       receipt.retcode=preflight.check_result.retcode;
       if(!m_authority_enabled)
         {
@@ -277,15 +313,43 @@ public:
          return false;
         }
 
+      // Capture one final executable quote immediately before PositionOpen.
+      // Rebuild OrderCheck and every guard from the same quote so the order
+      // cannot be delayed by telemetry or chase a stale strategy reference.
+      ExecutionContext fresh_context;
+      BrokerPreflight fresh_preflight;
+      if(!ExecutionCollectBrokerContext(
+            plan,m_profile,fresh_context,fresh_preflight,reason))
+        {
+         receipt.state=EXECUTION_SUBMIT_REJECTED;
+         receipt.retcode=fresh_preflight.check_result.retcode;
+         receipt.reason=reason;
+         return false;
+        }
+      ExecutionValidation fresh_validation;
+      if(!ValidateExecution(plan,m_profile,fresh_context,fresh_validation))
+        {
+         ExecutionCaptureValidation(receipt,fresh_validation);
+         receipt.state=EXECUTION_SUBMIT_REJECTED;
+         receipt.retcode=fresh_preflight.check_result.retcode;
+         receipt.reason=fresh_validation.primary_reason;
+         reason=receipt.reason;
+         return false;
+        }
+      ExecutionCaptureValidation(receipt,fresh_validation);
+      receipt.retcode=fresh_preflight.check_result.retcode;
+      receipt.preflight_to_submit_us=
+         GetMicrosecondCount()-preflight_started_us;
+
       const string comment=ExecutionSignalComment(plan.profile_id,plan.signal_id);
       const ulong submit_started_us=GetMicrosecondCount();
       const bool sent=m_trade.PositionOpen(
-         validation.order.symbol,
-         validation.order.side==ENGINE_SIDE_BUY ? ORDER_TYPE_BUY : ORDER_TYPE_SELL,
-         validation.order.volume,
-         validation.order.price,
-         validation.order.stop_loss,
-         validation.order.take_profit,
+         fresh_validation.order.symbol,
+         fresh_validation.order.side==ENGINE_SIDE_BUY ? ORDER_TYPE_BUY : ORDER_TYPE_SELL,
+         fresh_validation.order.volume,
+         fresh_validation.order.price,
+         fresh_validation.order.stop_loss,
+         fresh_validation.order.take_profit,
          comment);
       receipt.submit_to_broker_ack_us=
          GetMicrosecondCount()-submit_started_us;
