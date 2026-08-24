@@ -27,8 +27,6 @@ class RecipientPolicy:
                 "POSITION_CLOSED",
                 "ENGINE_ERROR",
                 "RECOVERY_COMPLETED",
-                "TRADING_PAUSED",
-                "TRADING_RESUMED",
             }
             or event.audience == "internal"
         ):
@@ -155,8 +153,6 @@ class EventBridge:
             "ENTRY_READY": "🟡 SIGNAL SIAP",
             "POSITION_OPENED": "✅ ORDER OPEN",
             "POSITION_CLOSED": "🏁 ORDER CLOSED",
-            "TRADING_PAUSED": "⏸️ ENTRY EA DITAHAN",
-            "TRADING_RESUMED": "▶️ ENTRY EA AKTIF KEMBALI",
             "ENGINE_ERROR": "⚠️ ENGINE ERROR",
             "ENGINE_STARTED": "🟢 ENGINE STARTED",
             "PROFILE_VALIDATED": "✅ PROFILE VALIDATED",
@@ -179,16 +175,6 @@ class EventBridge:
         strategy = str(payload.get("strategy") or "").strip()
         if strategy:
             lines.append(f"Strategi: {strategy}")
-
-        if event.event_type == "TRADING_PAUSED":
-            lines.extend(
-                (
-                    "Posisi manual/EA lain terdeteksi pada instrumen yang sama.",
-                    "EA tidak menyentuh posisi itu dan menahan order baru sementara.",
-                )
-            )
-        elif event.event_type == "TRADING_RESUMED":
-            lines.append("Posisi eksternal sudah tidak ada; evaluasi entry EA dilanjutkan.")
 
         field_specs = (
             ("Entry rencana", "planned_entry", False, 2),

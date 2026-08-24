@@ -13,7 +13,11 @@ def test_discovery_uses_pure_identity_classifier() -> None:
     assert "POSITION_IDENTITY_FOREIGN_MAGIC" in source
     assert "POSITION_IDENTITY_MANUAL_COMMENT" in source
     assert "POSITION_IDENTITY_OWNED" in source
-    assert "positions[count].owned=identity==POSITION_IDENTITY_OWNED" in source
+    assert "identity==POSITION_IDENTITY_OTHER_SYMBOL ||" in source
+    assert "identity==POSITION_IDENTITY_FOREIGN_MAGIC" in source
+    assert "identity==POSITION_IDENTITY_MANUAL_COMMENT" in source
+    assert "ownership_conflict=true;" in source
+    assert "positions[count].owned=true;" in source
 
 
 def test_native_harness_proves_magic_collision_and_cross_profile_refusal() -> None:

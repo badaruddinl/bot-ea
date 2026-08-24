@@ -111,9 +111,10 @@ void RunLifecycle(void)
    ExecutionReceipt opened;
    const bool submitted=HarnessBroker.Submit(plan,opened,reason);
    const string submit_reason=opened.reason;
-   ManagedPosition discovered[];bool foreign=false;bool manual=false;
+   ManagedPosition discovered[];bool ownership_conflict=false;
    const bool found=submitted && HarnessBroker.DiscoverOwnedPositions(
-      discovered,foreign,manual,reason) && ArraySize(discovered)==1;
+      discovered,ownership_conflict,reason) &&
+      !ownership_conflict && ArraySize(discovered)==1;
    ulong ticket=(found ? discovered[0].ticket : 0);
    HarnessActiveTicket=ticket;
    const string order_id=IntegerToString((long)opened.order_ticket);
@@ -137,9 +138,9 @@ void RunLifecycle(void)
 
    CExecutionBroker restarted;
    const bool restarted_ok=restarted.Initialize(HarnessProfile,true,reason);
-   ManagedPosition recovered[];bool recovered_foreign=false;bool recovered_manual=false;
+   ManagedPosition recovered[];bool recovered_conflict=false;
    const bool recovered_ok=restarted_ok && restarted.DiscoverOwnedPositions(
-      recovered,recovered_foreign,recovered_manual,reason) &&
+      recovered,recovered_conflict,reason) && !recovered_conflict &&
       ArraySize(recovered)==1 && recovered[0].ticket==ticket &&
       MathAbs(recovered[0].stop_loss-modified_stop)<=HarnessProfile.tick_size;
    PositionActionReceipt closed;
@@ -150,9 +151,9 @@ void RunLifecycle(void)
    const int after=PositionsTotal();
    HarnessPassed=setup_emitted && ready_emitted && submitted &&
       opened.state==EXECUTION_SUBMIT_SENT && order_emitted && opened_emitted &&
-      found && !foreign && !manual && changed &&
+      found && !ownership_conflict && changed &&
       modified.state==POSITION_ACTION_DONE && modified_emitted && recovered_ok &&
-      !recovered_foreign && !recovered_manual && closed_ok &&
+      !recovered_conflict && closed_ok &&
       closed.state==POSITION_ACTION_DONE && closed_emitted && after==before &&
       HarnessEventCount==6;
 

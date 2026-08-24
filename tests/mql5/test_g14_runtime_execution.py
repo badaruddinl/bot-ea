@@ -2,6 +2,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 RUNTIME = ROOT / "mt5" / "Include" / "bot-ea" / "GoldEngineRuntime.mqh"
+BROKER = ROOT / "mt5" / "Include" / "bot-ea" / "GoldEngineExecutionBroker.mqh"
+BROKER_CONTEXT = ROOT / "mt5" / "Include" / "bot-ea" / "GoldEngineBrokerContext.mqh"
 EXPERTS = [
     ROOT / "mt5" / "Experts" / "bot-ea" / "GoldEngine-GOLDi.mq5",
     ROOT / "mt5" / "Experts" / "bot-ea" / "GoldEngine-GOLDm.mq5",
@@ -21,20 +23,25 @@ def test_runtime_builds_complete_profile_bound_plans_for_revised_and_bear() -> N
     assert "m_last_revised_decision.observation_only" in value
 
 
-def test_runtime_pauses_without_latching_authority_off_for_external_position() -> None:
+def test_runtime_ignores_manual_magic_and_fails_closed_on_owned_identity_conflict() -> None:
     value = RUNTIME.read_text(encoding="utf-8")
     assert "RecoverOwnedPositions" in value
     assert "DiscoverOwnedPositions" in value
-    external_block = value[value.index("const bool external_position=") :]
-    external_block = external_block[: external_block.index("m_position_state_status=")]
-    assert "DisableAuthority" not in external_block
-    assert "ENGINE_EVENT_TRADING_PAUSED" in external_block
-    assert "EXTERNAL_POSITION_DETECTED" in external_block
-    assert "ENGINE_EVENT_TRADING_RESUMED" in external_block
-    assert "EXTERNAL_POSITION_CLEARED" in external_block
-    assert "if(m_external_position_active)" in value
+    assert "m_ownership_conflict" in value
+    assert "POSITION_OWNERSHIP_CONFLICT" in value
+    assert "m_execution_broker.DisableAuthority();" in value
+    assert "TRADING_PAUSED" not in value
     assert "POSITION_RECOVERED" in value
     assert "void OnTradeTransaction" in value
+
+    broker = BROKER.read_text(encoding="utf-8")
+    assert "identity==POSITION_IDENTITY_OTHER_SYMBOL ||" in broker
+    assert "identity==POSITION_IDENTITY_FOREIGN_MAGIC" in broker
+    assert "identity==POSITION_IDENTITY_MANUAL_COMMENT" in broker
+    assert "ownership_conflict=true;" in broker
+
+    context = BROKER_CONTEXT.read_text(encoding="utf-8")
+    assert "PositionGetInteger(POSITION_MAGIC)!=profile.magic" in context
 
 
 def test_profile_entrypoints_keep_authority_default_false_and_forward_transactions() -> None:

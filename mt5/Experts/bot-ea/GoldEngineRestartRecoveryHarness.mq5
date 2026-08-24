@@ -105,9 +105,10 @@ int OnInit(void)
    if(!HarnessBroker.Initialize(HarnessProfile,true,reason))
       return INIT_FAILED;
    HarnessStore.Initialize(HarnessProfile.profile_id,HarnessProfile.profile_fingerprint);
-   ManagedPosition positions[];bool foreign=false;bool manual=false;
-   if(!HarnessBroker.DiscoverOwnedPositions(positions,foreign,manual,reason) ||
-      foreign || manual || ArraySize(positions)>1)
+   ManagedPosition positions[];bool ownership_conflict=false;
+   if(!HarnessBroker.DiscoverOwnedPositions(
+         positions,ownership_conflict,reason) ||
+      ownership_conflict || ArraySize(positions)>1)
       return INIT_FAILED;
    if(ArraySize(positions)==1)
      {
@@ -139,9 +140,10 @@ void OnTick(void)
             " retcode=",opened.retcode);
       return;
      }
-   ManagedPosition positions[];bool foreign=false;bool manual=false;
-   if(!HarnessBroker.DiscoverOwnedPositions(positions,foreign,manual,reason) ||
-      foreign || manual || ArraySize(positions)!=1)
+   ManagedPosition positions[];bool ownership_conflict=false;
+   if(!HarnessBroker.DiscoverOwnedPositions(
+         positions,ownership_conflict,reason) ||
+      ownership_conflict || ArraySize(positions)!=1)
       return;
    const ManagedPosition position=positions[0];
    ExpectedPositionState expected;PositionStateReset(expected);

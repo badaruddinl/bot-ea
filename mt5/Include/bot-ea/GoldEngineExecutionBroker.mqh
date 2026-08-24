@@ -312,13 +312,11 @@ public:
      }
 
    bool DiscoverOwnedPositions(ManagedPosition &positions[],
-                               bool &foreign_symbol_position,
-                               bool &manual_intervention,
+                               bool &ownership_conflict,
                                string &reason)
      {
       ArrayResize(positions,0);
-      foreign_symbol_position=false;
-      manual_intervention=false;
+      ownership_conflict=false;
       if(!m_initialized)
         {
          reason="EXECUTION_BROKER_NOT_INITIALIZED";
@@ -341,11 +339,12 @@ public:
          const PositionOwnershipClass identity=ClassifyPositionIdentity(
             m_profile,PositionGetString(POSITION_SYMBOL),
             PositionGetInteger(POSITION_MAGIC),PositionGetString(POSITION_COMMENT));
-         if(identity==POSITION_IDENTITY_OTHER_SYMBOL)
+         if(identity==POSITION_IDENTITY_OTHER_SYMBOL ||
+            identity==POSITION_IDENTITY_FOREIGN_MAGIC)
             continue;
-         if(identity==POSITION_IDENTITY_FOREIGN_MAGIC)
+         if(identity==POSITION_IDENTITY_MANUAL_COMMENT)
            {
-            foreign_symbol_position=true;
+            ownership_conflict=true;
             continue;
            }
          const int count=ArraySize(positions);
@@ -361,9 +360,7 @@ public:
          positions[count].stop_loss=PositionGetDouble(POSITION_SL);
          positions[count].take_profit=PositionGetDouble(POSITION_TP);
          positions[count].comment=PositionGetString(POSITION_COMMENT);
-         positions[count].owned=identity==POSITION_IDENTITY_OWNED;
-         if(!positions[count].owned)
-            manual_intervention=true;
+         positions[count].owned=true;
         }
       reason="OK";
       return true;
