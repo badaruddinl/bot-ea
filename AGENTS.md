@@ -73,23 +73,27 @@ server, config, state, magic, risk, audience, or open positions.
 
 ## Baseline discipline
 
-- The activated goal decides the target repository and branch.
+- `origin/main` is the only canonical source of truth for implementation,
+  release, deployment, and future baselines.
+- Fetch before every batch and create a clean branch from the exact current
+  `origin/main` SHA. Never continue new work from an old feature branch.
+- Use `feature/<concern>` for additions and `hotfix/<concern>` for corrections
+  to behavior already present on main.
+- Every feature/hotfix reaches main through a pull request. Do not push commits
+  directly to main, rewrite main, or treat an unmerged branch as production
+  truth.
+- Merge only after required tests pass, use a merge commit, then delete the
+  remote feature/hotfix branch. Tags and deployment candidates must resolve to
+  main or an explicitly identified PR commit awaiting merge.
 - Fetch before the first batch and resolve the exact remote tip to a full SHA.
 - A branch name is not evidence. Record commit SHA, parent SHA, tree SHA,
   remote ref, relevant blob hashes, and environment metadata.
 - Use a clean dedicated worktree. Untracked research data or a dirty checkout
   makes the exact-baseline gate fail.
-- Do not use `origin/main` merely because it is the default branch when the
-  goal names another branch.
 - Do not amend, force-push, rebase, retag, or otherwise rewrite an audited
   baseline.
 - Preserve the Python implementation as the reference until certified parity
   makes a replacement removable.
-
-The currently observed pre-goal candidate is
-`b042d51cfc3b2ea1f9aa048054af03d79d79726e` on
-`origin/feature/global-orchestrator`. This is informational only. Resolve it
-again when the goal is explicitly activated.
 
 ## Repository and tool workflow
 
