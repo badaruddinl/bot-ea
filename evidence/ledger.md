@@ -19,9 +19,9 @@ REAL order authority: **DISABLED**
 | G07 | PASS | SHARED, GOLDI, GOLDM, CROSS_PROFILE | `evidence/G07-event-driven-reference-runtime/` | Fast/bar/slow lanes, deterministic sequence, outbox isolation, stall containment, quality gate, and regression passed. |
 | G08 | PASS | SHARED, GOLDI, GOLDM, CROSS_PROFILE | `evidence/G08-execution-validity/` | Immutable plan/policy, all pre-send guards, no quote chasing, integration, quality gate, and regression passed. |
 | G09 | PASS | SHARED, GOLDI, GOLDM | `evidence/G09-causal-tick-replay/` | Common-runtime replay, forming-bar exclusion, tick/same-bar policy, profile reports, quality gate, and regression passed. |
-| G10A | IN_PROGRESS | GOLDI, GOLDM, CROSS_PROFILE | `evidence/G10-reference-live-validation/` | GOLDm REAL read-only probe passed with zero order calls; GOLD.i dedicated terminal path and concurrent isolation evidence remain. |
-| G10B | IN_PROGRESS | GOLDI | `evidence/G10-reference-live-validation/` | GOLD.i guarded DEMO lifecycle remains required after the second terminal is isolated. |
-| G10C | DEFERRED_TO_G15 | GOLDM | `evidence/G10-reference-live-validation/` | GOLDm execution evidence uses the profile-locked binary in isolated Strategy Tester, never live REAL engineering orders. |
+| G10A | PASS | GOLDI, GOLDM, CROSS_PROFILE | `evidence/G10-reference-live-validation/` | Actual distinct-terminal probes captured closed bars/ticks and zero order API calls for GOLDI DEMO and GOLDM REAL read-only; concurrent isolation passed. |
+| G10B | PASS | GOLDI | `evidence/G10-reference-live-validation/` | Actual guarded GOLDI DEMO lifecycle, close, restart, latency, and zero duplicate/bleed evidence passed. |
+| G10C | PASS | GOLDM | `evidence/G10-reference-live-validation/` | Profile-locked GOLDM Strategy Tester batch, parity, real-tick window, and restart recovery passed without live REAL orders. |
 | G10D | PASS | SHARED | `evidence/G10D-remove-app-surfaces/` | Desktop UI, application runtime, WebSocket service, dependencies, launchers, tests, and stale docs were removed; fast and release suites passed. |
 | G11 | PASS | SHARED, GOLDI, GOLDM, CROSS_PROFILE | `evidence/G11-mql5-runtime-skeleton/` | Profile-locked strict binaries compile with zero errors/warnings; scheduler, warm-up, identity failure, bounded tick path, and no-order invariants passed. |
 | G12S | PASS | GOLDI, GOLDM, CROSS_PROFILE | `evidence/G12S-sizing-contract/` | User-authorized adaptive balance tiers were propagated through canonical manifests, final/validation configs, Python/MQL5 resolvers, regenerated fingerprints/corpora, and full fast/slow regression. |
@@ -33,7 +33,8 @@ REAL order authority: **DISABLED**
 | G17 | PASS | SHARED, GOLDI, GOLDM, CROSS_PROFILE | `evidence/G17-happy-path-e2e/` | GOLDI actual DEMO and GOLDM isolated tester chains completed through order/position/close/spool/SQLite/actual Telegram, exact GOLDM refusal passed, cross-profile leakage stayed zero, compile/regression/quality passed, and REAL authority remained disabled. |
 | G18 | PASS | SHARED, GOLDI, GOLDM, CROSS_PROFILE | `evidence/G18-failure-restart-e2e/` | Strict failure/restart certification passed, including an actual Windows Server VM boot-ID change, fresh GOLDI/GOLDM runtime identities, recovery/isolation, and disabled REAL authority. |
 | G19 | PASS | SHARED, GOLDI, GOLDM, CROSS_PROFILE | `evidence/G19-resource-storage-latency/` | 602.01-second final-EA capture, zero idle storage growth/leak, 24 native position receipts, 100 bridge receipts, both profile tester runs, compile, fast/slow regression, and quality gate PASS. Telegram latency is labeled internal/no-network. |
-| G20 | IN_PROGRESS | SHARED, GOLDI, GOLDM, CROSS_PROFILE | `evidence/G20-fresh-vm-acceptance/` | Session 0 design retained as strict FAIL. Operator approved Microsoft Autologon + immediate lock; interactive-token cold-boot acceptance is in progress. Temporary G18/Python launchers remain disabled. |
+| G20 | PASS | SHARED, GOLDI, GOLDM, CROSS_PROFILE | `evidence/G20-fresh-vm-acceptance/` | Strict clean-boot verifier passed before operator login with one bridge, both exact terminals/EAs, profile startup/validation/heartbeat events, and disabled REAL authority. |
+| G21 | PASS | SHARED, GOLDI, GOLDM, CROSS_PROFILE | `release/`, `evidence/G21-final-release/` | Exact fresh-VM binaries, rollback binaries, manifests, full release reports, SHA256SUMS, strict verifier, fast/slow regression, and disabled REAL authority passed. |
 
 Raw or large evidence is stored outside Git under:
 
