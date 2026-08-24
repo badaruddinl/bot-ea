@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import Any
 
 from .events import EngineEventEnvelope
 from .store import EventStore
@@ -112,23 +113,125 @@ class EventBridge:
         return delivered, failed
 
     @staticmethod
-    def format_message(event: EngineEventEnvelope) -> str:
+    def _number(value: Any, *, digits: int = 2, signed: bool = False) -> str:
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            return str(value)
+        prefix = "+" if signed and number > 0 else ""
+        return f"{prefix}{number:.{digits}f}"
+
+    @staticmethod
+    def _duration(seconds: Any) -> str:
+        try:
+            remaining = max(0, int(float(seconds)))
+        except (TypeError, ValueError):
+            return str(seconds)
+        days, remaining = divmod(remaining, 86_400)
+        hours, remaining = divmod(remaining, 3_600)
+        minutes, seconds_value = divmod(remaining, 60)
+        parts = []
+        if days:
+            parts.append(f"{days} hari")
+        if hours:
+            parts.append(f"{hours} jam")
+        if minutes:
+            parts.append(f"{minutes} menit")
+        if seconds_value or not parts:
+            parts.append(f"{seconds_value} detik")
+        return " ".join(parts)
+
+    @classmethod
+    def format_message(
+        cls,
+        event: EngineEventEnvelope,
+        *,
+        vm_time: datetime | None = None,
+    ) -> str:
         payload = event.payload or {}
+        side = str(payload.get("side") or "").upper()
+        side_suffix = f" {side}" if side in {"BUY", "SELL"} else ""
+        title = {
+            "ENTRY_READY": "🟡 SIGNAL SIAP",
+            "POSITION_OPENED": "✅ ORDER OPEN",
+            "POSITION_CLOSED": "🏁 ORDER CLOSED",
+            "TRADING_PAUSED": "⏸️ ENTRY EA DITAHAN",
+            "TRADING_RESUMED": "▶️ ENTRY EA AKTIF KEMBALI",
+            "ENGINE_ERROR": "⚠️ ENGINE ERROR",
+            "ENGINE_STARTED": "🟢 ENGINE STARTED",
+            "PROFILE_VALIDATED": "✅ PROFILE VALIDATED",
+            "RECOVERY_COMPLETED": "🔄 POSITION RECOVERED",
+        }.get(event.event_type, event.event_type.replace("_", " ").title())
+
+        server_time = str(payload.get("server_time_text") or "").strip()
+        if not server_time:
+            server_time = event.server_time.strftime("%Y-%m-%d %H:%M:%S")
+        vm_time_text = str(payload.get("vm_time_text") or "").strip()
+        if not vm_time_text:
+            observed = vm_time or datetime.now().astimezone()
+            vm_time_text = observed.isoformat(timespec="seconds")
+
         lines = [
-            f"{event.event_type.replace('_', ' ').title()} — {event.profile_id}",
-            f"Instrumen: {event.symbol}",
-            f"ID event: {event.event_id}",
-            f"Waktu server: {event.server_time.isoformat()}",
-            f"Alasan: {event.reason}",
+            f"{title} — {event.symbol}{side_suffix}",
+            f"Profile: {event.profile_id} v{event.profile_version}",
         ]
-        for label, key in (
-            ("Entry", "entry"),
-            ("Stop Loss", "stop_loss"),
-            ("Take Profit", "take_profit"),
-            ("Volume", "volume"),
-            ("P/L", "profit_loss"),
-            ("Saldo", "balance"),
+
+        strategy = str(payload.get("strategy") or "").strip()
+        if strategy:
+            lines.append(f"Strategi: {strategy}")
+
+        if event.event_type == "TRADING_PAUSED":
+            lines.extend(
+                (
+                    "Posisi manual/EA lain terdeteksi pada instrumen yang sama.",
+                    "EA tidak menyentuh posisi itu dan menahan order baru sementara.",
+                )
+            )
+        elif event.event_type == "TRADING_RESUMED":
+            lines.append("Posisi eksternal sudah tidak ada; evaluasi entry EA dilanjutkan.")
+
+        field_specs = (
+            ("Entry rencana", "planned_entry", False, 2),
+            ("Harga open", "entry", False, 2),
+            ("Stop Loss", "stop_loss", False, 2),
+            ("Take Profit", "take_profit", False, 2),
+            ("Harga close", "close_price", False, 2),
+            ("Lot", "volume", False, 2),
+            ("R:R", "rr", False, 2),
+            ("Risk harga", "risk_price", False, 2),
+            ("P/L", "profit_loss", True, 2),
+            ("Hasil R", "realized_r", True, 2),
+            ("Balance", "balance", False, 2),
+            ("Equity", "equity", False, 2),
+        )
+        for label, key, signed, digits in field_specs:
+            if key not in payload:
+                continue
+            rendered = cls._number(payload[key], digits=digits, signed=signed)
+            suffix = " USD" if key in {"profit_loss", "balance", "equity"} else ""
+            if key == "rr":
+                rendered = f"1:{rendered}"
+            elif key == "realized_r":
+                suffix = "R"
+            lines.append(f"{label}: {rendered}{suffix}")
+
+        if "duration_seconds" in payload:
+            lines.append(f"Durasi: {cls._duration(payload['duration_seconds'])}")
+
+        for label, value in (
+            ("ID sinyal", event.signal_id),
+            ("ID order", event.order_id),
+            ("ID posisi", event.position_id),
+            ("ID event", event.event_id),
         ):
-            if key in payload:
-                lines.append(f"{label}: {payload[key]}")
+            if value:
+                lines.append(f"{label}: {value}")
+
+        lines.extend(
+            (
+                f"Waktu server MT5: {server_time}",
+                f"Waktu VM/bridge: {vm_time_text}",
+                f"Status: {event.reason}",
+            )
+        )
         return "\n".join(lines)

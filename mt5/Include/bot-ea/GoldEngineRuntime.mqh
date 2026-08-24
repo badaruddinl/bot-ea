@@ -68,12 +68,94 @@ private:
       return StringFormat(
          "{\"source\":\"MANUAL_OR_OTHER_EA\",\"entry_blocked\":%s,"
          "\"order_authority_configured\":\"%s\",\"balance\":%.2f,"
-         "\"equity\":%.2f,\"vm_time_epoch\":%I64d}",
+         "\"equity\":%.2f,\"server_time_text\":\"%s\","
+         "\"vm_time_text\":\"%s\"}",
          active ? "true" : "false",
          m_execution_broker.AuthorityEnabled() ? "ENABLED" : "DISABLED",
          AccountInfoDouble(ACCOUNT_BALANCE),
          AccountInfoDouble(ACCOUNT_EQUITY),
-         (long)TimeLocal());
+         OutboxJsonEscape(TimeToString(
+            m_last_event.server_time,TIME_DATE|TIME_SECONDS)),
+         OutboxJsonEscape(TimeToString(TimeLocal(),TIME_DATE|TIME_SECONDS)));
+     }
+
+   string SideText(const EngineSide side) const
+     {
+      return side==ENGINE_SIDE_BUY ? "BUY" :
+             (side==ENGINE_SIDE_SELL ? "SELL" : "UNKNOWN");
+     }
+
+   string StrategyText(const string identity) const
+     {
+      return StringFind(identity,":REVISED:")>=0 ? "REVISED" : "BEAR";
+     }
+
+   string SignalPlanPayload(const SignalPlan &plan,
+                            const double actual_entry,
+                            const double actual_volume,
+                            const bool include_latency=false) const
+     {
+      const double risk=MathAbs(plan.planned_entry-plan.stop_loss);
+      const double reward=MathAbs(plan.take_profit-plan.planned_entry);
+      const double rr=risk>0.0 ? reward/risk : 0.0;
+      string payload=StringFormat(
+         "{\"strategy\":\"%s\",\"side\":\"%s\","
+         "\"planned_entry\":%.8f,\"entry\":%.8f,"
+         "\"stop_loss\":%.8f,\"take_profit\":%.8f,"
+         "\"risk_price\":%.8f,\"rr\":%.8f,\"volume\":%.8f,"
+         "\"balance\":%.2f,\"equity\":%.2f,"
+         "\"server_time_text\":\"%s\",\"vm_time_text\":\"%s\"}",
+         StrategyText(plan.setup_id),SideText(plan.side),
+         plan.planned_entry,actual_entry,plan.stop_loss,plan.take_profit,
+         risk,rr,actual_volume,
+         AccountInfoDouble(ACCOUNT_BALANCE),
+         AccountInfoDouble(ACCOUNT_EQUITY),
+         OutboxJsonEscape(TimeToString(
+            plan.entry_ready_at,TIME_DATE|TIME_SECONDS)),
+         OutboxJsonEscape(TimeToString(TimeLocal(),TIME_DATE|TIME_SECONDS)));
+      if(!include_latency)
+         return payload;
+      return StringSubstr(payload,0,StringLen(payload)-1)+StringFormat(
+         ",\"bar_close_to_detection_ms\":%I64u,"
+         "\"detection_to_decision_us\":%I64u,"
+         "\"entry_ready_to_submit_us\":%I64u,"
+         "\"submit_to_broker_ack_us\":%I64u}",
+         m_last_bar_close_to_detection_ms,
+         m_last_detection_to_decision_us,
+         m_last_entry_ready_to_submit_us,
+         m_last_execution_receipt.submit_to_broker_ack_us);
+     }
+
+   string ClosedPositionPayload(const ExpectedPositionState &position,
+                                const EngineSide side,
+                                const datetime opened_at,
+                                const datetime closed_at,
+                                const double close_price,
+                                const double closed_volume,
+                                const double profit_loss) const
+     {
+      const double risk=MathAbs(position.entry_price-position.stop_loss);
+      const double price_move=side==ENGINE_SIDE_BUY ?
+         close_price-position.entry_price : position.entry_price-close_price;
+      const double realized_r=risk>0.0 ? price_move/risk : 0.0;
+      const long duration_seconds=opened_at>0 && closed_at>=opened_at ?
+         (long)(closed_at-opened_at) : 0;
+      const double rr=risk>0.0 ?
+         MathAbs(position.take_profit-position.entry_price)/risk : 0.0;
+      return StringFormat(
+         "{\"strategy\":\"%s\",\"side\":\"%s\","
+         "\"entry\":%.8f,\"stop_loss\":%.8f,\"take_profit\":%.8f,"
+         "\"close_price\":%.8f,\"volume\":%.8f,\"rr\":%.8f,"
+         "\"profit_loss\":%.8f,\"realized_r\":%.8f,"
+         "\"duration_seconds\":%I64d,\"balance\":%.2f,\"equity\":%.2f,"
+         "\"server_time_text\":\"%s\",\"vm_time_text\":\"%s\"}",
+         StrategyText(position.signal_id),SideText(side),
+         position.entry_price,position.stop_loss,position.take_profit,
+         close_price,closed_volume,rr,profit_loss,realized_r,
+         duration_seconds,AccountInfoDouble(ACCOUNT_BALANCE),
+         AccountInfoDouble(ACCOUNT_EQUITY),
+         OutboxJsonEscape(TimeToString(closed_at,TIME_DATE|TIME_SECONDS)),
+         OutboxJsonEscape(TimeToString(TimeLocal(),TIME_DATE|TIME_SECONDS)));
      }
 
    void EmitTransition(const string event_type,
@@ -188,7 +270,7 @@ private:
          return;
       if(ArraySize(m_owned_positions)>0)
         {
-         SetEvent(ENGINE_EVENT_ENTRY_READY,server_time,
+         SetEvent(ENGINE_EVENT_BAR_CLOSED,server_time,
             "POSITION_ALREADY_OPEN");
          return;
         }
@@ -204,23 +286,17 @@ private:
             return;
          m_state.phase=ENGINE_PHASE_POSITION_OPEN;
          SetEvent(ENGINE_EVENT_POSITION,server_time,"ORDER_SENT");
-         const string latency_payload=StringFormat(
-            "{\"bar_close_to_detection_ms\":%I64u,"
-            "\"detection_to_decision_us\":%I64u,"
-            "\"entry_ready_to_submit_us\":%I64u,"
-            "\"submit_to_broker_ack_us\":%I64u}",
-            m_last_bar_close_to_detection_ms,
-            m_last_detection_to_decision_us,
-            m_last_entry_ready_to_submit_us,
-            m_last_execution_receipt.submit_to_broker_ack_us);
+         const string opened_payload=SignalPlanPayload(
+            plan,m_expected_position.entry_price,
+            m_expected_position.volume,true);
          EmitTransition("POSITION_OPENED",plan.setup_id,plan.signal_id,
             IntegerToString((long)m_last_execution_receipt.order_ticket),
-            IntegerToString((long)m_expected_position.ticket),latency_payload);
+            IntegerToString((long)m_expected_position.ticket),opened_payload);
          return;
         }
       if(m_last_execution_receipt.state==EXECUTION_SUBMIT_DISABLED)
         {
-         SetEvent(ENGINE_EVENT_ENTRY_READY,server_time,"ORDER_AUTHORITY_DISABLED");
+         SetEvent(ENGINE_EVENT_BAR_CLOSED,server_time,"ORDER_AUTHORITY_DISABLED");
          return;
         }
       SetEvent(ENGINE_EVENT_ERROR,server_time,reason);
@@ -320,7 +396,14 @@ private:
          result[index-start]=source[index];
      }
 
-   void SetEvent(const EngineEventType type,const datetime server_time,const string reason)
+   void SetEvent(const EngineEventType type,
+                 const datetime server_time,
+                 const string reason,
+                 const string payload="{}",
+                 const string setup_id="",
+                 const string signal_id="",
+                 const string order_id="",
+                 const string position_id="")
      {
       m_last_event.type=type;
       m_last_event.profile_id=m_profile.profile_id;
@@ -344,12 +427,14 @@ private:
          EmitTransition("TRADING_RESUMED","","","","",
             ExternalPositionPayload(false));
       else if(type==ENGINE_EVENT_ENTRY_READY)
-         EmitTransition("ENTRY_READY",m_state.setup_id);
+         EmitTransition("ENTRY_READY",setup_id,signal_id,"","",payload);
       else if(type==ENGINE_EVENT_POSITION)
         {
          if(reason=="ORDER_SENT") EmitTransition("ORDER_SUBMITTED");
          else if(reason=="POSITION_MODIFIED") EmitTransition("POSITION_MODIFIED");
-         else if(reason=="POSITION_CLOSED") EmitTransition("POSITION_CLOSED");
+         else if(reason=="POSITION_CLOSED")
+            EmitTransition("POSITION_CLOSED",setup_id,signal_id,order_id,
+               position_id,payload);
          else if(reason=="POSITION_RECOVERED") EmitTransition("RECOVERY_COMPLETED");
         }
       else if(type==ENGINE_EVENT_ERROR)
@@ -480,9 +565,6 @@ private:
       m_has_revised_decision=true;
       if(m_last_revised_decision.state==REVISED_STATE_ENTRY_READY)
         {
-         SetEvent(
-            ENGINE_EVENT_ENTRY_READY,m_last_revised_decision.time,
-            m_last_revised_decision.reason);
          m_revised_detector.Consume(side,setup.trigger_time);
          if(!m_last_revised_decision.observation_only &&
             m_last_revised_decision.has_entry &&
@@ -499,6 +581,11 @@ private:
             BuildSignalPlan(side,setup_id,signal_id,setup.trigger_time,
                m_last_revised_decision.time,m_last_revised_decision.entry,
                m_last_revised_decision.stop,m_last_revised_decision.target,plan);
+            SetEvent(
+               ENGINE_EVENT_ENTRY_READY,m_last_revised_decision.time,
+               m_last_revised_decision.reason,
+               SignalPlanPayload(plan,plan.planned_entry,plan.volume),
+               setup_id,signal_id);
             SubmitSignalPlan(
                plan,m_last_revised_decision.time,entry_ready_started_us);
            }
@@ -539,9 +626,6 @@ private:
          const ulong entry_ready_started_us=GetMicrosecondCount();
          m_last_bear_signal=signal;
          m_has_bear_signal=true;
-         SetEvent(
-            ENGINE_EVENT_ENTRY_READY,signal.opened_at,
-            "M1_ENTRY_CONFIRMATION_READY");
          const string setup_id=m_bear_machine.SetupId();
          const string signal_id=setup_id+":"+
             IntegerToString((long)signal.opened_at);
@@ -549,6 +633,11 @@ private:
          BuildSignalPlan(ENGINE_SIDE_SELL,setup_id,signal_id,
             signal.armed_at,signal.opened_at,signal.entry,signal.stop,
             signal.target,plan);
+         SetEvent(
+            ENGINE_EVENT_ENTRY_READY,signal.opened_at,
+            "M1_ENTRY_CONFIRMATION_READY",
+            SignalPlanPayload(plan,plan.planned_entry,plan.volume),
+            setup_id,signal_id);
          SubmitSignalPlan(plan,signal.opened_at,entry_ready_started_us);
         }
       else if(ArraySize(events)>0)
@@ -810,7 +899,64 @@ public:
          return;
       if(transaction.symbol!="" && transaction.symbol!=m_profile.symbol)
          return;
+
+      const ExpectedPositionState previous=m_expected_position;
+      EngineSide previous_side=ENGINE_SIDE_NONE;
+      datetime opened_at=0;
+      for(int index=0;index<ArraySize(m_owned_positions);index++)
+        {
+         if(!previous.active ||
+            m_owned_positions[index].ticket!=previous.ticket)
+            continue;
+         previous_side=m_owned_positions[index].side;
+         opened_at=m_owned_positions[index].opened_at;
+         break;
+        }
+      if(previous_side==ENGINE_SIDE_NONE && previous.active)
+         previous_side=previous.stop_loss<previous.entry_price ?
+            ENGINE_SIDE_BUY : ENGINE_SIDE_SELL;
+
+      bool closing_deal=false;
+      datetime closed_at=TimeCurrent();
+      double close_price=0.0;
+      double closed_volume=0.0;
+      double profit_loss=0.0;
+      if(previous.active &&
+         transaction.type==TRADE_TRANSACTION_DEAL_ADD &&
+         transaction.deal>0 && HistoryDealSelect(transaction.deal))
+        {
+         const ENUM_DEAL_ENTRY entry=(ENUM_DEAL_ENTRY)HistoryDealGetInteger(
+            transaction.deal,DEAL_ENTRY);
+         const string deal_symbol=HistoryDealGetString(
+            transaction.deal,DEAL_SYMBOL);
+         const long deal_magic=HistoryDealGetInteger(
+            transaction.deal,DEAL_MAGIC);
+         closing_deal=(entry==DEAL_ENTRY_OUT || entry==DEAL_ENTRY_OUT_BY) &&
+            deal_symbol==m_profile.symbol && deal_magic==m_profile.magic;
+         if(closing_deal)
+           {
+            closed_at=(datetime)HistoryDealGetInteger(transaction.deal,DEAL_TIME);
+            close_price=HistoryDealGetDouble(transaction.deal,DEAL_PRICE);
+            closed_volume=HistoryDealGetDouble(transaction.deal,DEAL_VOLUME);
+            profit_loss=HistoryDealGetDouble(transaction.deal,DEAL_PROFIT)+
+               HistoryDealGetDouble(transaction.deal,DEAL_SWAP)+
+               HistoryDealGetDouble(transaction.deal,DEAL_COMMISSION)+
+               HistoryDealGetDouble(transaction.deal,DEAL_FEE);
+           }
+        }
+
       RecoverOwnedPositions(TimeCurrent());
+      if(closing_deal && previous.active &&
+         !m_expected_position.active && ArraySize(m_owned_positions)==0)
+        {
+         const string close_payload=ClosedPositionPayload(
+            previous,previous_side,opened_at,closed_at,close_price,
+            closed_volume,profit_loss);
+         SetEvent(ENGINE_EVENT_POSITION,closed_at,"POSITION_CLOSED",
+            close_payload,"",previous.signal_id,
+            IntegerToString((long)transaction.order),
+            IntegerToString((long)previous.ticket));
+        }
      }
 
    bool ModifyOwnedPosition(const ulong ticket,

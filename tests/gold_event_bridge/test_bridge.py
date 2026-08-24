@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -326,6 +327,69 @@ def test_external_position_pause_and_resume_are_admin_only(tmp_path: Path) -> No
         assert [chat_id for chat_id, _message in sent] == ["admin", "admin", "admin"]
     finally:
         store.close()
+
+
+def test_trade_messages_are_human_readable_and_complete() -> None:
+    opened_value = event("goldi:opened", event_type="POSITION_OPENED")
+    opened_value.update(
+        order_id="9001",
+        position_id="8001",
+        payload={
+            "strategy": "REVISED",
+            "side": "BUY",
+            "planned_entry": 4400.1,
+            "entry": 4400.2,
+            "stop_loss": 4390.1,
+            "take_profit": 4425.1,
+            "volume": 0.02,
+            "rr": 2.5,
+            "risk_price": 10.1,
+            "balance": 100.0,
+            "equity": 100.0,
+            "server_time_text": "2026.08.21 10:00:00",
+            "vm_time_text": "2026.08.21 14:00:01",
+        },
+    )
+    opened = EngineEventEnvelope.from_json_line(json.dumps(opened_value))
+    message = EventBridge.format_message(
+        opened,
+        vm_time=datetime(2026, 8, 21, 7, 0, tzinfo=UTC),
+    )
+
+    assert "✅ ORDER OPEN — GOLD.i# BUY" in message
+    assert "Strategi: REVISED" in message
+    assert "Harga open: 4400.20" in message
+    assert "Stop Loss: 4390.10" in message
+    assert "Take Profit: 4425.10" in message
+    assert "R:R: 1:2.50" in message
+    assert "Lot: 0.02" in message
+    assert "ID sinyal: GOLDI:signal:1" in message
+    assert "ID order: 9001" in message
+    assert "ID posisi: 8001" in message
+    assert "Waktu server MT5: 2026.08.21 10:00:00" in message
+    assert "Waktu VM/bridge: 2026.08.21 14:00:01" in message
+
+    closed_value = event("goldi:closed", event_type="POSITION_CLOSED")
+    closed_value.update(
+        position_id="8001",
+        payload={
+            "side": "BUY",
+            "close_price": 4425.1,
+            "profit_loss": 50.0,
+            "realized_r": 2.5,
+            "duration_seconds": 3_661,
+            "balance": 150.0,
+        },
+    )
+    closed = EngineEventEnvelope.from_json_line(json.dumps(closed_value))
+    close_message = EventBridge.format_message(
+        closed,
+        vm_time=datetime(2026, 8, 21, 8, 0, tzinfo=UTC),
+    )
+    assert "🏁 ORDER CLOSED — GOLD.i# BUY" in close_message
+    assert "P/L: +50.00 USD" in close_message
+    assert "Hasil R: +2.50R" in close_message
+    assert "Durasi: 1 jam 1 menit 1 detik" in close_message
 
 
 def test_telegram_failure_retries_only_undelivered_recipient(tmp_path: Path) -> None:

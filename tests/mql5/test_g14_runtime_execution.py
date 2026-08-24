@@ -44,3 +44,21 @@ def test_profile_entrypoints_keep_authority_default_false_and_forward_transactio
         assert "InpEnableOrderAuthority" in value
         assert "void OnTradeTransaction" in value
         assert "Runtime.OnTradeTransaction" in value
+
+
+def test_runtime_emits_complete_human_trade_payloads() -> None:
+    value = RUNTIME.read_text(encoding="utf-8")
+    assert "string SignalPlanPayload" in value
+    assert '\\"side\\":\\"%s\\"' in value
+    assert '\\"planned_entry\\":%.8f' in value
+    assert '\\"stop_loss\\":%.8f' in value
+    assert '\\"take_profit\\":%.8f' in value
+    assert '\\"rr\\":%.8f' in value
+    assert '\\"server_time_text\\":\\"%s\\"' in value
+    assert '\\"vm_time_text\\":\\"%s\\"' in value
+    assert 'EmitTransition("POSITION_OPENED"' in value
+    assert "string ClosedPositionPayload" in value
+    assert "DEAL_COMMISSION" in value
+    assert "DEAL_FEE" in value
+    assert "DEAL_ENTRY_OUT" in value
+    assert 'SetEvent(ENGINE_EVENT_POSITION,closed_at,"POSITION_CLOSED"' in value
