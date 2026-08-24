@@ -12,9 +12,9 @@
     "config/goldm-revised-partial-keep-stop-profit-v1.json": "fce3ea70437a3778de0624d4eee13a45d65a9402d09ccfe1447033c193950349"
   },
   "telegram": {
-    "bot_token_env": "TELEGRAM_BOT_TOKEN",
-    "chat_ids_env": "TELEGRAM_ADMIN_CHAT_IDS",
-    "fallback_chat_id_env": "TELEGRAM_CHAT_ID",
+    "bot_token_env": "GOLD_NOTIFY_BOT_TOKEN",
+    "chat_ids_env": "GOLD_NOTIFY_ADMIN_CHAT_IDS",
+    "fallback_chat_id_env": "GOLD_NOTIFY_ADMIN_CHAT_ID",
     "audience": "goldi_approved",
     "subscriber_state_path": "runtime_data/final/orchestrator/state.json",
     "send_health": true

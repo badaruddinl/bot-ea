@@ -134,6 +134,9 @@ def test_vm_preparer_installs_only_native_engines_and_optional_bridge() -> None:
     assert 'order_authority = "DISABLED"' in value
     assert "TelegramSecretPath" in value
     assert "TelegramAdminChatIds" in value
+    assert "TelegramExpectedBotUsername" in value
+    assert "TelegramSubscriberStatePath" in value
+    assert "--subscriber-state" in value
     assert "run-gold-event-bridge.py" in value
     assert "gold_orchestrator" not in value
     assert "goldm_revised" not in value
@@ -150,6 +153,9 @@ def test_bridge_token_uses_current_user_dpapi_and_never_enters_process_arguments
     assert ").Trim()" in supervisor
     assert "token_secret_path" in supervisor
     assert "TELEGRAM_BOT_TOKEN" in supervisor
+    assert "TELEGRAM_EXPECTED_BOT_USERNAME" in supervisor
+    assert "expected_bot_username" in supervisor
+    assert "subscriber_state_path" in supervisor
     assert "Read-Host" in secret_installer
     assert "-AsSecureString" in secret_installer
     assert "ConvertFrom-SecureString" in secret_installer

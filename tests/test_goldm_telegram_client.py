@@ -20,10 +20,20 @@ class RecordingTelegramBotClient(TelegramBotClient):
     ) -> Any:
         del timeout_seconds
         self.calls.append((method, payload))
+        if method == "getMe":
+            return {"id": 1, "username": "new_gold_notify_bot"}
         return True
 
 
 class TelegramBotClientTests(unittest.TestCase):
+    def test_get_me_returns_authenticated_bot_identity(self) -> None:
+        client = RecordingTelegramBotClient()
+
+        identity = client.get_me()
+
+        self.assertEqual(identity["username"], "new_gold_notify_bot")
+        self.assertEqual(client.calls, [("getMe", {})])
+
     def test_command_menu_is_public_by_default_and_scoped_for_each_admin(self) -> None:
         client = RecordingTelegramBotClient()
 

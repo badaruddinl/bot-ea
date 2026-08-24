@@ -8,6 +8,8 @@ param(
     [string]$PythonwPath = "",
     [string]$TelegramSecretPath = "$env:ProgramData\bot-ea\g20\telegram-token.dpapi",
     [string[]]$TelegramAdminChatIds = @(),
+    [string]$TelegramExpectedBotUsername = "",
+    [string]$TelegramSubscriberStatePath = "",
     [ValidateSet('PASSWORD_AT_STARTUP', 'AUTOLOGON_LOCKED_INTERACTIVE')]
     [string]$StartupMode = 'PASSWORD_AT_STARTUP'
 )
@@ -127,18 +129,28 @@ if ($BridgeEnabled) {
         @($TelegramAdminChatIds | Where-Object { $_ -notmatch '^-?[1-9][0-9]*$' }).Count -gt 0) {
         throw "Bridge requires valid administrator chat IDs"
     }
+    $TelegramExpectedBotUsername = $TelegramExpectedBotUsername.Trim().TrimStart('@')
+    if ($TelegramExpectedBotUsername -notmatch '^[A-Za-z][A-Za-z0-9_]{4,31}$') {
+        throw "Bridge requires the exact Telegram bot username"
+    }
+}
+
+if ([string]::IsNullOrWhiteSpace($TelegramSubscriberStatePath)) {
+    $TelegramSubscriberStatePath = Join-Path $repoRoot `
+        "runtime_data\final\orchestrator\state.json"
 }
 
 $bridgeRoot = Join-Path $env:ProgramData "bot-ea\bridge"
 New-Item -ItemType Directory -Path $bridgeRoot -Force | Out-Null
 $bridgeRunner = Join-Path $PSScriptRoot "run-gold-event-bridge.py"
 $bridgeHealth = Join-Path $bridgeRoot "health.json"
-$bridgeArguments = '"{0}" --goldi-spool "{1}" --goldm-spool "{2}" --database "{3}" --health-path "{4}"' -f `
+$bridgeArguments = '"{0}" --goldi-spool "{1}" --goldm-spool "{2}" --database "{3}" --health-path "{4}" --subscriber-state "{5}"' -f `
     $bridgeRunner,
     (Join-Path $commonSpool "GOLDI.jsonl"),
     (Join-Path $commonSpool "GOLDM.jsonl"),
     (Join-Path $bridgeRoot "events.db"),
-    $bridgeHealth
+    $bridgeHealth,
+    $TelegramSubscriberStatePath
 
 $config = [ordered]@{
     schema_version = 1
@@ -163,6 +175,8 @@ $config = [ordered]@{
         arguments = $bridgeArguments
         token_secret_path = $TelegramSecretPath
         admin_chat_ids = $TelegramAdminChatIds
+        expected_bot_username = $TelegramExpectedBotUsername
+        subscriber_state_path = $TelegramSubscriberStatePath
         health_path = $bridgeHealth
     }
 }

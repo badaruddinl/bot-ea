@@ -110,6 +110,15 @@ def main() -> int:
         raise SystemExit("Telegram token and at least one administrator chat ID are required")
     client_type = import_module("goldm_signal.notify.telegram").TelegramBotClient
     client = client_type(bot_token=token)
+    expected_bot = os.environ.get("TELEGRAM_EXPECTED_BOT_USERNAME", "").strip().lstrip("@")
+    if expected_bot:
+        identity = client.get_me()
+        observed_bot = str(identity.get("username") or "").strip().lstrip("@")
+        if not observed_bot or observed_bot.casefold() != expected_bot.casefold():
+            raise SystemExit(
+                f"Telegram bot identity mismatch: expected @{expected_bot}, "
+                f"got @{observed_bot or 'unknown'}"
+            )
 
     def send(chat_id: str, message: str) -> None:
         client.send_message(chat_id=chat_id, text=message)

@@ -280,6 +280,13 @@ function Read-G20Config {
             @($adminIds | Where-Object { [string]$_ -notmatch '^-?[1-9][0-9]*$' }).Count -gt 0) {
             throw "Bridge administrator chat IDs are invalid"
         }
+        if ([string]$value.bridge.expected_bot_username -notmatch
+            '^[A-Za-z][A-Za-z0-9_]{4,31}$') {
+            throw "Bridge expected_bot_username is invalid"
+        }
+        if ([string]::IsNullOrWhiteSpace([string]$value.bridge.subscriber_state_path)) {
+            throw "Bridge subscriber_state_path is required"
+        }
     }
     return $value
 }
@@ -296,9 +303,11 @@ function Start-BridgeProcess {
     $pointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
     $previousToken = $env:TELEGRAM_BOT_TOKEN
     $previousAdmins = $env:TELEGRAM_ADMIN_CHAT_IDS
+    $previousExpectedBot = $env:TELEGRAM_EXPECTED_BOT_USERNAME
     try {
         $env:TELEGRAM_BOT_TOKEN = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($pointer)
         $env:TELEGRAM_ADMIN_CHAT_IDS = @($Bridge.admin_chat_ids) -join ','
+        $env:TELEGRAM_EXPECTED_BOT_USERNAME = [string]$Bridge.expected_bot_username
         return Start-Process -FilePath $ExecutablePath -ArgumentList $Arguments `
             -WindowStyle Hidden -PassThru
     }
@@ -307,6 +316,7 @@ function Start-BridgeProcess {
         $secure.Dispose()
         $env:TELEGRAM_BOT_TOKEN = $previousToken
         $env:TELEGRAM_ADMIN_CHAT_IDS = $previousAdmins
+        $env:TELEGRAM_EXPECTED_BOT_USERNAME = $previousExpectedBot
     }
 }
 

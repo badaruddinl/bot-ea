@@ -6,14 +6,14 @@ import signal
 import subprocess
 import threading
 import time
-from datetime import datetime, timezone
+from contextlib import suppress
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from goldm_signal.notify.telegram import TelegramBotClient
 
-from .config import OrchestratorConfig, ROOT, WorkerSpec
-
+from .config import ROOT, OrchestratorConfig, WorkerSpec
 
 PUBLIC_GOLDI_COMMANDS: tuple[dict[str, str], ...] = (
     {"command": "start", "description": "Minta akses notifikasi GOLD.i"},
@@ -70,6 +70,7 @@ class GlobalOrchestrator:
         self._reported_problem: dict[str, str] = {}
 
     def run_forever(self) -> None:
+        self._validate_bot_identity()
         self._install_signal_handlers()
         self._save_state()
         try:
@@ -95,16 +96,26 @@ class GlobalOrchestrator:
                     self.poll_once(timeout=self.config.poll_timeout_seconds)
                 except Exception as exc:
                     self._audit_runtime_failure("TELEGRAM_POLL_FAILED", exc)
-                    self._stop_event.wait(
-                        min(5.0, self.config.supervision_interval_seconds)
-                    )
+                    self._stop_event.wait(min(5.0, self.config.supervision_interval_seconds))
         finally:
             for name in list(self._children):
                 self.stop_worker(name, notify=False)
             self._audit("ORCHESTRATOR_STOPPED", {})
 
+    def _validate_bot_identity(self) -> None:
+        expected = (self.config.expected_bot_username or "").strip().lstrip("@")
+        if not expected:
+            return
+        identity = self.telegram.get_me()
+        observed = str(identity.get("username") or "").strip().lstrip("@")
+        if not observed or observed.casefold() != expected.casefold():
+            raise RuntimeError(
+                f"Telegram bot identity mismatch: expected @{expected}, "
+                f"got @{observed or 'unknown'}"
+            )
+
     def _audit_runtime_failure(self, event: str, exc: Exception) -> None:
-        try:
+        with suppress(Exception):
             self._audit(
                 event,
                 {
@@ -112,15 +123,13 @@ class GlobalOrchestrator:
                     "error": str(exc)[:500],
                 },
             )
-        except Exception:
-            pass
 
     def _announce_online(self) -> bool:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         raw_previous = str(self._state.get("last_online_notice_at") or "")
         try:
             previous = datetime.fromisoformat(raw_previous)
-            elapsed = (now - previous.astimezone(timezone.utc)).total_seconds()
+            elapsed = (now - previous.astimezone(UTC)).total_seconds()
         except ValueError:
             elapsed = 300.0
         if elapsed < 300.0:
@@ -401,7 +410,7 @@ class GlobalOrchestrator:
                         or "Tanpa nama"
                     )
                     pending[actor_id] = {
-                        "requested_at": datetime.now(timezone.utc).isoformat(),
+                        "requested_at": datetime.now(UTC).isoformat(),
                         "display_name": display_name,
                         "chat_type": str(chat.get("type") or "unknown"),
                     }
@@ -428,9 +437,7 @@ class GlobalOrchestrator:
             subscribers.discard(actor_id)
             pending = dict(self._state.get("goldi_pending") or {})
             pending.pop(actor_id, None)
-            subscriber_details = dict(
-                self._state.get("goldi_subscriber_details") or {}
-            )
+            subscriber_details = dict(self._state.get("goldi_subscriber_details") or {})
             subscriber_details.pop(actor_id, None)
             self._state["goldi_subscribers"] = sorted(subscribers, key=int)
             self._state["goldi_pending"] = pending
@@ -482,9 +489,7 @@ class GlobalOrchestrator:
                 self._approval_card_text(target_id, values),
                 self._approval_markup(target_id),
             )
-        values = dict(
-            (self._state.get("goldi_subscriber_details") or {}).get(target_id) or {}
-        )
+        values = dict((self._state.get("goldi_subscriber_details") or {}).get(target_id) or {})
         return (
             self._subscriber_card_text(target_id, values),
             {
@@ -580,9 +585,7 @@ class GlobalOrchestrator:
             )
             message_id = int((result or {}).get("message_id") or 0)
             if message_id > 0:
-                tracked.append(
-                    {"chat_id": str(admin_id), "message_id": message_id}
-                )
+                tracked.append({"chat_id": str(admin_id), "message_id": message_id})
             sent += 1
         messages[target_id] = tracked[-20:]
         self._state["goldi_approval_messages"] = messages
@@ -593,9 +596,7 @@ class GlobalOrchestrator:
         pending = dict(self._state.get("goldi_pending") or {})
         if not pending:
             return "Tidak ada permintaan GOLD.i pending."
-        for target_id, values in sorted(
-            pending.items(), key=lambda item: int(item[0])
-        ):
+        for target_id, values in sorted(pending.items(), key=lambda item: int(item[0])):
             self._send_goldi_approval_cards(
                 target_id,
                 dict(values or {}),
@@ -610,9 +611,7 @@ class GlobalOrchestrator:
         target_id = normalized
         pending = dict(self._state.get("goldi_pending") or {})
         subscribers = set(self._state.get("goldi_subscribers") or [])
-        subscriber_details = dict(
-            self._state.get("goldi_subscriber_details") or {}
-        )
+        subscriber_details = dict(self._state.get("goldi_subscriber_details") or {})
         if command == "/approve":
             request_details = dict(pending.pop(target_id, {}) or {})
             subscribers.add(target_id)
@@ -739,29 +738,17 @@ class GlobalOrchestrator:
         rows = [
             [
                 {
-                    "text": (
-                        "⏹ Matikan GOLD.i DEMO"
-                        if goldi_on
-                        else "▶️ Hidupkan GOLD.i DEMO"
-                    ),
+                    "text": ("⏹ Matikan GOLD.i DEMO" if goldi_on else "▶️ Hidupkan GOLD.i DEMO"),
                     "callback_data": (
-                        "worker:prompt:goldi_off"
-                        if goldi_on
-                        else "worker:prompt:goldi_on"
+                        "worker:prompt:goldi_off" if goldi_on else "worker:prompt:goldi_on"
                     ),
                 }
             ],
             [
                 {
-                    "text": (
-                        "⏹ Matikan GOLDm REAL"
-                        if goldm_on
-                        else "🔴 Hidupkan GOLDm REAL"
-                    ),
+                    "text": ("⏹ Matikan GOLDm REAL" if goldm_on else "🔴 Hidupkan GOLDm REAL"),
                     "callback_data": (
-                        "worker:prompt:goldm_off"
-                        if goldm_on
-                        else "worker:prompt:goldm_on"
+                        "worker:prompt:goldm_off" if goldm_on else "worker:prompt:goldm_on"
                     ),
                 }
             ],
@@ -775,9 +762,7 @@ class GlobalOrchestrator:
                     }
                 ]
             )
-        rows.append(
-            [{"text": "🔄 Refresh", "callback_data": "worker:refresh"}]
-        )
+        rows.append([{"text": "🔄 Refresh", "callback_data": "worker:refresh"}])
         return {"inline_keyboard": rows}
 
     def _worker_panel_text(self) -> str:
@@ -797,13 +782,10 @@ class GlobalOrchestrator:
             )
             if health.get("login"):
                 lines.append(
-                    f"   Akun {health['login']} • saldo "
-                    f"{float(health.get('balance') or 0):.2f} USD"
+                    f"   Akun {health['login']} • saldo {float(health.get('balance') or 0):.2f} USD"
                 )
             if health.get("updated_at"):
-                lines.append(
-                    f"   Update: {self._human_time(health['updated_at'])}"
-                )
+                lines.append(f"   Update: {self._human_time(health['updated_at'])}")
         lines.extend(
             [
                 "",
@@ -894,8 +876,7 @@ class GlobalOrchestrator:
             return self.set_desired("goldm", False, notify_worker=False)
         if action == "all_off":
             return "\n".join(
-                self.set_desired(name, False, notify_worker=False)
-                for name in ("goldi", "goldm")
+                self.set_desired(name, False, notify_worker=False) for name in ("goldi", "goldm")
             )
         return "Aksi worker tidak dikenal."
 
@@ -993,9 +974,7 @@ class GlobalOrchestrator:
                         self.config.restart_delay_seconds * (2 ** (failures - 1)),
                         300.0,
                     )
-                    self._next_restart.setdefault(
-                        name, current_time + restart_delay
-                    )
+                    self._next_restart.setdefault(name, current_time + restart_delay)
                 if current_time >= self._next_restart.get(name, 0.0):
                     self.start_worker(
                         name,
@@ -1072,8 +1051,7 @@ class GlobalOrchestrator:
             "goldi_subscriber_details": {},
             "goldi_approval_messages": {},
             "desired": {
-                name: spec.enabled_on_first_boot
-                for name, spec in self.config.workers.items()
+                name: spec.enabled_on_first_boot for name, spec in self.config.workers.items()
             },
         }
 
@@ -1090,7 +1068,7 @@ class GlobalOrchestrator:
         self.config.audit_path.parent.mkdir(parents=True, exist_ok=True)
         self._rotate_audit()
         payload = {
-            "time": datetime.now(timezone.utc).isoformat(),
+            "time": datetime.now(UTC).isoformat(),
             "event": event,
             **fields,
         }
@@ -1141,13 +1119,13 @@ class GlobalOrchestrator:
             return "health file missing"
         status = str(health.get("status") or "").upper()
         if status == "ERROR":
-            return f"worker health ERROR: {health.get('detail', '-') }"
+            return f"worker health ERROR: {health.get('detail', '-')}"
         raw_updated = str(health.get("updated_at") or "")
         try:
             updated = datetime.fromisoformat(raw_updated)
             if updated.tzinfo is None:
-                updated = updated.replace(tzinfo=timezone.utc)
-            age = (datetime.now(timezone.utc) - updated.astimezone(timezone.utc)).total_seconds()
+                updated = updated.replace(tzinfo=UTC)
+            age = (datetime.now(UTC) - updated.astimezone(UTC)).total_seconds()
         except ValueError:
             return "invalid health timestamp"
         if age > self.config.health_stale_seconds:
