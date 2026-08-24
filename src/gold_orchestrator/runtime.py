@@ -6,9 +6,11 @@ import signal
 import subprocess
 import threading
 import time
+from collections.abc import Callable
 from contextlib import suppress
 from datetime import UTC, datetime
 from pathlib import Path
+from types import FrameType
 from typing import Any
 
 from goldm_signal.notify.telegram import TelegramBotClient
@@ -49,8 +51,8 @@ class GlobalOrchestrator:
         config: OrchestratorConfig,
         *,
         telegram_client: TelegramBotClient | None = None,
-        popen_factory=subprocess.Popen,
-        monotonic=time.monotonic,
+        popen_factory: Callable[..., subprocess.Popen[Any]] = subprocess.Popen,
+        monotonic: Callable[[], float] = time.monotonic,
     ) -> None:
         self.config = config
         self.telegram = telegram_client or TelegramBotClient(
@@ -1140,7 +1142,7 @@ class GlobalOrchestrator:
         self._send_all(f"WORKER ALERT\n{name}: {problem}")
 
     def _install_signal_handlers(self) -> None:
-        def stop_handler(_signum, _frame) -> None:
+        def stop_handler(_signum: int, _frame: FrameType | None) -> None:
             self.request_stop()
 
         for signal_name in ("SIGINT", "SIGTERM"):

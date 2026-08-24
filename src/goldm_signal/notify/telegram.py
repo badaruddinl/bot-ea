@@ -96,7 +96,7 @@ class TelegramBotClient:
         )
         self.replace_commands(
             commands=ADMIN_BOT_COMMANDS,
-            chat_ids=normalized_admins,
+            chat_ids=tuple(sorted(normalized_admins, key=int)),
             include_default=False,
         )
 
