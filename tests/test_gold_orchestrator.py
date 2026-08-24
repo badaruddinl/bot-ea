@@ -189,8 +189,8 @@ class GlobalOrchestratorTests(unittest.TestCase):
 
     def test_help_distinguishes_signal_and_real_worker(self) -> None:
         help_text = self.runtime.help_text()
-        self.assertIn("entry demo GOLD.i", help_text)
-        self.assertIn("trading GOLDm real", help_text)
+        self.assertIn("GOLD.i demo entry", help_text)
+        self.assertIn("GOLDm real trading", help_text)
 
     def test_config_rejects_shared_mt5_executable(self) -> None:
         environment = {
@@ -270,7 +270,7 @@ class GlobalOrchestratorTests(unittest.TestCase):
         request_card = next(
             item
             for item in self.telegram.sent_details
-            if item["chat_id"] == "123" and "Permintaan akses" in item["text"]
+            if item["chat_id"] == "123" and "GOLD.i ACCESS REQUEST" in item["text"]
         )
         buttons = request_card["reply_markup"]["inline_keyboard"][0]
         self.assertEqual(
@@ -303,7 +303,7 @@ class GlobalOrchestratorTests(unittest.TestCase):
             }
         )
         self.assertNotIn("-999", self.runtime._state["goldi_subscribers"])
-        self.assertIn("KONFIRMASI", self.telegram.edited_texts[-1]["text"])
+        self.assertIn("CONFIRMATION", self.telegram.edited_texts[-1]["text"])
 
         self.runtime.handle_callback(
             {
@@ -319,10 +319,10 @@ class GlobalOrchestratorTests(unittest.TestCase):
         self.assertEqual(self.runtime._state["goldi_subscribers"], ["-999"])
         self.assertNotIn("-999", self.runtime._state["goldi_pending"])
         self.assertIn(
-            ("-999", "Akses notifikasi entry GOLD.i telah disetujui."),
+            ("-999", "Your GOLD.i notification access has been approved."),
             self.telegram.sent,
         )
-        self.assertIn("STATUS PERMINTAAN", self.telegram.edited_texts[-1]["text"])
+        self.assertIn("REQUEST STATUS", self.telegram.edited_texts[-1]["text"])
         self.assertEqual(
             self.telegram.edited_texts[-1]["reply_markup"],
             {"inline_keyboard": []},
@@ -339,7 +339,7 @@ class GlobalOrchestratorTests(unittest.TestCase):
         self.runtime.handle_command(actor_id="123", text="/status")
         panel = self.telegram.sent_details[-1]
         first_button = panel["reply_markup"]["inline_keyboard"][0][0]
-        self.assertEqual(first_button["text"], "▶️ Hidupkan GOLD.i DEMO")
+        self.assertEqual(first_button["text"], "▶️ Start GOLD.i DEMO")
         self.assertEqual(first_button["callback_data"], "worker:prompt:goldi_on")
 
         callback_message = {
@@ -356,7 +356,7 @@ class GlobalOrchestratorTests(unittest.TestCase):
         )
         self.assertFalse(self.runtime._state["desired"]["goldi"])
         confirmation = self.telegram.edited_texts[-1]
-        self.assertIn("Yakin", confirmation["text"])
+        self.assertIn("Proceed", confirmation["text"])
         confirm_button = confirmation["reply_markup"]["inline_keyboard"][0][0]
         self.assertEqual(confirm_button["callback_data"], "worker:confirm:goldi_on")
 
@@ -370,9 +370,9 @@ class GlobalOrchestratorTests(unittest.TestCase):
         )
         self.assertTrue(self.runtime._state["desired"]["goldi"])
         status = self.telegram.edited_texts[-1]
-        self.assertIn("STATUS DIPERBARUI", status["text"])
+        self.assertIn("STATUS UPDATED", status["text"])
         new_button = status["reply_markup"]["inline_keyboard"][0][0]
-        self.assertEqual(new_button["text"], "⏹ Matikan GOLD.i DEMO")
+        self.assertEqual(new_button["text"], "⏹ Stop GOLD.i DEMO")
         self.assertEqual(new_button["callback_data"], "worker:prompt:goldi_off")
 
     def test_subscriber_cannot_control_goldm(self) -> None:
@@ -410,7 +410,7 @@ class GlobalOrchestratorTests(unittest.TestCase):
         audit = self.config.audit_path.read_text(encoding="utf-8")
         self.assertIn("TELEGRAM_UPDATE_FAILED", audit)
         self.assertTrue(
-            any(item.get("text") == "Diproses…" for item in self.telegram.callback_answers)
+            any(item.get("text") == "Processing…" for item in self.telegram.callback_answers)
         )
 
 

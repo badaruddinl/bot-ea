@@ -13,12 +13,12 @@ Sender = Callable[[str, str], None]
 _CLOSE_REASON_LABELS = {
     "STOP_LOSS": "Stop Loss",
     "TAKE_PROFIT": "Take Profit",
-    "MANUAL_DESKTOP": "Manual dari MT5 desktop",
-    "MANUAL_MOBILE": "Manual dari MT5 mobile",
-    "MANUAL_WEB": "Manual dari MT5 web",
-    "EA": "Ditutup oleh EA",
-    "STOP_OUT": "Stop Out broker",
-    "BROKER_OTHER": "Broker/penyebab lain",
+    "MANUAL_DESKTOP": "Manual close from MT5 desktop",
+    "MANUAL_MOBILE": "Manual close from MT5 mobile",
+    "MANUAL_WEB": "Manual close from MT5 web",
+    "EA": "Closed by the EA",
+    "STOP_OUT": "Broker stop-out",
+    "BROKER_OTHER": "Broker or other reason",
 }
 
 
@@ -142,13 +142,15 @@ class EventBridge:
         minutes, seconds_value = divmod(remaining, 60)
         parts = []
         if days:
-            parts.append(f"{days} hari")
+            parts.append(f"{days} day" if days == 1 else f"{days} days")
         if hours:
-            parts.append(f"{hours} jam")
+            parts.append(f"{hours} hour" if hours == 1 else f"{hours} hours")
         if minutes:
-            parts.append(f"{minutes} menit")
+            parts.append(f"{minutes} minute" if minutes == 1 else f"{minutes} minutes")
         if seconds_value or not parts:
-            parts.append(f"{seconds_value} detik")
+            parts.append(
+                f"{seconds_value} second" if seconds_value == 1 else f"{seconds_value} seconds"
+            )
         return " ".join(parts)
 
     @classmethod
@@ -162,10 +164,10 @@ class EventBridge:
         side = str(payload.get("side") or "").upper()
         side_suffix = f" {side}" if side in {"BUY", "SELL"} else ""
         title = {
-            "ENTRY_READY": "🟡 SIGNAL SIAP",
-            "ENTRY_REJECTED": "⛔ ENTRY DITOLAK",
-            "POSITION_OPENED": "✅ ORDER OPEN",
-            "POSITION_PARTIALLY_CLOSED": "✂️ ORDER PARTIAL CLOSE",
+            "ENTRY_READY": "🟡 SIGNAL READY",
+            "ENTRY_REJECTED": "⛔ ENTRY REJECTED",
+            "POSITION_OPENED": "✅ POSITION OPENED",
+            "POSITION_PARTIALLY_CLOSED": "✂️ POSITION PARTIALLY CLOSED",
             "POSITION_CLOSED": "🏁 ORDER CLOSED",
             "ENGINE_ERROR": "⚠️ ENGINE ERROR",
             "ENGINE_STARTED": "🟢 ENGINE STARTED",
@@ -188,21 +190,27 @@ class EventBridge:
 
         strategy = str(payload.get("strategy") or "").strip()
         if strategy:
-            lines.append(f"Strategi: {strategy}")
+            lines.append(f"Strategy: {strategy}")
+        strategy_mode = str(payload.get("strategy_mode") or "").strip()
+        if strategy_mode:
+            lines.append(f"Strategy mode: {strategy_mode}")
+        trade_reason = str(payload.get("trade_reason") or "").strip()
+        if trade_reason:
+            lines.append(f"Trade reason: {trade_reason}")
 
         field_specs = (
-            ("Entry rencana", "planned_entry", False, 2),
-            ("Harga open", "entry", False, 2),
+            ("Planned entry", "planned_entry", False, 2),
+            ("Fill price", "entry", False, 2),
             ("Stop Loss", "stop_loss", False, 2),
             ("Take Profit", "take_profit", False, 2),
-            ("Harga close", "close_price", False, 2),
-            ("Lot", "volume", False, 2),
-            ("Lot ditutup", "closed_volume", False, 2),
-            ("Lot tersisa", "remaining_volume", False, 2),
+            ("Close price", "close_price", False, 2),
+            ("Volume", "volume", False, 2),
+            ("Closed volume", "closed_volume", False, 2),
+            ("Remaining volume", "remaining_volume", False, 2),
             ("R:R", "rr", False, 2),
-            ("Risk harga", "risk_price", False, 2),
+            ("Price risk", "risk_price", False, 2),
             ("P/L", "profit_loss", True, 2),
-            ("Hasil R", "realized_r", True, 2),
+            ("Realized R", "realized_r", True, 2),
             ("Balance", "balance", False, 2),
             ("Equity", "equity", False, 2),
         )
@@ -219,46 +227,50 @@ class EventBridge:
 
         if event.event_type in {"POSITION_OPENED", "ENTRY_REJECTED"}:
             for label, key, digits in (
-                ("Harga request", "requested_entry", 2),
-                ("R:R minimum", "minimum_executable_rr", 2),
+                ("Requested price", "requested_entry", 2),
+                ("Minimum R:R", "minimum_executable_rr", 2),
             ):
                 if key in payload:
                     lines.append(f"{label}: {cls._number(payload[key], digits=digits)}")
 
         close_reason = str(payload.get("close_reason") or "").strip().upper()
         if close_reason:
-            lines.append(f"Ditutup oleh: {_CLOSE_REASON_LABELS.get(close_reason, close_reason)}")
+            lines.append(f"Close reason: {_CLOSE_REASON_LABELS.get(close_reason, close_reason)}")
         if str(payload.get("recovery_kind") or "").upper() == "RESTART":
-            lines.append("Recovery: EA/terminal dimulai ulang")
+            lines.append("Recovery reason: EA or terminal restart")
         if event.event_type == "ENTRY_REJECTED":
             for label, key, digits in (
                 ("Bid", "quote_bid", 2),
                 ("Ask", "quote_ask", 2),
-                ("Drift adverse", "adverse_drift_r", 3),
-                ("Batas drift dinamis", "maximum_adverse_drift_r", 3),
-                ("Broker retcode", "broker_retcode", 0),
+                ("Adverse drift", "adverse_drift_r", 3),
+                ("Dynamic drift limit", "maximum_adverse_drift_r", 3),
+                ("Broker return code", "broker_retcode", 0),
             ):
                 if key in payload:
                     lines.append(f"{label}: {cls._number(payload[key], digits=digits)}")
 
         if "duration_seconds" in payload:
-            lines.append(f"Durasi: {cls._duration(payload['duration_seconds'])}")
+            lines.append(f"Duration: {cls._duration(payload['duration_seconds'])}")
+
+        execution_reason = str(payload.get("execution_reason") or "").strip()
+        if execution_reason:
+            lines.append(f"Execution status: {execution_reason}")
 
         for label, value in (
-            ("ID sinyal", event.signal_id),
-            ("ID order", event.order_id),
-            ("ID posisi", event.position_id),
-            ("ID deal", str(payload.get("deal_id") or "")),
-            ("ID event", event.event_id),
+            ("Signal ID", event.signal_id),
+            ("Order ID", event.order_id),
+            ("Position ID", event.position_id),
+            ("Deal ID", str(payload.get("deal_id") or "")),
+            ("Event ID", event.event_id),
         ):
             if value:
                 lines.append(f"{label}: {value}")
 
         lines.extend(
             (
-                f"Waktu server MT5: {server_time}",
-                f"Waktu VM/bridge: {vm_time_text}",
-                f"Status: {event.reason}",
+                f"MT5 server time: {server_time}",
+                f"VM/bridge time: {vm_time_text}",
+                f"Event status: {event.reason}",
             )
         )
         return "\n".join(lines)

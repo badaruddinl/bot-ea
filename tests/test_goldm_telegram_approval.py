@@ -113,9 +113,7 @@ class GoldMTelegramApprovalTests(unittest.TestCase):
         assert subscriber is not None
         self.assertEqual(subscriber["status"], "PENDING")
         self.assertEqual(self.store.approved_telegram_chat_ids(), ["100"])
-        approval_message = next(
-            item for item in self.client.messages if item["chat_id"] == "100"
-        )
+        approval_message = next(item for item in self.client.messages if item["chat_id"] == "100")
         buttons = approval_message["reply_markup"]["inline_keyboard"][0]
         self.assertEqual(buttons[0]["callback_data"], "approve:200")
 
@@ -242,7 +240,8 @@ class GoldMTelegramApprovalTests(unittest.TestCase):
         self.client.messages.clear()
 
         sender = ApprovedTelegramSender(
-            store=self.store, client=self.client  # type: ignore[arg-type]
+            store=self.store,
+            client=self.client,  # type: ignore[arg-type]
         )
         sender(event)
 
@@ -292,9 +291,7 @@ class GoldMTelegramApprovalTests(unittest.TestCase):
         sender(event)
 
         self.assertEqual([item["chat_id"] for item in self.client.messages], ["100"])
-        self.assertEqual(
-            self.store.recent_events(limit=5, include_admin_only=False), []
-        )
+        self.assertEqual(self.store.recent_events(limit=5, include_admin_only=False), [])
 
     def test_retry_does_not_resend_to_successful_recipient(self) -> None:
         self.worker.process_update(self._start_update(1, "200", "alice"))
@@ -303,7 +300,8 @@ class GoldMTelegramApprovalTests(unittest.TestCase):
         self.client.messages.clear()
         self.client.fail_once_for.add("200")
         sender = ApprovedTelegramSender(
-            store=self.store, client=self.client  # type: ignore[arg-type]
+            store=self.store,
+            client=self.client,  # type: ignore[arg-type]
         )
 
         with self.assertRaisesRegex(RuntimeError, "1 approved subscriber"):
@@ -311,9 +309,7 @@ class GoldMTelegramApprovalTests(unittest.TestCase):
         self.assertEqual([item["chat_id"] for item in self.client.messages], ["100"])
 
         sender(event)
-        self.assertEqual(
-            [item["chat_id"] for item in self.client.messages], ["100", "200"]
-        )
+        self.assertEqual([item["chat_id"] for item in self.client.messages], ["100", "200"])
 
     def test_update_offset_is_persisted(self) -> None:
         self.client.updates.append(self._start_update(42, "200", "alice"))
@@ -637,9 +633,7 @@ class GoldMTelegramApprovalTests(unittest.TestCase):
         self.assertIn("khusus root admin", self.client.messages[-1]["text"])
 
     def test_entry_side_policy_requires_two_clicks_and_updates_runtime(self) -> None:
-        self.worker.process_update(
-            self._callback_update(1, "100", "ctl:entry_side:buy_only")
-        )
+        self.worker.process_update(self._callback_update(1, "100", "ctl:entry_side:buy_only"))
         self.assertEqual(self.store.runtime_settings(prefix="trade."), {})
         confirm_data = self.client.messages[-1]["reply_markup"]["inline_keyboard"][0][0][
             "callback_data"
@@ -651,9 +645,7 @@ class GoldMTelegramApprovalTests(unittest.TestCase):
         self.assertEqual(settings["trade.entry_side_policy"], "BUY_ONLY")
 
     def test_invalid_entry_side_callback_fails_closed_without_staging(self) -> None:
-        self.worker.process_update(
-            self._callback_update(1, "100", "ctl:entry_side:sideways")
-        )
+        self.worker.process_update(self._callback_update(1, "100", "ctl:entry_side:sideways"))
 
         self.assertEqual(self.store.runtime_settings(prefix="trade."), {})
         self.assertTrue(self.client.callback_answers[-1]["show_alert"])
@@ -672,9 +664,7 @@ class GoldMTelegramApprovalTests(unittest.TestCase):
         self.worker.process_update(self._callback_update(2, "100", confirm_data))
 
         settings = self.store.runtime_settings(prefix="trade.")
-        self.assertEqual(
-            settings["trade.notification_side_filter"], "SELL_ONLY"
-        )
+        self.assertEqual(settings["trade.notification_side_filter"], "SELL_ONLY")
 
     def test_show_profile_filters_only_directional_strategy_delivery(self) -> None:
         self.store.set_runtime_settings(
@@ -695,10 +685,7 @@ class GoldMTelegramApprovalTests(unittest.TestCase):
 
         self.assertEqual(self.client.messages, [])
         self.assertTrue(
-            any(
-                row["setup_id"] == "sell-strategy"
-                for row in self.store.recent_events(limit=100)
-            )
+            any(row["setup_id"] == "sell-strategy" for row in self.store.recent_events(limit=100))
         )
 
         safety = self._enqueue_directional_event(
@@ -723,11 +710,7 @@ class GoldMTelegramApprovalTests(unittest.TestCase):
             audience="approved",
         )
         self.store.update_outbox_payload(int(blocked["id"]), payload)
-        blocked = next(
-            row
-            for row in self.store.pending()
-            if row["setup_id"] == "unverified-sell"
-        )
+        blocked = next(row for row in self.store.pending() if row["setup_id"] == "unverified-sell")
         self.client.messages.clear()
         sender = ApprovedTelegramSender(
             store=self.store,
@@ -749,11 +732,7 @@ class GoldMTelegramApprovalTests(unittest.TestCase):
             audience="approved",
         )
         self.store.update_outbox_payload(int(verified["id"]), payload)
-        verified = next(
-            row
-            for row in self.store.pending()
-            if row["setup_id"] == "verified-sell"
-        )
+        verified = next(row for row in self.store.pending() if row["setup_id"] == "verified-sell")
         self.client.messages.clear()
 
         sender(verified)
@@ -780,19 +759,14 @@ class GoldMTelegramApprovalTests(unittest.TestCase):
         sender(event)
 
         self.assertEqual([item["chat_id"] for item in self.client.messages], ["100"])
-        self.assertIn("DIBLOKIR FAIL-CLOSED", self.client.messages[0]["text"])
+        self.assertIn("BLOCKED — FAIL-CLOSED", self.client.messages[0]["text"])
         self.assertIn("SIDEWAYS", self.client.messages[0]["text"])
         self.assertTrue(
-            any(
-                row["setup_id"] == "invalid-show"
-                for row in self.store.recent_events(limit=100)
-            )
+            any(row["setup_id"] == "invalid-show" for row in self.store.recent_events(limit=100))
         )
 
     def test_r_management_toggle_requires_two_clicks_for_future_positions(self) -> None:
-        self.worker.process_update(
-            self._callback_update(1, "100", "ctl:r2:off")
-        )
+        self.worker.process_update(self._callback_update(1, "100", "ctl:r2:off"))
         self.assertEqual(self.store.runtime_settings(prefix="trade."), {})
         self.assertIn("posisi terbuka tidak berubah", self.client.messages[-1]["text"])
         confirm_data = self.client.messages[-1]["reply_markup"]["inline_keyboard"][0][0][
@@ -850,16 +824,12 @@ class GoldMTelegramApprovalTests(unittest.TestCase):
     def test_unlocked_live_mode_requires_explicit_second_click(self) -> None:
         self.account["is_live"] = True
         with patch.dict("os.environ", {"GOLDM_ALLOW_LIVE_ACTIVATION": "true"}):
-            self.worker.process_update(
-                self._callback_update(1, "100", "ctl:mode:live")
-            )
+            self.worker.process_update(self._callback_update(1, "100", "ctl:mode:live"))
             confirm_data = self.client.messages[-1]["reply_markup"]["inline_keyboard"][0][0][
                 "callback_data"
             ]
             self.assertEqual(self.store.runtime_settings(prefix="trade."), {})
-            self.worker.process_update(
-                self._callback_update(2, "100", confirm_data)
-            )
+            self.worker.process_update(self._callback_update(2, "100", confirm_data))
 
         settings = self.store.runtime_settings(prefix="trade.")
         self.assertEqual(settings["trade.execution_mode"], "live")
@@ -886,9 +856,7 @@ class GoldMTelegramApprovalTests(unittest.TestCase):
             expires_at=datetime(2000, 1, 1, tzinfo=timezone.utc),
         )
 
-        self.worker.process_update(
-            self._callback_update(1, "100", "ctl:confirm:expired")
-        )
+        self.worker.process_update(self._callback_update(1, "100", "ctl:confirm:expired"))
 
         self.assertEqual(self.store.runtime_settings(prefix="trade."), {})
         self.assertIn("EXPIRED", self.client.callback_answers[-1]["text"])
@@ -984,9 +952,7 @@ class GoldMTelegramApprovalTests(unittest.TestCase):
                 "audience": "approved",
             },
         )
-        return next(
-            row for row in self.store.pending() if row["setup_id"] == setup_id
-        )
+        return next(row for row in self.store.pending() if row["setup_id"] == setup_id)
 
     @staticmethod
     def _start_update(update_id: int, chat_id: str, username: str) -> dict[str, Any]:
@@ -1011,9 +977,7 @@ class GoldMTelegramApprovalTests(unittest.TestCase):
             "callback_query": {
                 "id": f"callback-{update_id}",
                 "from": {"id": int(actor_id)},
-                "message": {
-                    "chat": {"id": int(actor_id), "type": "private"}
-                },
+                "message": {"chat": {"id": int(actor_id), "type": "private"}},
                 "data": data,
             },
         }

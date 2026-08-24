@@ -110,6 +110,8 @@ struct SignalPlan
    string     strategy_version;
    string     setup_id;
    string     signal_id;
+   string     strategy_mode;
+   string     trade_reason;
    string     symbol;
    EngineSide side;
    long       account_login;

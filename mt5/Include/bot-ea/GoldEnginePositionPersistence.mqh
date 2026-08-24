@@ -17,6 +17,8 @@ struct ExpectedPositionState
    ulong  ticket;
    ulong  identifier;
    string signal_id;
+   string strategy_mode;
+   string trade_reason;
    double volume;
    double entry_price;
    double stop_loss;
@@ -30,6 +32,8 @@ void PositionStateReset(ExpectedPositionState &state)
    state.ticket=0;
    state.identifier=0;
    state.signal_id="";
+   state.strategy_mode="";
+   state.trade_reason="";
    state.volume=0.0;
    state.entry_price=0.0;
    state.stop_loss=0.0;
@@ -102,11 +106,16 @@ private:
 
    string Serialize(const ExpectedPositionState &state) const
      {
+      string strategy_mode=state.strategy_mode;
+      string trade_reason=state.trade_reason;
+      StringReplace(strategy_mode,"|","/");
+      StringReplace(trade_reason,"|","/");
       return StringFormat(
-         "2|%s|%s|%I64u|%d|%I64u|%I64u|%s|%.8f|%.8f|%.8f|%.8f",
+         "3|%s|%s|%I64u|%d|%I64u|%I64u|%s|%.8f|%.8f|%.8f|%.8f|%s|%s",
          m_profile_id,m_profile_fingerprint,state.generation,
          state.active ? 1 : 0,state.ticket,state.identifier,state.signal_id,
-         state.volume,state.entry_price,state.stop_loss,state.take_profit);
+         state.volume,state.entry_price,state.stop_loss,state.take_profit,
+         strategy_mode,trade_reason);
      }
 
    PositionStateLoadStatus ReadSlot(const int slot,
@@ -129,7 +138,10 @@ private:
       if(field_count<11)
          return POSITION_STATE_INVALID;
       const bool legacy=fields[0]=="1";
-      if((!legacy && fields[0]!="2") || fields[1]!=m_profile_id ||
+      const bool version_two=fields[0]=="2";
+      const bool version_three=fields[0]=="3";
+      if((!legacy && !version_two && !version_three) ||
+         fields[1]!=m_profile_id ||
          fields[2]!=m_profile_fingerprint)
          return POSITION_STATE_INVALID;
       state.generation=(ulong)StringToInteger(fields[3]);
@@ -138,16 +150,26 @@ private:
       const int signal_start=(legacy ? 6 : 7);
       state.identifier=(legacy ? 0 :
          (ulong)StringToInteger(fields[6]));
+      const int numeric_start=(version_three ? field_count-6 : field_count-4);
+      if(numeric_start<=signal_start)
+         return POSITION_STATE_INVALID;
       state.signal_id=fields[signal_start];
-      for(int index=signal_start+1;index<=field_count-5;index++)
+      for(int index=signal_start+1;index<numeric_start;index++)
          state.signal_id+="|"+fields[index];
-      state.volume=StringToDouble(fields[field_count-4]);
-      state.entry_price=StringToDouble(fields[field_count-3]);
-      state.stop_loss=StringToDouble(fields[field_count-2]);
-      state.take_profit=StringToDouble(fields[field_count-1]);
+      state.volume=StringToDouble(fields[numeric_start]);
+      state.entry_price=StringToDouble(fields[numeric_start+1]);
+      state.stop_loss=StringToDouble(fields[numeric_start+2]);
+      state.take_profit=StringToDouble(fields[numeric_start+3]);
+      if(version_three)
+        {
+         state.strategy_mode=fields[field_count-2];
+         state.trade_reason=fields[field_count-1];
+        }
       if(state.generation==0 ||
          (state.active && (state.ticket==0 || (!legacy && state.identifier==0) ||
                            state.signal_id=="" ||
+                           (version_three && (state.strategy_mode=="" ||
+                                              state.trade_reason=="")) ||
                            state.volume<=0.0)))
          return POSITION_STATE_INVALID;
       return POSITION_STATE_VALID;

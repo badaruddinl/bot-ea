@@ -265,17 +265,21 @@ def test_routing_is_profile_isolated_and_watch_is_suppressed(tmp_path: Path) -> 
         store.ingest_spool(spool)
         delivered, failed = bridge.deliver_pending()
         assert (delivered, failed) == (7, 0)
-        assert [chat for chat, message in sent if "ORDER OPEN — GOLD.i#" in message] == [
+        assert [chat for chat, message in sent if "POSITION OPENED — GOLD.i#" in message] == [
             "admin",
             "subscriber",
         ]
-        assert [chat for chat, message in sent if "ORDER OPEN — GOLDm#" in message] == ["admin"]
-        assert [chat for chat, message in sent if "PARTIAL CLOSE — GOLD.i#" in message] == [
+        assert [chat for chat, message in sent if "POSITION OPENED — GOLDm#" in message] == [
+            "admin"
+        ]
+        assert [chat for chat, message in sent if "PARTIALLY CLOSED — GOLD.i#" in message] == [
             "admin",
             "subscriber",
         ]
-        assert [chat for chat, message in sent if "PARTIAL CLOSE — GOLDm#" in message] == ["admin"]
-        assert [chat for chat, message in sent if "ENTRY DITOLAK" in message] == ["admin"]
+        assert [chat for chat, message in sent if "PARTIALLY CLOSED — GOLDm#" in message] == [
+            "admin"
+        ]
+        assert [chat for chat, message in sent if "ENTRY REJECTED" in message] == ["admin"]
         suppressed = {
             row[0]
             for row in store.connection.execute(
@@ -324,6 +328,8 @@ def test_trade_messages_are_human_readable_and_complete() -> None:
         position_id="8001",
         payload={
             "strategy": "REVISED",
+            "strategy_mode": "MOMENTUM",
+            "trade_reason": "MOMENTUM_ENTRY",
             "side": "BUY",
             "planned_entry": 4400.1,
             "entry": 4400.2,
@@ -344,23 +350,28 @@ def test_trade_messages_are_human_readable_and_complete() -> None:
         vm_time=datetime(2026, 8, 21, 7, 0, tzinfo=UTC),
     )
 
-    assert "✅ ORDER OPEN — GOLD.i# BUY" in message
-    assert "Strategi: REVISED" in message
-    assert "Harga open: 4400.20" in message
+    assert "✅ POSITION OPENED — GOLD.i# BUY" in message
+    assert "Strategy: REVISED" in message
+    assert "Strategy mode: MOMENTUM" in message
+    assert "Trade reason: MOMENTUM_ENTRY" in message
+    assert "Fill price: 4400.20" in message
     assert "Stop Loss: 4390.10" in message
     assert "Take Profit: 4425.10" in message
     assert "R:R: 1:2.50" in message
-    assert "Lot: 0.02" in message
-    assert "ID sinyal: GOLDI:signal:1" in message
-    assert "ID order: 9001" in message
-    assert "ID posisi: 8001" in message
-    assert "Waktu server MT5: 2026.08.21 10:00:00" in message
-    assert "Waktu VM/bridge: 2026.08.21 14:00:01" in message
+    assert "Volume: 0.02" in message
+    assert "Signal ID: GOLDI:signal:1" in message
+    assert "Order ID: 9001" in message
+    assert "Position ID: 8001" in message
+    assert "MT5 server time: 2026.08.21 10:00:00" in message
+    assert "VM/bridge time: 2026.08.21 14:00:01" in message
 
     closed_value = event("goldi:closed", event_type="POSITION_CLOSED")
     closed_value.update(
         position_id="8001",
         payload={
+            "strategy": "REVISED",
+            "strategy_mode": "MOMENTUM",
+            "trade_reason": "MOMENTUM_ENTRY",
             "side": "BUY",
             "close_price": 4425.1,
             "closed_volume": 0.02,
@@ -380,12 +391,14 @@ def test_trade_messages_are_human_readable_and_complete() -> None:
     )
     assert "🏁 ORDER CLOSED — GOLD.i# BUY" in close_message
     assert "P/L: +50.00 USD" in close_message
-    assert "Hasil R: +2.50R" in close_message
-    assert "Lot ditutup: 0.02" in close_message
-    assert "Lot tersisa: 0.00" in close_message
-    assert "Ditutup oleh: Manual dari MT5 mobile" in close_message
-    assert "ID deal: 7007" in close_message
-    assert "Durasi: 1 jam 1 menit 1 detik" in close_message
+    assert "Strategy mode: MOMENTUM" in close_message
+    assert "Trade reason: MOMENTUM_ENTRY" in close_message
+    assert "Realized R: +2.50R" in close_message
+    assert "Closed volume: 0.02" in close_message
+    assert "Remaining volume: 0.00" in close_message
+    assert "Close reason: Manual close from MT5 mobile" in close_message
+    assert "Deal ID: 7007" in close_message
+    assert "Duration: 1 hour 1 minute 1 second" in close_message
 
 
 @pytest.mark.parametrize(
@@ -393,9 +406,9 @@ def test_trade_messages_are_human_readable_and_complete() -> None:
     [
         ("STOP_LOSS", "Stop Loss"),
         ("TAKE_PROFIT", "Take Profit"),
-        ("MANUAL_DESKTOP", "Manual dari MT5 desktop"),
-        ("MANUAL_WEB", "Manual dari MT5 web"),
-        ("EA", "Ditutup oleh EA"),
+        ("MANUAL_DESKTOP", "Manual close from MT5 desktop"),
+        ("MANUAL_WEB", "Manual close from MT5 web"),
+        ("EA", "Closed by the EA"),
     ],
 )
 def test_close_reason_is_human_readable(code: str, label: str) -> None:
@@ -404,7 +417,7 @@ def test_close_reason_is_human_readable(code: str, label: str) -> None:
 
     message = EventBridge.format_message(EngineEventEnvelope.from_json_line(json.dumps(value)))
 
-    assert f"Ditutup oleh: {label}" in message
+    assert f"Close reason: {label}" in message
 
 
 def test_genuine_recovery_contains_position_geometry_and_restart_context() -> None:
@@ -412,6 +425,8 @@ def test_genuine_recovery_contains_position_geometry_and_restart_context() -> No
     value.update(position_id="9001")
     value["payload"] = {
         "strategy": "REVISED",
+        "strategy_mode": "RANGE",
+        "trade_reason": "STRONG_FIRST_CONFIRMATION",
         "side": "BUY",
         "entry": 4400.2,
         "stop_loss": 4390.1,
@@ -424,11 +439,11 @@ def test_genuine_recovery_contains_position_geometry_and_restart_context() -> No
     message = EventBridge.format_message(EngineEventEnvelope.from_json_line(json.dumps(value)))
 
     assert "🔄 POSITION RECOVERED — GOLD.i# BUY" in message
-    assert "Harga open: 4400.20" in message
+    assert "Fill price: 4400.20" in message
     assert "Stop Loss: 4390.10" in message
     assert "Take Profit: 4425.10" in message
-    assert "Recovery: EA/terminal dimulai ulang" in message
-    assert "ID posisi: 9001" in message
+    assert "Recovery reason: EA or terminal restart" in message
+    assert "Position ID: 9001" in message
 
 
 def test_entry_rejection_is_admin_readable_and_contains_realtime_evidence() -> None:
@@ -436,6 +451,8 @@ def test_entry_rejection_is_admin_readable_and_contains_realtime_evidence() -> N
     rejected_value["reason"] = "EXECUTABLE_RR_BELOW_STRATEGY_MIN"
     rejected_value["payload"] = {
         "strategy": "REVISED",
+        "strategy_mode": "MOMENTUM",
+        "trade_reason": "MOMENTUM_ENTRY",
         "side": "BUY",
         "planned_entry": 4661.78,
         "entry": 4664.30,
@@ -454,12 +471,12 @@ def test_entry_rejection_is_admin_readable_and_contains_realtime_evidence() -> N
 
     message = EventBridge.format_message(rejected)
 
-    assert "⛔ ENTRY DITOLAK — GOLD.i# BUY" in message
-    assert "Harga request: 4664.30" in message
-    assert "R:R minimum: 1.50" in message
+    assert "⛔ ENTRY REJECTED — GOLD.i# BUY" in message
+    assert "Requested price: 4664.30" in message
+    assert "Minimum R:R: 1.50" in message
     assert "Bid: 4664.28" in message
     assert "Ask: 4664.30" in message
-    assert "Status: EXECUTABLE_RR_BELOW_STRATEGY_MIN" in message
+    assert "Event status: EXECUTABLE_RR_BELOW_STRATEGY_MIN" in message
 
 
 def test_telegram_failure_retries_only_undelivered_recipient(tmp_path: Path) -> None:

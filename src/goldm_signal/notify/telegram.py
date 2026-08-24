@@ -19,22 +19,22 @@ _DIRECTIONAL_STRATEGY_EVENTS = frozenset(
 
 
 PUBLIC_BOT_COMMANDS: tuple[dict[str, str], ...] = (
-    {"command": "start", "description": "Minta akses notifikasi demo"},
-    {"command": "status", "description": "Cek status akses"},
-    {"command": "signal", "description": "Sinyal demo terakhir"},
-    {"command": "history", "description": "5 event demo terbaru"},
-    {"command": "stop", "description": "Berhenti menerima notifikasi"},
+    {"command": "start", "description": "Request GOLD.i notification access"},
+    {"command": "status", "description": "Check access status"},
+    {"command": "signal", "description": "Latest GOLD.i signal"},
+    {"command": "history", "description": "Latest 5 GOLD.i events"},
+    {"command": "stop", "description": "Stop receiving notifications"},
 )
 
 ADMIN_BOT_COMMANDS: tuple[dict[str, str], ...] = (
     *PUBLIC_BOT_COMMANDS,
-    {"command": "snapshot", "description": "Ringkasan kondisi bot"},
-    {"command": "watch", "description": "Kandidat terakhir"},
-    {"command": "health", "description": "Kesehatan worker dan antrean"},
-    {"command": "control", "description": "Panel akun, entry, dan risiko"},
-    {"command": "account", "description": "Akun MT5 aktif"},
-    {"command": "users", "description": "User penerima notifikasi"},
-    {"command": "pending", "description": "Daftar permintaan akses"},
+    {"command": "snapshot", "description": "Bot condition summary"},
+    {"command": "watch", "description": "Latest candidate"},
+    {"command": "health", "description": "Worker and queue health"},
+    {"command": "control", "description": "Account, entry, and risk panel"},
+    {"command": "account", "description": "Active MT5 account"},
+    {"command": "users", "description": "Notification recipients"},
+    {"command": "pending", "description": "Pending access requests"},
 )
 
 PUBLIC_BOT_COMMAND_NAMES = frozenset(f"/{item['command']}" for item in PUBLIC_BOT_COMMANDS)
@@ -268,7 +268,7 @@ class ApprovedTelegramSender:
                 self._send_invalid_direction_warning(
                     event=event,
                     raw_profile=raw_profile,
-                    detail="event tidak memiliki side BUY/SELL yang valid",
+                    detail="event does not contain a valid BUY/SELL side",
                 )
                 return
             if not profile.allows(side):
@@ -303,7 +303,7 @@ class ApprovedTelegramSender:
         *,
         event: dict[str, Any],
         raw_profile: object,
-        detail: str = "runtime notification side filter tidak valid",
+        detail: str = "runtime notification side filter is invalid",
     ) -> None:
         if not self._admin_chat_ids:
             raise RuntimeError(
@@ -312,11 +312,11 @@ class ApprovedTelegramSender:
         outbox_id = int(event["id"])
         warning = "\n".join(
             [
-                "🚨 NOTIFIKASI STRATEGI DIBLOKIR FAIL-CLOSED",
+                "🚨 STRATEGY NOTIFICATION BLOCKED — FAIL-CLOSED",
                 f"• Event: {event.get('event_type') or '-'} / {event.get('side') or '-'}",
                 f"• Notification side filter: {raw_profile!s}",
-                f"• Alasan: {detail}",
-                "Sinyal tetap tersimpan; eksekusi dan alert broker POSITION_* tidak difilter.",
+                f"• Reason: {detail}",
+                "The signal remains stored; execution and broker POSITION_* alerts are not filtered.",
             ]
         )
         failures = 0

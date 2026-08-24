@@ -82,6 +82,14 @@ private:
       return StringFind(identity,":REVISED:")>=0 ? "REVISED" : "BEAR";
      }
 
+   string RevisedStrategyMode(const RevisedDecision &decision) const
+     {
+      const string base_mode=decision.mode==REVISED_MODE_MOMENTUM ?
+         "MOMENTUM" : "RANGE";
+      return decision.entry_profile=="SCALPER" ?
+         "SCALPER_"+base_mode : base_mode;
+     }
+
    string SignalPlanPayload(const SignalPlan &plan,
                             const double actual_entry,
                             const double actual_volume,
@@ -95,14 +103,16 @@ private:
          (datetime)(m_last_execution_receipt.quote_time_msc/1000) :
          plan.entry_ready_at;
       string payload=StringFormat(
-         "{\"payload_version\":2,\"strategy\":\"%s\",\"side\":\"%s\","
+         "{\"payload_version\":3,\"strategy\":\"%s\",\"strategy_mode\":\"%s\","
+         "\"trade_reason\":\"%s\",\"side\":\"%s\","
          "\"planned_entry\":%.8f,\"entry\":%.8f,"
          "\"stop_loss\":%.8f,\"take_profit\":%.8f,"
          "\"risk_price\":%.8f,\"rr\":%.8f,"
          "\"minimum_executable_rr\":%.8f,\"volume\":%.8f,"
          "\"balance\":%.2f,\"equity\":%.2f,"
          "\"server_time_text\":\"%s\",\"vm_time_text\":\"%s\"}",
-         StrategyText(plan.setup_id),SideText(plan.side),
+         StrategyText(plan.setup_id),OutboxJsonEscape(plan.strategy_mode),
+         OutboxJsonEscape(plan.trade_reason),SideText(plan.side),
          plan.planned_entry,actual_entry,plan.stop_loss,plan.take_profit,
          risk,rr,plan.minimum_executable_rr,actual_volume,
          AccountInfoDouble(ACCOUNT_BALANCE),
@@ -173,7 +183,8 @@ private:
       const double rr=risk>0.0 ?
          MathAbs(position.take_profit-position.entry_price)/risk : 0.0;
       return StringFormat(
-         "{\"payload_version\":2,\"strategy\":\"%s\",\"side\":\"%s\","
+         "{\"payload_version\":3,\"strategy\":\"%s\",\"strategy_mode\":\"%s\","
+         "\"trade_reason\":\"%s\",\"side\":\"%s\","
          "\"entry\":%.8f,\"stop_loss\":%.8f,\"take_profit\":%.8f,"
          "\"close_price\":%.8f,\"closed_volume\":%.8f,"
          "\"remaining_volume\":%.8f,\"rr\":%.8f,"
@@ -182,7 +193,9 @@ private:
          "\"partial\":%s,"
          "\"duration_seconds\":%I64d,\"balance\":%.2f,\"equity\":%.2f,"
          "\"server_time_text\":\"%s\",\"vm_time_text\":\"%s\"}",
-         StrategyText(position.signal_id),SideText(side),
+         StrategyText(position.signal_id),
+         OutboxJsonEscape(position.strategy_mode),
+         OutboxJsonEscape(position.trade_reason),SideText(side),
          position.entry_price,position.stop_loss,position.take_profit,
          close_price,closed_volume,remaining_volume,rr,profit_loss,realized_r,
          deal_ticket,OutboxJsonEscape(close_reason),partial ? "true" : "false",
@@ -200,12 +213,15 @@ private:
       const double reward=MathAbs(actual.take_profit-actual.entry_price);
       const double rr=risk>0.0 ? reward/risk : 0.0;
       return StringFormat(
-         "{\"payload_version\":2,\"strategy\":\"%s\",\"side\":\"%s\","
+         "{\"payload_version\":3,\"strategy\":\"%s\",\"strategy_mode\":\"%s\","
+         "\"trade_reason\":\"%s\",\"side\":\"%s\","
          "\"entry\":%.8f,\"stop_loss\":%.8f,\"take_profit\":%.8f,"
          "\"volume\":%.8f,\"rr\":%.8f,\"recovery_kind\":\"RESTART\","
          "\"balance\":%.2f,\"equity\":%.2f,"
          "\"server_time_text\":\"%s\",\"vm_time_text\":\"%s\"}",
-         StrategyText(position.signal_id),SideText(actual.side),
+         StrategyText(position.signal_id),
+         OutboxJsonEscape(position.strategy_mode),
+         OutboxJsonEscape(position.trade_reason),SideText(actual.side),
          actual.entry_price,actual.stop_loss,actual.take_profit,
          actual.volume,rr,AccountInfoDouble(ACCOUNT_BALANCE),
          AccountInfoDouble(ACCOUNT_EQUITY),
@@ -257,6 +273,8 @@ private:
       m_expected_position.ticket=position.ticket;
       m_expected_position.identifier=position.identifier;
       m_expected_position.signal_id=plan.signal_id;
+      m_expected_position.strategy_mode=plan.strategy_mode;
+      m_expected_position.trade_reason=plan.trade_reason;
       m_expected_position.volume=position.volume;
       m_expected_position.entry_price=position.entry_price;
       m_expected_position.stop_loss=position.stop_loss;
@@ -275,6 +293,8 @@ private:
    void BuildSignalPlan(const EngineSide side,
                         const string setup_id,
                         const string signal_id,
+                        const string strategy_mode,
+                        const string trade_reason,
                         const datetime setup_created_at,
                         const datetime entry_ready_at,
                         const double entry,
@@ -290,6 +310,8 @@ private:
       plan.strategy_version=m_profile.strategy_version;
       plan.setup_id=setup_id;
       plan.signal_id=signal_id;
+      plan.strategy_mode=strategy_mode;
+      plan.trade_reason=trade_reason;
       plan.symbol=m_profile.symbol;
       plan.side=side;
       plan.account_login=AccountInfoInteger(ACCOUNT_LOGIN);
@@ -428,11 +450,20 @@ private:
             SetEvent(ENGINE_EVENT_ERROR,server_time,reason);
             return true;
            }
+         const bool trade_context_missing=
+            m_expected_position.strategy_mode=="" ||
+            m_expected_position.trade_reason=="";
          if(m_expected_position.identifier==0 ||
-            m_expected_position.ticket!=m_owned_positions[0].ticket)
+            m_expected_position.ticket!=m_owned_positions[0].ticket ||
+            trade_context_missing)
            {
             m_expected_position.ticket=m_owned_positions[0].ticket;
             m_expected_position.identifier=m_owned_positions[0].identifier;
+            if(trade_context_missing)
+              {
+               m_expected_position.strategy_mode="LEGACY_POSITION";
+               m_expected_position.trade_reason="LEGACY_CONTEXT_UNAVAILABLE";
+              }
             if(!m_position_store.Save(m_expected_position))
               {
                m_execution_broker.DisableAuthority();
@@ -745,7 +776,9 @@ private:
             const string signal_id=setup_id+":"+
                IntegerToString((long)m_last_revised_decision.time);
             SignalPlan plan;
-            BuildSignalPlan(side,setup_id,signal_id,setup.trigger_time,
+            BuildSignalPlan(side,setup_id,signal_id,
+               RevisedStrategyMode(m_last_revised_decision),
+               m_last_revised_decision.reason,setup.trigger_time,
                m_last_revised_decision.time,m_last_revised_decision.entry,
                m_last_revised_decision.stop,m_last_revised_decision.target,
                RevisedMinimumExecutableRr(m_last_revised_decision),plan);
@@ -799,6 +832,7 @@ private:
             IntegerToString((long)signal.opened_at);
          SignalPlan plan;
          BuildSignalPlan(ENGINE_SIDE_SELL,setup_id,signal_id,
+            "H1_M5_M1_RETEST","M1_ENTRY_CONFIRMATION_READY",
             signal.armed_at,signal.opened_at,signal.entry,signal.stop,
             signal.target,m_bear_machine.MinimumExecutableRr(),plan);
          SetEvent(
