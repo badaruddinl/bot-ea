@@ -712,19 +712,18 @@ private:
 
    void ProcessM15(const MqlTick &tick)
      {
-      const datetime latest=iTime(FRANZ_SYMBOL,PERIOD_M15,1)+PeriodSeconds(PERIOD_M15);
-      if(latest<=0 || latest==m_state.last_m15_close) return;
+      const datetime latest=tick.time-(tick.time%PeriodSeconds(PERIOD_M15));
+      if(latest<=0 || latest<=m_state.last_m15_close) return;
       m_state.last_m15_close=latest;
-      SaveState();
       CreateSetupFromM15(tick);
      }
 
    void ProcessM1(const MqlTick &tick)
      {
-      const datetime latest=iTime(FRANZ_SYMBOL,PERIOD_M1,1)+PeriodSeconds(PERIOD_M1);
-      if(latest<=0 || latest==m_state.last_m1_close) return;
+      const datetime latest=tick.time-(tick.time%PeriodSeconds(PERIOD_M1));
+      if(latest<=0 || latest<=m_state.last_m1_close) return;
       m_state.last_m1_close=latest;
-      SaveState();
+      ResetDayIfSafe(tick.time);
       if(m_state.state!=FRANZ_STATE_EXTREME_WATCH &&
          m_state.state!=FRANZ_STATE_BREAK_ATTEMPT &&
          m_state.state!=FRANZ_STATE_SHAKEOUT_CONFIRMED &&
@@ -1000,10 +999,9 @@ public:
          SaveState();
          return;
         }
-      ResetDayIfSafe(tick.time);
       ManageOpenPositions(tick);
-      ProcessM15(tick);
       ProcessM1(tick);
+      ProcessM15(tick);
      }
 
    void OnTimer(void)
