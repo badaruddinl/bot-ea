@@ -210,9 +210,7 @@ def install_exact_outbound_block_rules(
     try:
         for name, display_name, program in rules:
             result = _single_json(
-                _run_system_powershell(
-                    _INSTALL_RULE_SCRIPT, name, display_name, str(program)
-                )
+                _run_system_powershell(_INSTALL_RULE_SCRIPT, name, display_name, str(program))
             )
             if result != {"name": name}:
                 raise WindowsResearchSecurityError("firewall rule creation result mismatch")
@@ -277,9 +275,7 @@ def _remove_exact_rule(name: str) -> None:
 
 
 def _windows_directory_security(mode: str, path: Path) -> DirectorySecuritySnapshot:
-    payload = _single_json(
-        _run_system_powershell(_DIRECTORY_SECURITY_SCRIPT, mode, str(path))
-    )
+    payload = _single_json(_run_system_powershell(_DIRECTORY_SECURITY_SCRIPT, mode, str(path)))
     expected = {
         "owner_sid",
         "current_user_sid",
@@ -311,28 +307,28 @@ def _single_json(lines: list[str]) -> dict[str, object]:
     try:
         payload = json.loads(lines[0])
     except json.JSONDecodeError as exc:
-        raise WindowsResearchSecurityError(
-            "Windows security probe returned invalid JSON"
-        ) from exc
+        raise WindowsResearchSecurityError("Windows security probe returned invalid JSON") from exc
     if not isinstance(payload, dict):
         raise WindowsResearchSecurityError("Windows security probe did not return an object")
     return payload
 
 
-def _run_system_powershell(script: str, *arguments: str) -> list[str]:
+def _run_system_powershell(
+    script: str,
+    *arguments: str,
+    timeout_seconds: float = 30,
+) -> list[str]:
     if os.name != "nt":
         raise WindowsResearchSecurityError("Windows security operations are Windows-only")
     powershell = (
-        Path(os.environ.get("SystemRoot", r"C:\Windows"))
+        Path(os.environ.get("SYSTEMROOT", r"C:\Windows"))
         / "System32"
         / "WindowsPowerShell"
         / "v1.0"
         / "powershell.exe"
     )
     if not powershell.is_file():
-        raise WindowsResearchSecurityError(
-            "trusted Windows PowerShell executable is unavailable"
-        )
+        raise WindowsResearchSecurityError("trusted Windows PowerShell executable is unavailable")
     system_root = powershell.parents[3]
     child_environment = {
         "SystemRoot": str(system_root),
@@ -340,9 +336,7 @@ def _run_system_powershell(script: str, *arguments: str) -> list[str]:
         "COMSPEC": str(system_root / "System32" / "cmd.exe"),
         "PATH": str(system_root / "System32"),
         "PATHEXT": ".COM;.EXE;.BAT;.CMD",
-        "PSModulePath": str(
-            system_root / "System32" / "WindowsPowerShell" / "v1.0" / "Modules"
-        ),
+        "PSModulePath": str(system_root / "System32" / "WindowsPowerShell" / "v1.0" / "Modules"),
     }
     for index, argument in enumerate(arguments):
         child_environment[f"GOLDM_RESEARCH_PROBE_ARG{index}"] = argument
@@ -359,7 +353,7 @@ def _run_system_powershell(script: str, *arguments: str) -> list[str]:
         capture_output=True,
         text=True,
         encoding="utf-8-sig",
-        timeout=30,
+        timeout=timeout_seconds,
         env=child_environment,
         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
     )

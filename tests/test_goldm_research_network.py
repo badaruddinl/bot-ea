@@ -245,7 +245,11 @@ foreach ($script in $scripts) {
         )
         self.assertEqual(
             windows_research_security._single_json(
-                windows_research_security._run_system_powershell(parser, json.dumps(scripts))
+                windows_research_security._run_system_powershell(
+                    parser,
+                    json.dumps(scripts),
+                    timeout_seconds=120,
+                )
             ),
             {"ok": True},
         )
