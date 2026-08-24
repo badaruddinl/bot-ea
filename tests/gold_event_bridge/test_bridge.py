@@ -248,6 +248,8 @@ def test_routing_is_profile_isolated_and_watch_is_suppressed(tmp_path: Path) -> 
         spool,
         event("goldi:entry", event_type="POSITION_OPENED"),
         event("goldm:entry", profile="GOLDM", event_type="POSITION_OPENED"),
+        event("goldi:partial", event_type="POSITION_PARTIALLY_CLOSED"),
+        event("goldm:partial", profile="GOLDM", event_type="POSITION_PARTIALLY_CLOSED"),
         event("goldi:ready", event_type="ENTRY_READY", audience="internal"),
         event("goldi:reject", event_type="ENTRY_REJECTED", audience="admin_only"),
         event("goldi:watch", event_type="WATCH_UPDATED", audience="internal"),
@@ -262,12 +264,17 @@ def test_routing_is_profile_isolated_and_watch_is_suppressed(tmp_path: Path) -> 
     try:
         store.ingest_spool(spool)
         delivered, failed = bridge.deliver_pending()
-        assert (delivered, failed) == (4, 0)
+        assert (delivered, failed) == (7, 0)
         assert [chat for chat, message in sent if "ORDER OPEN — GOLD.i#" in message] == [
             "admin",
             "subscriber",
         ]
         assert [chat for chat, message in sent if "ORDER OPEN — GOLDm#" in message] == ["admin"]
+        assert [chat for chat, message in sent if "PARTIAL CLOSE — GOLD.i#" in message] == [
+            "admin",
+            "subscriber",
+        ]
+        assert [chat for chat, message in sent if "PARTIAL CLOSE — GOLDm#" in message] == ["admin"]
         assert [chat for chat, message in sent if "ENTRY DITOLAK" in message] == ["admin"]
         suppressed = {
             row[0]
@@ -356,8 +363,12 @@ def test_trade_messages_are_human_readable_and_complete() -> None:
         payload={
             "side": "BUY",
             "close_price": 4425.1,
+            "closed_volume": 0.02,
+            "remaining_volume": 0.0,
             "profit_loss": 50.0,
             "realized_r": 2.5,
+            "close_reason": "MANUAL_MOBILE",
+            "deal_id": 7007,
             "duration_seconds": 3_661,
             "balance": 150.0,
         },
@@ -370,7 +381,54 @@ def test_trade_messages_are_human_readable_and_complete() -> None:
     assert "🏁 ORDER CLOSED — GOLD.i# BUY" in close_message
     assert "P/L: +50.00 USD" in close_message
     assert "Hasil R: +2.50R" in close_message
+    assert "Lot ditutup: 0.02" in close_message
+    assert "Lot tersisa: 0.00" in close_message
+    assert "Ditutup oleh: Manual dari MT5 mobile" in close_message
+    assert "ID deal: 7007" in close_message
     assert "Durasi: 1 jam 1 menit 1 detik" in close_message
+
+
+@pytest.mark.parametrize(
+    ("code", "label"),
+    [
+        ("STOP_LOSS", "Stop Loss"),
+        ("TAKE_PROFIT", "Take Profit"),
+        ("MANUAL_DESKTOP", "Manual dari MT5 desktop"),
+        ("MANUAL_WEB", "Manual dari MT5 web"),
+        ("EA", "Ditutup oleh EA"),
+    ],
+)
+def test_close_reason_is_human_readable(code: str, label: str) -> None:
+    value = event("goldi:reason", event_type="POSITION_CLOSED")
+    value["payload"] = {"side": "SELL", "close_reason": code}
+
+    message = EventBridge.format_message(EngineEventEnvelope.from_json_line(json.dumps(value)))
+
+    assert f"Ditutup oleh: {label}" in message
+
+
+def test_genuine_recovery_contains_position_geometry_and_restart_context() -> None:
+    value = event("goldi:recovery", event_type="RECOVERY_COMPLETED", audience="admin_only")
+    value.update(position_id="9001")
+    value["payload"] = {
+        "strategy": "REVISED",
+        "side": "BUY",
+        "entry": 4400.2,
+        "stop_loss": 4390.1,
+        "take_profit": 4425.1,
+        "volume": 0.02,
+        "rr": 2.46,
+        "recovery_kind": "RESTART",
+    }
+
+    message = EventBridge.format_message(EngineEventEnvelope.from_json_line(json.dumps(value)))
+
+    assert "🔄 POSITION RECOVERED — GOLD.i# BUY" in message
+    assert "Harga open: 4400.20" in message
+    assert "Stop Loss: 4390.10" in message
+    assert "Take Profit: 4425.10" in message
+    assert "Recovery: EA/terminal dimulai ulang" in message
+    assert "ID posisi: 9001" in message
 
 
 def test_entry_rejection_is_admin_readable_and_contains_realtime_evidence() -> None:

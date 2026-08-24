@@ -414,6 +414,8 @@ public:
          const int count=ArraySize(positions);
          ArrayResize(positions,count+1);
          positions[count].ticket=ticket;
+         positions[count].identifier=
+            (ulong)PositionGetInteger(POSITION_IDENTIFIER);
          positions[count].profile_id=m_profile.profile_id;
          positions[count].magic=PositionGetInteger(POSITION_MAGIC);
          positions[count].side=(PositionGetInteger(POSITION_TYPE)==POSITION_TYPE_BUY ?

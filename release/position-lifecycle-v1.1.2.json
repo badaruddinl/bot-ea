@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "release_version": "1.1.2",
+  "baseline_commit": "3aa45b79560a24e19fb044ea1fe235cbe1ac8c59",
+  "source_commit": "be166581d17b6a1a3230e7920fc36ea99caaace2",
+  "strategy_profile_version": "1.1.0",
+  "scope": "CROSS_PROFILE",
+  "binaries": {
+    "GoldEngine-GOLDi-v1.1.2.ex5": {
+      "sha256": "d95f6dea53186c3f6b9140e57c4acfbdcb1296b4baf70893c030d86567aa4b6d",
+      "size_bytes": 193974
+    },
+    "GoldEngine-GOLDm-v1.1.2.ex5": {
+      "sha256": "20d6afff1b4ba6c963f8ea7d0a35732c7c9ecefd032e1b3c8b396cd9078b191a",
+      "size_bytes": 192414
+    }
+  },
+  "behavior": {
+    "manual_close_of_ea_position": "TRACKED_BY_POSITION_IDENTIFIER",
+    "manual_position_without_ea_ownership": "IGNORED",
+    "close_reasons": [
+      "STOP_LOSS",
+      "TAKE_PROFIT",
+      "MANUAL_DESKTOP",
+      "MANUAL_MOBILE",
+      "MANUAL_WEB",
+      "EA",
+      "STOP_OUT",
+      "BROKER_OTHER"
+    ],
+    "position_recovered": "RESTART_ONLY",
+    "partial_close": "PERSISTS_REMAINING_POSITION"
+  },
+  "acceptance": {
+    "focused_tests": "68 passed",
+    "full_tests": "1017 passed, 141 subtests passed",
+    "ruff_changed_files": "PASS",
+    "metaeditor_goldi": "0 errors, 0 warnings",
+    "metaeditor_goldm": "0 errors, 0 warnings",
+    "strategy_tester_lifecycle": "PASS: OnTester result 1, order authority disabled",
+    "strategy_tester_persistence": "PASS: legacy=true, OnTester result 1, order authority disabled"
+  },
+  "raw_evidence_root": "C:\\Users\\badaruddinl\\.codex\\evidence\\telegram-position-lifecycle-20260824",
+  "deployment": "NOT_PERFORMED",
+  "goldm_real_activation": "NOT_PERFORMED",
+  "real_orders_sent_during_engineering": 0
+}

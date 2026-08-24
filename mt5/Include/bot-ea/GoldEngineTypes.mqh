@@ -145,6 +145,7 @@ struct EngineEvent
 struct ManagedPosition
   {
    ulong      ticket;
+   ulong      identifier;
    string     profile_id;
    long       magic;
    EngineSide side;
