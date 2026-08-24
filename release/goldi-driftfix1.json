@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "status": "DEMO_HOTFIX_CANDIDATE",
+  "profile_id": "GOLDI",
+  "internal_profile_version": "1.1.0",
+  "profile_fingerprint": "7af1d75e1be54ba4505b32cedcf53f4317dea0a90a2a0636510884d0d408c5b5",
+  "base_commit": "9c4b8c1a2026502ae6c20b10f71a5cfac39f660f",
+  "source_commit": "49a5474dcc84d0262d6ebc49a31a6326142048fe",
+  "binary": {
+    "filename": "GoldEngine-GOLDi-v1.1.0-driftfix1.ex5",
+    "sha256": "a60ce724580047da8c84147539e2b68f122d00877636ac69b84aa65c8a0d3528",
+    "size_bytes": 175870
+  },
+  "semantic_change": "GOLDI entry drift uses the Bid bar reference; spread remains independently guarded and Ask remains the executable BUY price.",
+  "verification": {
+    "focused_tests_passed": 43,
+    "final_focused_tests_passed": 17,
+    "metaeditor_errors": 0,
+    "metaeditor_warnings": 0,
+    "native_guard_harness": "PASS",
+    "native_guard_harness_order_authority": "DISABLED",
+    "full_fast_passed": 830,
+    "full_fast_failed_baseline_stale_corpus": 8
+  },
+  "goldm_behavior_changed": false,
+  "production_real_orders": "DISABLED"
+}
