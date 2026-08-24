@@ -254,7 +254,10 @@ def windows_firewall_rule_probe(
             "remote_ports",
         ):
             payload[field] = _string_tuple(payload[field], field)
-        payload["program_path"] = Path(payload["program_path"])
+        program_path = payload["program_path"]
+        if not isinstance(program_path, str):
+            raise WindowsResearchSecurityError("firewall program path is invalid")
+        payload["program_path"] = Path(program_path)
         result.append(FirewallRuleSnapshot(**payload))
     return tuple(result)
 
