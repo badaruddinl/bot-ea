@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "release_version": "1.1.3",
+  "baseline_commit": "ab23ef881a903630988081e5718848c5b7d80c93",
+  "source_commit": "d9bea48cab2c88b06f0d8f8e8602a9ea84806b02",
+  "strategy_profile_version": "1.1.0",
+  "scope": "CROSS_PROFILE",
+  "binaries": {
+    "GoldEngine-GOLDi-v1.1.3.ex5": {
+      "sha256": "934b5b27f08f921e71791f5d97040b896c950439079be703bde06104b7464cae",
+      "size_bytes": 196202
+    },
+    "GoldEngine-GOLDm-v1.1.3.ex5": {
+      "sha256": "8ae26aeb2649b95e07c4d8502bd38d731e4fc5311991858e06358f930e857f0a",
+      "size_bytes": 196980
+    }
+  },
+  "telegram_contract": {
+    "language": "ENGLISH",
+    "strategy_field": "strategy",
+    "strategy_mode_field": "strategy_mode",
+    "trade_reason_field": "trade_reason",
+    "execution_status_field": "execution_reason",
+    "event_status_field": "reason",
+    "position_context_persistence_schema": 3,
+    "compatible_position_state_schemas": [1, 2, 3],
+    "legacy_mode_fallback": "LEGACY_POSITION",
+    "legacy_reason_fallback": "LEGACY_CONTEXT_UNAVAILABLE"
+  },
+  "acceptance": {
+    "focused_tests": "97 passed, 8 subtests passed",
+    "full_tests": "1019 passed, 141 subtests passed",
+    "ruff_changed_files": "PASS",
+    "mypy_changed_source": "PASS",
+    "metaeditor_goldi": "0 errors, 0 warnings",
+    "metaeditor_goldm": "0 errors, 0 warnings",
+    "metaeditor_harnesses": "0 errors, 0 warnings",
+    "strategy_tester_persistence": "PASS: legacy=true, v2=true, OnTester result 1, order authority disabled"
+  },
+  "raw_evidence_root": "C:\\Users\\badaruddinl\\.codex\\evidence\\telegram-english-trade-context-20260825",
+  "deployment": "NOT_PERFORMED",
+  "goldm_real_activation": "NOT_PERFORMED",
+  "real_orders_sent_during_engineering": 0
+}
