@@ -105,7 +105,8 @@ private:
          state.demand_zone.distal,state.demand_zone.median_range,
          state.demand_zone.departure_strength,state.demand_zone.bounces,
          (long)state.demand_zone.last_touch_at,state.demand_zone.invalidated ? 1 : 0);
-      return header+"|"+geometry+"|"+execution+"|"+trendlines+"|"+swing_zones;
+      return header+"|"+geometry+"|"+execution+"|"+trendlines+"|"+
+             swing_zones+"|"+(state.shakeout_evidence_locked ? "1" : "0");
      }
 
    FranzLoadStatus ReadSlot(const int slot,FranzPersistentState &state) const
@@ -121,7 +122,7 @@ private:
          return FRANZ_LOAD_INVALID;
       string fields[];
       const int count=StringSplit(payload,'|',fields);
-      if(count!=89 || fields[0]!="1" || fields[1]!=FRANZ_PROFILE_FINGERPRINT)
+      if(count!=90 || fields[0]!="1" || fields[1]!=FRANZ_PROFILE_FINGERPRINT)
          return FRANZ_LOAD_INVALID;
       state.generation=(ulong)StringToInteger(fields[2]);
       state.state=(FranzState)StringToInteger(fields[3]);
@@ -210,6 +211,7 @@ private:
       state.demand_zone.bounces=(int)StringToInteger(fields[86]);
       state.demand_zone.last_touch_at=(datetime)StringToInteger(fields[87]);
       state.demand_zone.invalidated=StringToInteger(fields[88])==1;
+      state.shakeout_evidence_locked=StringToInteger(fields[89])==1;
       if(state.generation==0 || state.state<FRANZ_STATE_COLD ||
          state.state>FRANZ_STATE_DAILY_LOCKED ||
          state.mode<FRANZ_MODE_NONE || state.mode>FRANZ_MODE_SNIPER_TREND ||

@@ -203,6 +203,7 @@ int OnInit(void)
    state.demand_zone=demand_zone;
    state.initial_trendline_break=true;
    state.initial_break_level=99.0;
+   state.shakeout_evidence_locked=true;
    state.stop_loss=98.70;
    state.take_profit_1=106.18;
    state.take_profit_2=110.0;
@@ -216,6 +217,7 @@ int OnInit(void)
       "PERSIST_TRENDLINES",passed);
    Require(restored.supply_zone.valid && restored.demand_zone.valid,
       "PERSIST_SWING_ZONES",passed);
+   Require(restored.shakeout_evidence_locked,"PERSIST_SHAKEOUT_LOCK",passed);
    Require(restored.setup_id=="FRZ-TEST","PERSIST_SETUP",passed);
    store.DeleteTestState();
 

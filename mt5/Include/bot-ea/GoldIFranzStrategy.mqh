@@ -6,7 +6,7 @@
 #define FRANZ_STRATEGY_ID "GOLDI_FRANZ_SHAKEOUT"
 #define FRANZ_STRATEGY_VERSION "0.1.0"
 #define FRANZ_PROFILE_ID "GOLDI_FRANZ"
-#define FRANZ_PROFILE_FINGERPRINT "03e01f661bf71ff36c6e750800bb549c53b7f2f72257de649cf1199dcc9a76db"
+#define FRANZ_PROFILE_FINGERPRINT "d0a50e6d18350124e69b1e6efe34741585c3be840c2f055893960de30d5c04a1"
 #define FRANZ_SYMBOL "GOLD.i#"
 #define FRANZ_MAGIC 26081914
 
@@ -491,7 +491,8 @@ bool FranzComputeFibonacci(const FranzSide side,
 
 bool FranzClusterEvidence(const FranzBar &bars[],
                           const FranzSide side,
-                          const double reference,
+                          const double touch_reference,
+                          const double sweep_reference,
                           const double touch_tolerance,
                           const double tick_size,
                           int &touches,
@@ -519,12 +520,12 @@ bool FranzClusterEvidence(const FranzBar &bars[],
          direction_changes++;
       if(direction!=0) previous_direction=direction;
       const bool touch=(side==FRANZ_SIDE_SELL ?
-         bars[index].high>=reference-touch_tolerance :
-         bars[index].low<=reference+touch_tolerance);
+         bars[index].high>=touch_reference-touch_tolerance :
+         bars[index].low<=touch_reference+touch_tolerance);
       if(last_touch>=0)
         {
-         const double away=(side==FRANZ_SIDE_SELL ? reference-bars[index].low :
-                                                    bars[index].high-reference);
+         const double away=(side==FRANZ_SIDE_SELL ? touch_reference-bars[index].low :
+                                                    bars[index].high-touch_reference);
          if(away>=0.25*MathMax(tick_size,cluster_high-cluster_low))
             excursion_after_touch=true;
         }
@@ -537,8 +538,9 @@ bool FranzClusterEvidence(const FranzBar &bars[],
       if(side==FRANZ_SIDE_SELL) sweep_extreme=MathMax(sweep_extreme,bars[index].high);
       else sweep_extreme=MathMin(sweep_extreme,bars[index].low);
      }
-   const bool swept=(side==FRANZ_SIDE_SELL ? sweep_extreme>=reference+tick_size :
-                                            sweep_extreme<=reference-tick_size);
+   const bool swept=(side==FRANZ_SIDE_SELL ?
+      sweep_extreme>=sweep_reference+tick_size :
+      sweep_extreme<=sweep_reference-tick_size);
    return touches>=2 && direction_changes>=3 && swept;
   }
 
@@ -665,6 +667,16 @@ bool FranzBarTouchesSwingZone(const FranzSwingZone &zone,
    const double lower=MathMin(zone.proximal,zone.distal)-tolerance;
    const double upper=MathMax(zone.proximal,zone.distal)+tolerance;
    return bar.high>=lower && bar.low<=upper;
+  }
+
+bool FranzPriceWithinFibEntry(const FranzSide side,
+                              const FranzFibonacci &fib,
+                              const double price)
+  {
+   if(!fib.locked || fib.range<=0.0) return false;
+   const double progress=(side==FRANZ_SIDE_BUY ?
+      (price-fib.anchor_b)/fib.range : (fib.anchor_b-price)/fib.range);
+   return progress>=0.0 && progress<=0.146+1e-12;
   }
 
 bool FranzPassedHalfBeforeEntry(const FranzSide side,

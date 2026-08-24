@@ -47,10 +47,16 @@ Research basis for the objective zone conversion:
   range, directional body share at least 65%, average overlap at most 35%.
 - M1 shakeout: 4–12 closed bars, three direction changes, two distinct
   touches, an intervening excursion, and a liquidity sweep.
-- Two trendline zones are mandatory: a bull-support line from confirmed pivot
-  lows and a bear-resistance line from confirmed pivot highs. Each line needs
-  at least two causal anchors. The first micro trendline break creates a watch;
-  it never creates an entry by itself.
+- Two M15 context trendline zones are mandatory: a bull-support line from
+  confirmed pivot lows and a bear-resistance line from confirmed pivot highs.
+  Each line needs at least two causal anchors. The first closed-M5 trendline
+  break creates a watch; it never creates an entry by itself.
+- Trendline-break and shakeout evidence are independently latched. Either may
+  appear first; `BREAK_ATTEMPT` starts only after both exist inside the bounded
+  setup window.
+- Extreme watch lasts at most 60 M1 bars; after the M5 break sign, shakeout
+  watch lasts at most 30 M1 bars. The actual cluster remains bounded to the
+  latest 4–12 closed M1 bars.
 - Confirmed M15/M30 swing supply/demand zones use a 2×2 pivot, 1–4 overlapping
   base candles, and a three-bar displacement departure. SELL must originate
   inside a supply zone; BUY must originate inside a demand zone.
@@ -62,10 +68,16 @@ Research basis for the objective zone conversion:
 - Stochastic `(5,3,3)` can replace only the second re-entry close after an
   already proven sweep; it cannot replace micro-break, RSI, or Fibonacci.
 - Fibonacci anchors lock at failed-break confirmation and never redraw.
-- A 23.6% reclaim confirms reversal progress, but entry waits for a deep
-  0–14.6% pullback that simultaneously retests the broken micro trendline and
-  remains inside the active supply/demand zone. This keeps the 113% stop and
-  50% Handgun target compatible with the minimum 1.25R gate.
+- Fibonacci `B` is the active swing-zone distal boundary. The liquidity sweep
+  wick remains separate and can push the structural SL farther away; this
+  prevents a sweep outside the zone from shifting the entry geometry outside
+  the zone itself.
+- The initial micro-trendline break opens the watch. A sweep and failed break
+  at the swing-zone distal boundary confirms the reversal. Entry then requires
+  price to remain/retest inside the active supply/demand zone at Fibonacci
+  progress 0–14.6%. The 23.6% level measures subsequent progress rather than
+  forcing price to leave the zone and return. This keeps the 113% stop and 50%
+  Handgun target compatible with the minimum 1.25R gate.
 
 Handgun opens one `0.01` ticket. Sniper opens two `0.01` tickets with common
 entry/SL and separate TP1/TP2. If the second ticket cannot be created, the

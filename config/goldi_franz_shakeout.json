@@ -60,7 +60,9 @@
     "rsi_m5_period": 14,
     "stochastic_d": 3,
     "stochastic_k": 5,
-    "stochastic_slowing": 3
+    "stochastic_slowing": 3,
+    "post_break_watch_m1_bars": 30,
+    "setup_watch_m1_bars": 60
   },
   "swing_zones": {
     "base_body_ratio_maximum": 0.55,

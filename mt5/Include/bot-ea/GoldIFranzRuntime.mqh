@@ -120,6 +120,25 @@ private:
       return ArraySize(tickets);
      }
 
+   int OwnOrders(ulong &tickets[]) const
+     {
+      ArrayResize(tickets,0);
+      for(int index=OrdersTotal()-1;index>=0;index--)
+        {
+         const ulong ticket=OrderGetTicket(index);
+         if(ticket==0 || !OrderSelect(ticket)) continue;
+         if(OrderGetString(ORDER_SYMBOL)!=FRANZ_SYMBOL ||
+            OrderGetInteger(ORDER_MAGIC)!=FRANZ_MAGIC ||
+            !OwnComment(OrderGetString(ORDER_COMMENT))) continue;
+         const ENUM_ORDER_TYPE type=(ENUM_ORDER_TYPE)OrderGetInteger(ORDER_TYPE);
+         if(type!=ORDER_TYPE_BUY_LIMIT && type!=ORDER_TYPE_SELL_LIMIT) continue;
+         const int size=ArraySize(tickets);
+         ArrayResize(tickets,size+1);
+         tickets[size]=ticket;
+        }
+      return ArraySize(tickets);
+     }
+
    ulong TicketByComment(const string comment) const
      {
       for(int index=PositionsTotal()-1;index>=0;index--)
@@ -333,7 +352,7 @@ private:
       m_state.side=side;
       m_state.setup_id=CompactSetupId(tick.time,side);
       m_state.setup_created_at=tick.time;
-      m_state.setup_expires_at=tick.time+12*60;
+      m_state.setup_expires_at=tick.time+60*60;
       m_state.watch_m1_bars=0;
       m_state.break_m1_bars=0;
       m_state.fib_m1_bars=0;
@@ -345,6 +364,7 @@ private:
       m_state.demand_zone=demand_zone;
       m_state.initial_trendline_break=false;
       m_state.initial_break_level=0.0;
+      m_state.shakeout_evidence_locked=false;
       m_state.cluster_high=0.0;
       m_state.cluster_low=0.0;
       m_state.rejection_high=0.0;
@@ -385,9 +405,13 @@ private:
       decision.signal_id=m_state.setup_id+"-READY";
       decision.setup_created_at=m_state.setup_created_at;
       decision.entry_ready_at=tick.time;
-      decision.valid_until=tick.time+60;
+      decision.valid_until=m_state.setup_expires_at;
       decision.fibonacci=m_state.fibonacci;
-      decision.entry=(m_state.side==FRANZ_SIDE_BUY ? tick.ask : tick.bid);
+      const FranzSwingZone active_zone=(m_state.side==FRANZ_SIDE_SELL ?
+         m_state.supply_zone : m_state.demand_zone);
+      decision.entry=active_zone.proximal;
+      if(m_use_fibonacci_gate && !FranzPriceWithinFibEntry(
+            m_state.side,m_state.fibonacci,decision.entry)) return false;
       decision.stop_loss=FranzStructuralStop(m_state.side,m_state.fibonacci,
          m_state.sweep_extreme,tick.ask-tick.bid,0.01);
       FranzBar m5[],m15[];
@@ -446,25 +470,26 @@ private:
       return ORDER_FILLING_FOK;
      }
 
-   bool CheckMarketOrder(const FranzSide side,const double volume,
-                         const double sl,const double tp,MqlTradeCheckResult &check,
-                         string &reason) const
+   bool CheckPendingOrder(const FranzSide side,const double volume,
+                          const double price,const double sl,const double tp,
+                          const datetime expires,MqlTradeCheckResult &check,
+                          string &reason) const
      {
-      MqlTick tick;
-      if(!SymbolInfoTick(FRANZ_SYMBOL,tick)) { reason="QUOTE_UNAVAILABLE"; return false; }
       MqlTradeRequest request;
       ZeroMemory(request);
       ZeroMemory(check);
-      request.action=TRADE_ACTION_DEAL;
+      request.action=TRADE_ACTION_PENDING;
       request.magic=FRANZ_MAGIC;
       request.symbol=FRANZ_SYMBOL;
       request.volume=volume;
-      request.type=(side==FRANZ_SIDE_BUY ? ORDER_TYPE_BUY : ORDER_TYPE_SELL);
-      request.price=(side==FRANZ_SIDE_BUY ? tick.ask : tick.bid);
+      request.type=(side==FRANZ_SIDE_BUY ? ORDER_TYPE_BUY_LIMIT : ORDER_TYPE_SELL_LIMIT);
+      request.price=price;
       request.sl=sl;
       request.tp=tp;
       request.deviation=30;
-      request.type_filling=FillingMode();
+      request.type_filling=ORDER_FILLING_RETURN;
+      request.type_time=ORDER_TIME_SPECIFIED;
+      request.expiration=expires;
       request.comment="FRZ-CHECK";
       if(!OrderCheck(request,check)) { reason="ORDER_CHECK_CALL_FAILED"; return false; }
       if(check.retcode!=0 && check.retcode!=TRADE_RETCODE_DONE &&
@@ -472,6 +497,26 @@ private:
         { reason="ORDER_CHECK_REJECTED"; return false; }
       reason="ORDER_CHECK_OK";
       return true;
+     }
+
+   bool DeleteOrder(const ulong ticket)
+     {
+      if(ticket==0 || !OrderSelect(ticket)) return true;
+      if(OrderGetString(ORDER_SYMBOL)!=FRANZ_SYMBOL ||
+         OrderGetInteger(ORDER_MAGIC)!=FRANZ_MAGIC ||
+         !OwnComment(OrderGetString(ORDER_COMMENT))) return false;
+      const bool sent=m_trade.OrderDelete(ticket);
+      return sent && TradeRetcodeOk();
+     }
+
+   bool DeleteAllOwnOrders(void)
+     {
+      ulong tickets[];
+      OwnOrders(tickets);
+      bool ok=true;
+      for(int index=0;index<ArraySize(tickets);index++)
+         if(!DeleteOrder(tickets[index])) ok=false;
+      return ok;
      }
 
    bool CloseTicket(const ulong ticket)
@@ -539,8 +584,9 @@ private:
      {
       if(!m_authority) { reason="TESTER_ORDER_AUTHORITY_DISABLED"; return false; }
       if(tick.ask-tick.bid>0.60) { reason="SPREAD_TOO_WIDE"; return false; }
-      ulong existing[];
-      if(OwnPositions(existing)>0) { reason="OWN_POSITION_ALREADY_OPEN"; return false; }
+      ulong existing[],orders[];
+      if(OwnPositions(existing)>0 || OwnOrders(orders)>0)
+        { reason="OWN_EXPOSURE_ALREADY_EXISTS"; return false; }
       const int legs=(decision.mode==FRANZ_MODE_SNIPER_TREND ? 2 : 1);
       const double risk_price=MathAbs(decision.entry-decision.stop_loss);
       const double setup_loss=risk_price*100.0*0.01*legs;
@@ -548,77 +594,84 @@ private:
       const double budget=MathMin(0.10*equity,MathMax(0.0,equity-4.0));
       if(setup_loss<=0.0 || setup_loss>budget)
         { reason="PLANNED_LOSS_EXCEEDS_BUDGET"; return false; }
+      const double minimum_distance=MathMax(
+         SymbolInfoInteger(FRANZ_SYMBOL,SYMBOL_TRADE_STOPS_LEVEL),
+         SymbolInfoInteger(FRANZ_SYMBOL,SYMBOL_TRADE_FREEZE_LEVEL))*
+         SymbolInfoDouble(FRANZ_SYMBOL,SYMBOL_POINT);
+      if((decision.side==FRANZ_SIDE_BUY && decision.entry>=tick.ask-minimum_distance) ||
+         (decision.side==FRANZ_SIDE_SELL && decision.entry<=tick.bid+minimum_distance))
+        { reason="LIMIT_ENTRY_ALREADY_PASSED"; return false; }
       MqlTradeCheckResult first_check,second_check;
-      if(!CheckMarketOrder(decision.side,0.01,decision.stop_loss,
-            decision.take_profit_1,first_check,reason)) return false;
-      if(legs==2 && !CheckMarketOrder(decision.side,0.01,decision.stop_loss,
-            decision.take_profit_2,second_check,reason)) return false;
+      if(!CheckPendingOrder(decision.side,0.01,decision.entry,decision.stop_loss,
+            decision.take_profit_1,decision.valid_until,first_check,reason)) return false;
+      if(legs==2 && !CheckPendingOrder(decision.side,0.01,decision.entry,
+            decision.stop_loss,decision.take_profit_2,decision.valid_until,
+            second_check,reason)) return false;
       const double required_margin=first_check.margin+(legs==2 ? second_check.margin : 0.0);
       if(required_margin>AccountInfoDouble(ACCOUNT_MARGIN_FREE))
         { reason="PAIR_MARGIN_INSUFFICIENT"; return false; }
 
       const bool first_sent=(decision.side==FRANZ_SIDE_BUY ?
-         m_trade.Buy(0.01,FRANZ_SYMBOL,0.0,decision.stop_loss,
-                     decision.take_profit_1,LegComment(1)) :
-         m_trade.Sell(0.01,FRANZ_SYMBOL,0.0,decision.stop_loss,
-                      decision.take_profit_1,LegComment(1)));
+         m_trade.BuyLimit(0.01,decision.entry,FRANZ_SYMBOL,decision.stop_loss,
+            decision.take_profit_1,ORDER_TIME_SPECIFIED,decision.valid_until,
+            LegComment(1)) :
+         m_trade.SellLimit(0.01,decision.entry,FRANZ_SYMBOL,decision.stop_loss,
+            decision.take_profit_1,ORDER_TIME_SPECIFIED,decision.valid_until,
+            LegComment(1)));
       if(!first_sent || !TradeRetcodeOk())
         { reason="LEG1_SUBMIT_FAILED"; return false; }
-      m_state.leg1_ticket=TicketByComment(LegComment(1));
+      m_state.leg1_ticket=m_trade.ResultOrder();
       if(m_state.leg1_ticket==0)
-        { reason="LEG1_CAPTURE_FAILED"; CloseAllOwn(reason); return false; }
-      if(PositionSelectByTicket(m_state.leg1_ticket))
-         m_state.leg1_position_id=(ulong)PositionGetInteger(POSITION_IDENTIFIER);
+        { reason="LEG1_CAPTURE_FAILED"; DeleteAllOwnOrders(); return false; }
 
       if(legs==2)
         {
          const bool second_sent=(decision.side==FRANZ_SIDE_BUY ?
-            m_trade.Buy(0.01,FRANZ_SYMBOL,0.0,decision.stop_loss,
-                        decision.take_profit_2,LegComment(2)) :
-            m_trade.Sell(0.01,FRANZ_SYMBOL,0.0,decision.stop_loss,
-                         decision.take_profit_2,LegComment(2)));
+            m_trade.BuyLimit(0.01,decision.entry,FRANZ_SYMBOL,decision.stop_loss,
+               decision.take_profit_2,ORDER_TIME_SPECIFIED,decision.valid_until,
+               LegComment(2)) :
+            m_trade.SellLimit(0.01,decision.entry,FRANZ_SYMBOL,decision.stop_loss,
+               decision.take_profit_2,ORDER_TIME_SPECIFIED,decision.valid_until,
+               LegComment(2)));
          if(!second_sent || !TradeRetcodeOk())
            {
             reason="LEG2_SUBMIT_FAILED";
-            CloseTicket(m_state.leg1_ticket);
+            DeleteOrder(m_state.leg1_ticket);
             m_state.state=FRANZ_STATE_FAILED;
             SaveState();
             m_audit.Emit("ENGINE_ERROR",tick.time,m_state,reason);
             return false;
            }
-         m_state.leg2_ticket=TicketByComment(LegComment(2));
+         m_state.leg2_ticket=m_trade.ResultOrder();
          if(m_state.leg2_ticket==0)
            {
             reason="LEG2_CAPTURE_FAILED";
-            CloseAllOwn(reason);
+            DeleteAllOwnOrders();
             m_state.state=FRANZ_STATE_FAILED;
             SaveState();
             return false;
            }
-         if(PositionSelectByTicket(m_state.leg2_ticket))
-            m_state.leg2_position_id=(ulong)PositionGetInteger(POSITION_IDENTIFIER);
         }
 
-      m_state.state=FRANZ_STATE_POSITION_OPEN;
+      m_state.state=FRANZ_STATE_ENTRY_READY;
       m_state.planned_entry=decision.entry;
       m_state.stop_loss=decision.stop_loss;
       m_state.take_profit_1=decision.take_profit_1;
       m_state.take_profit_2=decision.take_profit_2;
       m_state.initial_risk_price=risk_price;
       m_state.setup_risk_usd=setup_loss;
-      m_state.position_opened_at=tick.time;
+      m_state.position_opened_at=0;
       m_state.leg1_closed=false;
       m_state.leg2_closed=(legs==1);
       m_state.tp1_hit=false;
       m_state.setup_realized_pnl=0.0;
-      m_state.daily_setups++;
       SaveState();
-      m_audit.Emit("POSITION_OPENED",tick.time,m_state,"ORDER_SENT",
+      m_audit.Emit("LIMIT_ORDERS_PLACED",tick.time,m_state,"LIMIT_ORDERS_PLACED",
          StringFormat("{\"entry\":%.8f,\"sl\":%.8f,\"tp1\":%.8f,"
                       "\"tp2\":%.8f,\"legs\":%d}",decision.entry,
                       decision.stop_loss,decision.take_profit_1,
                       decision.take_profit_2,legs));
-      reason="ORDER_SENT";
+      reason="LIMIT_ORDERS_PLACED";
       return true;
      }
 
@@ -688,6 +741,67 @@ private:
       SaveState();
      }
 
+   void ManagePendingEntry(const MqlTick &tick)
+     {
+      if(m_state.state!=FRANZ_STATE_ENTRY_READY) return;
+      ulong positions[],orders[];
+      const int position_count=OwnPositions(positions);
+      const int order_count=OwnOrders(orders);
+      const int expected=(m_state.mode==FRANZ_MODE_SNIPER_TREND ? 2 : 1);
+      if(tick.time>=m_state.setup_expires_at)
+        {
+         DeleteAllOwnOrders();
+         if(position_count>0) CloseAllOwn("PARTIAL_FILL_AT_EXPIRY");
+         else ClearSetup(FRANZ_STATE_EXPIRED,"LIMIT_ENTRY_EXPIRED");
+         return;
+        }
+      if(position_count==0 && order_count==expected) return;
+      if(position_count==expected && order_count==0)
+        {
+         m_state.leg1_ticket=TicketByComment(LegComment(1));
+         m_state.leg2_ticket=(expected==2 ? TicketByComment(LegComment(2)) : 0);
+         if(m_state.leg1_ticket==0 || (expected==2 && m_state.leg2_ticket==0))
+           {
+            CloseAllOwn("FILLED_POSITION_CAPTURE_FAILED");
+            m_state.state=FRANZ_STATE_FAILED;
+            SaveState();
+            return;
+           }
+         if(PositionSelectByTicket(m_state.leg1_ticket))
+            m_state.leg1_position_id=(ulong)PositionGetInteger(POSITION_IDENTIFIER);
+         if(expected==2 && PositionSelectByTicket(m_state.leg2_ticket))
+            m_state.leg2_position_id=(ulong)PositionGetInteger(POSITION_IDENTIFIER);
+         m_state.state=FRANZ_STATE_POSITION_OPEN;
+         m_state.position_opened_at=tick.time;
+         m_state.daily_setups++;
+         m_state.cleanup_attempts=0;
+         m_state.cleanup_started_ms=0;
+         SaveState();
+         m_audit.Emit("POSITION_OPENED",tick.time,m_state,"LIMIT_ENTRY_FILLED",
+            StringFormat("{\"entry\":%.8f,\"sl\":%.8f,\"tp1\":%.8f,"
+                         "\"tp2\":%.8f,\"legs\":%d}",m_state.planned_entry,
+                         m_state.stop_loss,m_state.take_profit_1,
+                         m_state.take_profit_2,expected));
+         return;
+        }
+      if(m_state.cleanup_started_ms==0)
+        {
+         m_state.cleanup_started_ms=GetTickCount64();
+         SaveState();
+         return;
+        }
+      if(GetTickCount64()-m_state.cleanup_started_ms<250) return;
+      DeleteAllOwnOrders();
+      if(position_count>0) CloseAllOwn("ATOMIC_LIMIT_FILL_FAILED");
+      else
+        {
+         m_state.state=FRANZ_STATE_FAILED;
+         m_state.close_reason="PENDING_ORDER_COUNT_MISMATCH";
+         SaveState();
+        }
+      m_audit.Emit("ENGINE_ERROR",tick.time,m_state,m_state.close_reason);
+     }
+
    void ManageOpenPositions(const MqlTick &tick)
      {
       if(m_state.state!=FRANZ_STATE_POSITION_OPEN &&
@@ -710,6 +824,39 @@ private:
          CloseAllOwn("MAXIMUM_HOLD_REACHED");
      }
 
+   bool LockShakeoutEvidence(const FranzBar &m1[],const MqlTick &tick)
+     {
+      if(m_state.shakeout_evidence_locked) return true;
+      int touches=0,changes=0;
+      double high=0.0,low=0.0,sweep=0.0;
+      const FranzSwingZone active_zone=(m_state.side==FRANZ_SIDE_SELL ?
+         m_state.supply_zone : m_state.demand_zone);
+      if(!FranzClusterEvidence(m1,m_state.side,active_zone.proximal,
+           active_zone.distal,
+           0.25*FranzMedianTrueRange(m1,0,20),0.01,touches,changes,
+           high,low,sweep)) return false;
+      m_state.cluster_high=high;
+      m_state.cluster_low=low;
+      m_state.sweep_extreme=sweep;
+      int sweep_index=0;
+      for(int index=0;index<12;index++)
+        {
+         const double candidate=(m_state.side==FRANZ_SIDE_SELL ?
+            m1[index].high : m1[index].low);
+         if(MathAbs(candidate-sweep)<=0.005) { sweep_index=index; break; }
+        }
+      m_state.rejection_high=m1[sweep_index].high;
+      m_state.rejection_low=m1[sweep_index].low;
+      m_state.shakeout_evidence_locked=true;
+      SaveState();
+      m_audit.Emit("SHAKEOUT_EVIDENCE_LOCKED",tick.time,m_state,
+         "SHAKEOUT_EVIDENCE_LOCKED",StringFormat(
+            "{\"touches\":%d,\"direction_changes\":%d,"
+            "\"cluster_high\":%.8f,\"cluster_low\":%.8f,"
+            "\"sweep_extreme\":%.8f}",touches,changes,high,low,sweep));
+      return true;
+     }
+
    void ProcessM15(const MqlTick &tick)
      {
       const datetime latest=tick.time-(tick.time%PeriodSeconds(PERIOD_M15));
@@ -725,6 +872,7 @@ private:
       m_state.last_m1_close=latest;
       ResetDayIfSafe(tick.time);
       if(m_state.state!=FRANZ_STATE_EXTREME_WATCH &&
+         m_state.state!=FRANZ_STATE_TRENDLINE_BREAK_SIGN &&
          m_state.state!=FRANZ_STATE_BREAK_ATTEMPT &&
          m_state.state!=FRANZ_STATE_SHAKEOUT_CONFIRMED &&
          m_state.state!=FRANZ_STATE_FIB_RECLAIMED) return;
@@ -736,39 +884,39 @@ private:
       if(m_state.state==FRANZ_STATE_EXTREME_WATCH)
         {
          m_state.watch_m1_bars++;
-         if(tick.time>=m_state.setup_expires_at || m_state.watch_m1_bars>12)
+         if(tick.time>=m_state.setup_expires_at || m_state.watch_m1_bars>60)
            { ClearSetup(FRANZ_STATE_EXPIRED,"SHAKEOUT_EXPIRED"); return; }
-         int touches=0,changes=0;
-         double high=0.0,low=0.0,sweep=0.0;
-         if(!FranzClusterEvidence(m1,m_state.side,m_state.liquidity_reference,
-              0.25*FranzMedianTrueRange(m1,0,20),0.01,touches,changes,
-              high,low,sweep)) return;
+         LockShakeoutEvidence(m1,tick);
          FranzTrendlineZone micro_bull,micro_bear;
-         const double m1_median=FranzMedianTrueRange(m1,0,20);
-         if(!FranzBuildTrendlineZone(m1,true,m1[0].close_time,m1_median,
+         FranzBar m5_break[];
+         if(!LoadBars(PERIOD_M5,64,m5_break)) return;
+         const double m5_median=FranzMedianTrueRange(m5_break,0,20);
+         if(!FranzBuildTrendlineZone(m5_break,true,m5_break[0].close_time,m5_median,
                                      tick.ask-tick.bid,micro_bull) ||
-            !FranzBuildTrendlineZone(m1,false,m1[0].close_time,m1_median,
+            !FranzBuildTrendlineZone(m5_break,false,m5_break[0].close_time,m5_median,
                                      tick.ask-tick.bid,micro_bear)) return;
          double break_level=0.0;
-         if(!FranzInitialTrendlineBreak(m_state.side,m1[0],m1[1],
+         if(!FranzInitialTrendlineBreak(m_state.side,m5_break[0],m5_break[1],
                                         micro_bull,micro_bear,break_level)) return;
-         m_state.cluster_high=high;
-         m_state.cluster_low=low;
-         m_state.sweep_extreme=sweep;
-         int sweep_index=0;
-         for(int index=0;index<12;index++)
-           {
-            const double candidate=(m_state.side==FRANZ_SIDE_SELL ?
-               m1[index].high : m1[index].low);
-            if(MathAbs(candidate-sweep)<=0.005) { sweep_index=index; break; }
-           }
-         m_state.rejection_high=m1[sweep_index].high;
-         m_state.rejection_low=m1[sweep_index].low;
          m_state.initial_trendline_break=true;
          m_state.initial_break_level=break_level;
+         m_state.watch_m1_bars=0;
+         m_state.setup_expires_at=tick.time+30*60;
+         Transition(FRANZ_STATE_TRENDLINE_BREAK_SIGN,
+            "INITIAL_TRENDLINE_BREAK_SIGN");
+         if(!m_state.shakeout_evidence_locked) return;
          m_state.break_m1_bars=0;
          Transition(FRANZ_STATE_BREAK_ATTEMPT,"BREAK_ATTEMPT_DETECTED");
-         return;
+        }
+
+      if(m_state.state==FRANZ_STATE_TRENDLINE_BREAK_SIGN)
+        {
+         m_state.watch_m1_bars++;
+         if(tick.time>=m_state.setup_expires_at || m_state.watch_m1_bars>30)
+           { ClearSetup(FRANZ_STATE_EXPIRED,"POST_BREAK_SHAKEOUT_EXPIRED"); return; }
+         if(!LockShakeoutEvidence(m1,tick)) return;
+         m_state.break_m1_bars=0;
+         Transition(FRANZ_STATE_BREAK_ATTEMPT,"BREAK_ATTEMPT_DETECTED");
         }
 
       if(m_state.state==FRANZ_STATE_BREAK_ATTEMPT)
@@ -790,7 +938,7 @@ private:
            { ClearSetup(FRANZ_STATE_CANCELLED,"BREAK_ACCEPTED_OUTSIDE"); return; }
          if(!failed) { SaveState(); return; }
          const double anchor_a=m_state.fibonacci.anchor_a;
-         if(!FranzComputeFibonacci(m_state.side,anchor_a,m_state.sweep_extreme,
+         if(!FranzComputeFibonacci(m_state.side,anchor_a,m_state.liquidity_reference,
                                    m_state.fibonacci))
            { ClearSetup(FRANZ_STATE_FAILED,"FIBONACCI_LOCK_FAILED"); return; }
          m_state.fib_m1_bars=0;
@@ -810,11 +958,8 @@ private:
          bool stochastic=false;
          const int votes=CurrentRsiVotes(m1,stochastic);
          if(votes<0 || (m_use_rsi && votes<2)) return;
-         if(m_use_fibonacci_gate && !FranzFibReclaimed(m_state.side,
-                                                       m_state.fibonacci,m1[0].close))
-            return;
-         Transition(FRANZ_STATE_FIB_RECLAIMED,"FIBONACCI_236_RECLAIMED");
-         return;
+         m_state.fib_m1_bars=0;
+         Transition(FRANZ_STATE_FIB_RECLAIMED,"FIBONACCI_GEOMETRY_LOCKED");
         }
 
       if(m_state.state==FRANZ_STATE_FIB_RECLAIMED)
@@ -827,17 +972,49 @@ private:
          bool stochastic=false;
          const int votes=CurrentRsiVotes(m1,stochastic);
          if(votes<0 || (m_use_rsi && votes<2)) return;
-         if(m_use_fibonacci_gate && !FranzFibRetest(m_state.side,m_state.fibonacci,m1[0]))
-            return;
          const double entry_tolerance=0.15*FranzMedianTrueRange(m1,0,20);
-         if(!FranzTrendlineRetest(m_state.side,m_state.initial_break_level,
-                                  m1[0],entry_tolerance)) return;
          const FranzSwingZone active_zone=(m_state.side==FRANZ_SIDE_SELL ?
             m_state.supply_zone : m_state.demand_zone);
-         if(!FranzBarTouchesSwingZone(active_zone,m1[0],entry_tolerance)) return;
+         const double planned_limit_entry=active_zone.proximal;
+         const bool fibonacci_retest=!m_use_fibonacci_gate ||
+            FranzPriceWithinFibEntry(m_state.side,m_state.fibonacci,
+                                     planned_limit_entry);
+         const bool trendline_retest=m_state.initial_trendline_break;
+         const bool swing_zone_touch=FranzPriceInSwingZone(
+            active_zone,planned_limit_entry,entry_tolerance);
+         const double fib_progress=(m_state.side==FRANZ_SIDE_BUY ?
+            (m1[0].close-m_state.fibonacci.anchor_b)/m_state.fibonacci.range :
+            (m_state.fibonacci.anchor_b-m1[0].close)/m_state.fibonacci.range);
+         m_audit.Emit("ENTRY_GATE_DIAGNOSTIC",tick.time,m_state,
+            "FIBONACCI_RETEST_EVALUATED",StringFormat(
+               "{\"fib_retest\":%s,\"trendline_retest\":%s,"
+               "\"swing_zone_touch\":%s,\"rsi_votes\":%d,"
+               "\"stochastic_reinforced\":%s,\"fib_bar\":%d,"
+               "\"fib_progress\":%.8f,\"bar_high\":%.8f,"
+               "\"bar_low\":%.8f,\"zone_proximal\":%.8f,"
+               "\"zone_distal\":%.8f,\"zone_tolerance\":%.8f,"
+               "\"planned_limit_entry\":%.8f}",
+               fibonacci_retest ? "true" : "false",
+               trendline_retest ? "true" : "false",
+               swing_zone_touch ? "true" : "false",votes,
+               stochastic ? "true" : "false",m_state.fib_m1_bars,
+               fib_progress,m1[0].high,m1[0].low,active_zone.proximal,
+               active_zone.distal,entry_tolerance,planned_limit_entry));
+         if(!fibonacci_retest || !trendline_retest || !swing_zone_touch) return;
          FranzDecision decision;
          if(!BuildEntryDecision(tick,m1,decision))
-           { ClearSetup(FRANZ_STATE_CANCELLED,"ENTRY_GEOMETRY_REJECTED"); return; }
+           {
+            m_audit.Emit("ENTRY_GEOMETRY_REJECTED",tick.time,m_state,
+               "ENTRY_GEOMETRY_REJECTED",StringFormat(
+                  "{\"entry\":%.8f,\"sl\":%.8f,\"tp1\":%.8f,"
+                  "\"tp2\":%.8f,\"projected_r1\":%.8f,"
+                  "\"projected_r2\":%.8f}",decision.entry,
+                  decision.stop_loss,decision.take_profit_1,
+                  decision.take_profit_2,decision.projected_r_1,
+                  decision.projected_r_2));
+            ClearSetup(FRANZ_STATE_CANCELLED,"ENTRY_GEOMETRY_REJECTED");
+            return;
+           }
          m_state.state=FRANZ_STATE_ENTRY_READY;
          m_state.planned_entry=decision.entry;
          m_state.stop_loss=decision.stop_loss;
@@ -854,8 +1031,24 @@ private:
 
    bool ReconcileRestart(string &reason)
      {
-      ulong positions[];
+      ulong positions[],orders[];
       const int count=OwnPositions(positions);
+      const int order_count=OwnOrders(orders);
+      if(m_state.state==FRANZ_STATE_ENTRY_READY)
+        {
+         const int expected=(m_state.mode==FRANZ_MODE_SNIPER_TREND ? 2 : 1);
+         if(count+order_count!=expected || count>expected || order_count>expected)
+           { reason="PENDING_ENTRY_COUNT_AMBIGUOUS"; return false; }
+         if(count>0 && order_count>0)
+           {
+            m_state.cleanup_started_ms=GetTickCount64();
+            m_state.cleanup_attempts=0;
+           }
+         reason="PENDING_ENTRY_RECOVERED";
+         return SaveState();
+        }
+      if(order_count>0)
+        { reason="PENDING_ORDER_WITHOUT_ENTRY_STATE"; return false; }
       if(count==0)
         {
          if(m_state.state==FRANZ_STATE_POSITION_OPEN ||
@@ -999,6 +1192,7 @@ public:
          SaveState();
          return;
         }
+      ManagePendingEntry(tick);
       ManageOpenPositions(tick);
       ProcessM1(tick);
       ProcessM15(tick);

@@ -83,7 +83,13 @@ def test_dual_trendline_zones_are_mandatory_before_initial_break_watch() -> None
     assert "FranzInitialTrendlineBreak" in strategy
     assert "m_state.initial_trendline_break=true" in runtime
     assert "FranzInitialTrendlineBreak" in runtime
-    assert "FranzTrendlineRetest" in runtime
+    assert "const bool trendline_retest=m_state.initial_trendline_break" in runtime
+    assert "FRANZ_STATE_TRENDLINE_BREAK_SIGN" in types
+    assert "INITIAL_TRENDLINE_BREAK_SIGN" in runtime
+    assert "POST_BREAK_SHAKEOUT_EXPIRED" in runtime
+    assert "LoadBars(PERIOD_M5,64,m5_break)" in runtime
+    assert "m_state.watch_m1_bars>60" in runtime
+    assert "m_state.watch_m1_bars>30" in runtime
     setup_block = runtime[
         runtime.index("bool CreateSetupFromM15") : runtime.index("bool BuildEntryDecision")
     ]
@@ -108,7 +114,7 @@ def test_swing_supply_demand_zones_require_base_departure_and_freshness() -> Non
     assert "m_state.supply_zone=supply_zone" in runtime
     assert "m_state.demand_zone=demand_zone" in runtime
     assert "active_zone.distal" in runtime
-    assert "FranzBarTouchesSwingZone" in runtime
+    assert "FranzPriceInSwingZone" in runtime
 
 
 def test_stochastic_only_reinforces_a_price_confirmed_failed_break() -> None:
@@ -150,7 +156,9 @@ def test_handgun_and_sniper_have_distinct_position_contracts() -> None:
     assert "LegComment(1)" in runtime
     assert "LegComment(2)" in runtime
     assert "LEG2_SUBMIT_FAILED" in runtime
-    assert "CloseTicket(m_state.leg1_ticket)" in runtime
+    assert "DeleteOrder(m_state.leg1_ticket)" in runtime
+    assert "ATOMIC_LIMIT_FILL_FAILED" in runtime
+    assert "PENDING_ENTRY_RECOVERED" in runtime
     assert "ProtectSecondLeg" in runtime
     assert "m_state.planned_entry+0.10*risk" in runtime
     assert "m_state.fibonacci.level_1272" in runtime
@@ -159,8 +167,10 @@ def test_handgun_and_sniper_have_distinct_position_contracts() -> None:
 
 def test_fixed_lot_risk_and_daily_guards_are_explicit() -> None:
     runtime = _read(RUNTIME)
-    assert "m_trade.Buy(0.01" in runtime
-    assert "m_trade.Sell(0.01" in runtime
+    assert "m_trade.BuyLimit(0.01" in runtime
+    assert "m_trade.SellLimit(0.01" in runtime
+    assert "ORDER_TIME_SPECIFIED" in runtime
+    assert "LIMIT_ENTRY_EXPIRED" in runtime
     assert "tick.ask-tick.bid>0.60" in runtime
     assert "0.10*equity" in runtime
     assert "equity-4.0" in runtime
@@ -176,7 +186,8 @@ def test_state_persistence_is_double_slot_fingerprinted_and_restart_aware() -> N
     assert 'BasePath()+"\\\\state-"' in persistence
     assert "state.generation%2" in persistence
     assert "FranzStateChecksum" in persistence
-    assert "count!=89" in persistence
+    assert "count!=90" in persistence
+    assert "shakeout_evidence_locked" in persistence
     assert "FRANZ_PROFILE_FINGERPRINT" in persistence
     assert "ReconcileRestart" in runtime
     assert "POSITION_COUNT_AMBIGUOUS" in runtime

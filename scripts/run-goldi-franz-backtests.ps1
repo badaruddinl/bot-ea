@@ -121,6 +121,14 @@ function Get-RunMetrics {
     $actualFrom = if ($testBegins.Count) {
         $testBegins[$testBegins.Count - 1].Groups[1].Value
     } else { "" }
+    $realTickBegins = [regex]::Matches($logText, "real ticks begin from ([0-9.]+)")
+    $realTickFrom = if ($realTickBegins.Count) {
+        $realTickBegins[$realTickBegins.Count - 1].Groups[1].Value
+    } else { "" }
+    $tickIntegrityOk = $logText -notmatch "(?i)real ticks absent|real ticks discarded|tick prices .*mismatch|tick volumes not matched"
+    $coverageStart = if ($realTickFrom -and ($actualFrom -eq "" -or $realTickFrom -gt $actualFrom)) {
+        $realTickFrom
+    } else { $actualFrom }
     $ids = @($events | ForEach-Object { [string]$_.event_id })
     $modeMetrics = @{}
     foreach ($mode in @("HANDGUN_RANGE", "SNIPER_TREND")) {
@@ -152,7 +160,9 @@ function Get-RunMetrics {
         handgun = $modeMetrics["HANDGUN_RANGE"]
         sniper = $modeMetrics["SNIPER_TREND"]
         actual_from = $actualFrom
-        coverage_ok = [bool]$actualFrom -and $actualFrom -le $RequestedFrom
+        real_ticks_from = $realTickFrom
+        tick_integrity_ok = $tickIntegrityOk
+        coverage_ok = [bool]$coverageStart -and $coverageStart -le $RequestedFrom -and $tickIntegrityOk
         tester_passed = $logText -match "Test passed" -and
             $logText -match "FRANZ_READY authority=ENABLED" -and
             $logText -notmatch "FRANZ_INIT_REJECT"

@@ -37,7 +37,9 @@ def test_runner_locks_windows_balances_and_attribution_variants() -> None:
     assert '"PRICE_ONLY"' in value
     assert '"NO_STOCH"' in value
     assert '"NO_FIB_GATE"' in value
-    assert "coverage_ok = [bool]$actualFrom" in value
+    assert "coverage_ok = [bool]$coverageStart" in value
+    assert "real ticks begin from" in value
+    assert "tick_integrity_ok" in value
 
 
 def test_runner_calculates_required_acceptance_metrics() -> None:

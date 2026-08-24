@@ -21,18 +21,19 @@ enum FranzState
    FRANZ_STATE_IDLE=1,
    FRANZ_STATE_REGIME_SELECTED=2,
    FRANZ_STATE_EXTREME_WATCH=3,
-   FRANZ_STATE_BREAK_ATTEMPT=4,
-   FRANZ_STATE_BREAK_FAILED=5,
-   FRANZ_STATE_SHAKEOUT_CONFIRMED=6,
-   FRANZ_STATE_FIB_RECLAIMED=7,
-   FRANZ_STATE_ENTRY_READY=8,
-   FRANZ_STATE_POSITION_OPEN=9,
-   FRANZ_STATE_EXIT_PENDING=10,
-   FRANZ_STATE_CLOSED=11,
-   FRANZ_STATE_EXPIRED=12,
-   FRANZ_STATE_CANCELLED=13,
-   FRANZ_STATE_FAILED=14,
-   FRANZ_STATE_DAILY_LOCKED=15
+   FRANZ_STATE_TRENDLINE_BREAK_SIGN=4,
+   FRANZ_STATE_BREAK_ATTEMPT=5,
+   FRANZ_STATE_BREAK_FAILED=6,
+   FRANZ_STATE_SHAKEOUT_CONFIRMED=7,
+   FRANZ_STATE_FIB_RECLAIMED=8,
+   FRANZ_STATE_ENTRY_READY=9,
+   FRANZ_STATE_POSITION_OPEN=10,
+   FRANZ_STATE_EXIT_PENDING=11,
+   FRANZ_STATE_CLOSED=12,
+   FRANZ_STATE_EXPIRED=13,
+   FRANZ_STATE_CANCELLED=14,
+   FRANZ_STATE_FAILED=15,
+   FRANZ_STATE_DAILY_LOCKED=16
   };
 
 struct FranzBar
@@ -113,6 +114,7 @@ struct FranzDecision
    FranzSwingZone demand_zone;
    bool       initial_trendline_break;
    double     initial_break_level;
+   bool       shakeout_evidence_locked;
    FranzFibonacci fibonacci;
    double     entry;
    double     stop_loss;
@@ -155,6 +157,7 @@ struct FranzPersistentState
    FranzSwingZone demand_zone;
    bool       initial_trendline_break;
    double     initial_break_level;
+   bool       shakeout_evidence_locked;
    FranzFibonacci fibonacci;
    double     planned_entry;
    double     stop_loss;
