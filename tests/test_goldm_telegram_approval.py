@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import tempfile
 import unittest
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
@@ -89,7 +89,7 @@ class GoldMTelegramApprovalTests(unittest.TestCase):
             runtime_config_sha256=self.runtime_config_sha256,
             production_config_sha256=self.production_config_sha256,
             worker_instance_id=self.worker_instance_id,
-            worker_started_at=datetime.now(timezone.utc) - timedelta(seconds=1),
+            worker_started_at=datetime.now(UTC) - timedelta(seconds=1),
         )
         self.account = {
             "login": "108098316",
@@ -113,9 +113,7 @@ class GoldMTelegramApprovalTests(unittest.TestCase):
         assert subscriber is not None
         self.assertEqual(subscriber["status"], "PENDING")
         self.assertEqual(self.store.approved_telegram_chat_ids(), ["100"])
-        approval_message = next(
-            item for item in self.client.messages if item["chat_id"] == "100"
-        )
+        approval_message = next(item for item in self.client.messages if item["chat_id"] == "100")
         buttons = approval_message["reply_markup"]["inline_keyboard"][0]
         self.assertEqual(buttons[0]["callback_data"], "approve:200")
 
@@ -242,7 +240,8 @@ class GoldMTelegramApprovalTests(unittest.TestCase):
         self.client.messages.clear()
 
         sender = ApprovedTelegramSender(
-            store=self.store, client=self.client  # type: ignore[arg-type]
+            store=self.store,
+            client=self.client,  # type: ignore[arg-type]
         )
         sender(event)
 
@@ -292,9 +291,7 @@ class GoldMTelegramApprovalTests(unittest.TestCase):
         sender(event)
 
         self.assertEqual([item["chat_id"] for item in self.client.messages], ["100"])
-        self.assertEqual(
-            self.store.recent_events(limit=5, include_admin_only=False), []
-        )
+        self.assertEqual(self.store.recent_events(limit=5, include_admin_only=False), [])
 
     def test_retry_does_not_resend_to_successful_recipient(self) -> None:
         self.worker.process_update(self._start_update(1, "200", "alice"))
@@ -303,7 +300,8 @@ class GoldMTelegramApprovalTests(unittest.TestCase):
         self.client.messages.clear()
         self.client.fail_once_for.add("200")
         sender = ApprovedTelegramSender(
-            store=self.store, client=self.client  # type: ignore[arg-type]
+            store=self.store,
+            client=self.client,  # type: ignore[arg-type]
         )
 
         with self.assertRaisesRegex(RuntimeError, "1 approved subscriber"):
@@ -311,9 +309,7 @@ class GoldMTelegramApprovalTests(unittest.TestCase):
         self.assertEqual([item["chat_id"] for item in self.client.messages], ["100"])
 
         sender(event)
-        self.assertEqual(
-            [item["chat_id"] for item in self.client.messages], ["100", "200"]
-        )
+        self.assertEqual([item["chat_id"] for item in self.client.messages], ["100", "200"])
 
     def test_update_offset_is_persisted(self) -> None:
         self.client.updates.append(self._start_update(42, "200", "alice"))
@@ -357,7 +353,7 @@ class GoldMTelegramApprovalTests(unittest.TestCase):
             expected_release_manifest_sha256=self.release_manifest_sha256,
             expected_runtime_config_sha256=self.runtime_config_sha256,
             expected_production_config_sha256=self.production_config_sha256,
-            not_before=datetime.now(timezone.utc) - timedelta(minutes=1),
+            not_before=datetime.now(UTC) - timedelta(minutes=1),
             max_age_seconds=30,
         )
         self.assertFalse(readiness["ready"])
@@ -374,9 +370,9 @@ class GoldMTelegramApprovalTests(unittest.TestCase):
                 "set_telegram_update_offset",
                 side_effect=OSError("sensitive database path"),
             ),
+            self.assertRaisesRegex(RuntimeError, "offset_error") as caught,
         ):
-            with self.assertRaisesRegex(RuntimeError, "offset_error") as caught:
-                self.worker.run_once(timeout=0)
+            self.worker.run_once(timeout=0)
 
         process_update.assert_called_once()
         self.assertNotIn("sensitive database path", str(caught.exception))
@@ -389,7 +385,7 @@ class GoldMTelegramApprovalTests(unittest.TestCase):
             expected_release_manifest_sha256=self.release_manifest_sha256,
             expected_runtime_config_sha256=self.runtime_config_sha256,
             expected_production_config_sha256=self.production_config_sha256,
-            not_before=datetime.now(timezone.utc) - timedelta(minutes=1),
+            not_before=datetime.now(UTC) - timedelta(minutes=1),
             max_age_seconds=30,
         )
         self.assertFalse(readiness["ready"])
@@ -405,7 +401,7 @@ class GoldMTelegramApprovalTests(unittest.TestCase):
             expected_release_manifest_sha256=self.release_manifest_sha256,
             expected_runtime_config_sha256=self.runtime_config_sha256,
             expected_production_config_sha256=self.production_config_sha256,
-            not_before=datetime.now(timezone.utc) - timedelta(minutes=1),
+            not_before=datetime.now(UTC) - timedelta(minutes=1),
             max_age_seconds=30,
         )
         self.assertFalse(before["ready"])
@@ -420,7 +416,7 @@ class GoldMTelegramApprovalTests(unittest.TestCase):
             expected_release_manifest_sha256=self.release_manifest_sha256,
             expected_runtime_config_sha256=self.runtime_config_sha256,
             expected_production_config_sha256=self.production_config_sha256,
-            not_before=datetime.now(timezone.utc) - timedelta(minutes=1),
+            not_before=datetime.now(UTC) - timedelta(minutes=1),
             max_age_seconds=30,
         )
         self.assertTrue(after["ready"])
@@ -446,7 +442,7 @@ class GoldMTelegramApprovalTests(unittest.TestCase):
             expected_release_manifest_sha256=self.release_manifest_sha256,
             expected_runtime_config_sha256=self.runtime_config_sha256,
             expected_production_config_sha256=self.production_config_sha256,
-            not_before=datetime.now(timezone.utc) - timedelta(minutes=1),
+            not_before=datetime.now(UTC) - timedelta(minutes=1),
             max_age_seconds=30,
         )
         self.assertFalse(readiness["ready"])
@@ -473,7 +469,7 @@ class GoldMTelegramApprovalTests(unittest.TestCase):
             expected_release_manifest_sha256=self.release_manifest_sha256,
             expected_runtime_config_sha256=self.runtime_config_sha256,
             expected_production_config_sha256=self.production_config_sha256,
-            not_before=datetime.now(timezone.utc) - timedelta(minutes=1),
+            not_before=datetime.now(UTC) - timedelta(minutes=1),
             max_age_seconds=30,
         )
         self.assertFalse(poisoned["ready"])
@@ -495,7 +491,7 @@ class GoldMTelegramApprovalTests(unittest.TestCase):
             expected_release_manifest_sha256=self.release_manifest_sha256,
             expected_runtime_config_sha256=self.runtime_config_sha256,
             expected_production_config_sha256=self.production_config_sha256,
-            not_before=datetime.now(timezone.utc) - timedelta(minutes=1),
+            not_before=datetime.now(UTC) - timedelta(minutes=1),
             max_age_seconds=30,
         )
         self.assertFalse(readiness["ready"])
@@ -516,7 +512,7 @@ class GoldMTelegramApprovalTests(unittest.TestCase):
             expected_release_manifest_sha256=self.release_manifest_sha256,
             expected_runtime_config_sha256=self.runtime_config_sha256,
             expected_production_config_sha256=self.production_config_sha256,
-            not_before=datetime.now(timezone.utc) - timedelta(minutes=1),
+            not_before=datetime.now(UTC) - timedelta(minutes=1),
             max_age_seconds=30,
         )
         self.assertFalse(degraded["ready"])
@@ -531,7 +527,7 @@ class GoldMTelegramApprovalTests(unittest.TestCase):
             expected_release_manifest_sha256=self.release_manifest_sha256,
             expected_runtime_config_sha256=self.runtime_config_sha256,
             expected_production_config_sha256=self.production_config_sha256,
-            not_before=datetime.now(timezone.utc) - timedelta(minutes=1),
+            not_before=datetime.now(UTC) - timedelta(minutes=1),
             max_age_seconds=30,
         )
         self.assertTrue(recovered["ready"])
@@ -637,9 +633,7 @@ class GoldMTelegramApprovalTests(unittest.TestCase):
         self.assertIn("khusus root admin", self.client.messages[-1]["text"])
 
     def test_entry_side_policy_requires_two_clicks_and_updates_runtime(self) -> None:
-        self.worker.process_update(
-            self._callback_update(1, "100", "ctl:entry_side:buy_only")
-        )
+        self.worker.process_update(self._callback_update(1, "100", "ctl:entry_side:buy_only"))
         self.assertEqual(self.store.runtime_settings(prefix="trade."), {})
         confirm_data = self.client.messages[-1]["reply_markup"]["inline_keyboard"][0][0][
             "callback_data"
@@ -651,9 +645,7 @@ class GoldMTelegramApprovalTests(unittest.TestCase):
         self.assertEqual(settings["trade.entry_side_policy"], "BUY_ONLY")
 
     def test_invalid_entry_side_callback_fails_closed_without_staging(self) -> None:
-        self.worker.process_update(
-            self._callback_update(1, "100", "ctl:entry_side:sideways")
-        )
+        self.worker.process_update(self._callback_update(1, "100", "ctl:entry_side:sideways"))
 
         self.assertEqual(self.store.runtime_settings(prefix="trade."), {})
         self.assertTrue(self.client.callback_answers[-1]["show_alert"])
@@ -672,9 +664,7 @@ class GoldMTelegramApprovalTests(unittest.TestCase):
         self.worker.process_update(self._callback_update(2, "100", confirm_data))
 
         settings = self.store.runtime_settings(prefix="trade.")
-        self.assertEqual(
-            settings["trade.notification_side_filter"], "SELL_ONLY"
-        )
+        self.assertEqual(settings["trade.notification_side_filter"], "SELL_ONLY")
 
     def test_show_profile_filters_only_directional_strategy_delivery(self) -> None:
         self.store.set_runtime_settings(
@@ -695,10 +685,7 @@ class GoldMTelegramApprovalTests(unittest.TestCase):
 
         self.assertEqual(self.client.messages, [])
         self.assertTrue(
-            any(
-                row["setup_id"] == "sell-strategy"
-                for row in self.store.recent_events(limit=100)
-            )
+            any(row["setup_id"] == "sell-strategy" for row in self.store.recent_events(limit=100))
         )
 
         safety = self._enqueue_directional_event(
@@ -723,11 +710,7 @@ class GoldMTelegramApprovalTests(unittest.TestCase):
             audience="approved",
         )
         self.store.update_outbox_payload(int(blocked["id"]), payload)
-        blocked = next(
-            row
-            for row in self.store.pending()
-            if row["setup_id"] == "unverified-sell"
-        )
+        blocked = next(row for row in self.store.pending() if row["setup_id"] == "unverified-sell")
         self.client.messages.clear()
         sender = ApprovedTelegramSender(
             store=self.store,
@@ -749,11 +732,7 @@ class GoldMTelegramApprovalTests(unittest.TestCase):
             audience="approved",
         )
         self.store.update_outbox_payload(int(verified["id"]), payload)
-        verified = next(
-            row
-            for row in self.store.pending()
-            if row["setup_id"] == "verified-sell"
-        )
+        verified = next(row for row in self.store.pending() if row["setup_id"] == "verified-sell")
         self.client.messages.clear()
 
         sender(verified)
@@ -780,19 +759,14 @@ class GoldMTelegramApprovalTests(unittest.TestCase):
         sender(event)
 
         self.assertEqual([item["chat_id"] for item in self.client.messages], ["100"])
-        self.assertIn("DIBLOKIR FAIL-CLOSED", self.client.messages[0]["text"])
+        self.assertIn("BLOCKED — FAIL-CLOSED", self.client.messages[0]["text"])
         self.assertIn("SIDEWAYS", self.client.messages[0]["text"])
         self.assertTrue(
-            any(
-                row["setup_id"] == "invalid-show"
-                for row in self.store.recent_events(limit=100)
-            )
+            any(row["setup_id"] == "invalid-show" for row in self.store.recent_events(limit=100))
         )
 
     def test_r_management_toggle_requires_two_clicks_for_future_positions(self) -> None:
-        self.worker.process_update(
-            self._callback_update(1, "100", "ctl:r2:off")
-        )
+        self.worker.process_update(self._callback_update(1, "100", "ctl:r2:off"))
         self.assertEqual(self.store.runtime_settings(prefix="trade."), {})
         self.assertIn("posisi terbuka tidak berubah", self.client.messages[-1]["text"])
         confirm_data = self.client.messages[-1]["reply_markup"]["inline_keyboard"][0][0][
@@ -850,16 +824,12 @@ class GoldMTelegramApprovalTests(unittest.TestCase):
     def test_unlocked_live_mode_requires_explicit_second_click(self) -> None:
         self.account["is_live"] = True
         with patch.dict("os.environ", {"GOLDM_ALLOW_LIVE_ACTIVATION": "true"}):
-            self.worker.process_update(
-                self._callback_update(1, "100", "ctl:mode:live")
-            )
+            self.worker.process_update(self._callback_update(1, "100", "ctl:mode:live"))
             confirm_data = self.client.messages[-1]["reply_markup"]["inline_keyboard"][0][0][
                 "callback_data"
             ]
             self.assertEqual(self.store.runtime_settings(prefix="trade."), {})
-            self.worker.process_update(
-                self._callback_update(2, "100", confirm_data)
-            )
+            self.worker.process_update(self._callback_update(2, "100", confirm_data))
 
         settings = self.store.runtime_settings(prefix="trade.")
         self.assertEqual(settings["trade.execution_mode"], "live")
@@ -883,12 +853,10 @@ class GoldMTelegramApprovalTests(unittest.TestCase):
             action_type="risk_change",
             payload={"settings": {"trade.risk_pct": 1.0}},
             requested_by="100",
-            expires_at=datetime(2000, 1, 1, tzinfo=timezone.utc),
+            expires_at=datetime(2000, 1, 1, tzinfo=UTC),
         )
 
-        self.worker.process_update(
-            self._callback_update(1, "100", "ctl:confirm:expired")
-        )
+        self.worker.process_update(self._callback_update(1, "100", "ctl:confirm:expired"))
 
         self.assertEqual(self.store.runtime_settings(prefix="trade."), {})
         self.assertIn("EXPIRED", self.client.callback_answers[-1]["text"])
@@ -910,7 +878,7 @@ class GoldMTelegramApprovalTests(unittest.TestCase):
         self.assertEqual(settings["trade.live_consent"], "")
 
     def test_health_is_green_only_with_fresh_matching_session_evidence(self) -> None:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         self.store.record_mt5_bridge_health(
             session_fingerprint="a" * 64,
             files_discovered=1,
@@ -935,7 +903,7 @@ class GoldMTelegramApprovalTests(unittest.TestCase):
             matched_events=1,
             mismatched_events=0,
             provider_failures=0,
-            observed_at=datetime.now(timezone.utc) - timedelta(minutes=31),
+            observed_at=datetime.now(UTC) - timedelta(minutes=31),
         )
 
         self.worker.process_update(self._message_update(1, "100", "/health"))
@@ -949,7 +917,7 @@ class GoldMTelegramApprovalTests(unittest.TestCase):
             "GOLD.i#",
             "BUY",
             4320.0,
-            datetime(2026, 8, 13, 8, 0, tzinfo=timezone.utc),
+            datetime(2026, 8, 13, 8, 0, tzinfo=UTC),
         )
         self.store.save_setup(record)
         self.store.enqueue(
@@ -971,7 +939,7 @@ class GoldMTelegramApprovalTests(unittest.TestCase):
             "GOLD.i#",
             side,
             4320.0,
-            datetime(2026, 8, 13, 8, 0, tzinfo=timezone.utc),
+            datetime(2026, 8, 13, 8, 0, tzinfo=UTC),
         )
         self.store.save_setup(record)
         self.store.enqueue(
@@ -984,9 +952,7 @@ class GoldMTelegramApprovalTests(unittest.TestCase):
                 "audience": "approved",
             },
         )
-        return next(
-            row for row in self.store.pending() if row["setup_id"] == setup_id
-        )
+        return next(row for row in self.store.pending() if row["setup_id"] == setup_id)
 
     @staticmethod
     def _start_update(update_id: int, chat_id: str, username: str) -> dict[str, Any]:
@@ -1011,9 +977,7 @@ class GoldMTelegramApprovalTests(unittest.TestCase):
             "callback_query": {
                 "id": f"callback-{update_id}",
                 "from": {"id": int(actor_id)},
-                "message": {
-                    "chat": {"id": int(actor_id), "type": "private"}
-                },
+                "message": {"chat": {"id": int(actor_id), "type": "private"}},
                 "data": data,
             },
         }

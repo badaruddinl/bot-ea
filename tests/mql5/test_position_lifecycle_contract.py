@@ -33,12 +33,16 @@ def test_close_reasons_are_explicit_and_side_symmetric() -> None:
         assert value in lifecycle
 
 
-def test_position_state_v2_keeps_v1_read_compatibility_and_stable_identifier() -> None:
+def test_position_state_v3_keeps_v1_v2_compatibility_and_trade_context() -> None:
     persistence = PERSISTENCE.read_text(encoding="utf-8")
 
-    assert '"2|%s|%s|' in persistence
+    assert '"3|%s|%s|' in persistence
     assert 'const bool legacy=fields[0]=="1";' in persistence
+    assert 'const bool version_two=fields[0]=="2";' in persistence
+    assert 'const bool version_three=fields[0]=="3";' in persistence
     assert "state.identifier" in persistence
+    assert "state.strategy_mode" in persistence
+    assert "state.trade_reason" in persistence
     assert "actual.identifier!=expected.identifier" in persistence
 
 

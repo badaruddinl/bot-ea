@@ -38,6 +38,8 @@ bool BuildRestartPlan(SignalPlan &plan,string &reason)
    plan.strategy_version=HarnessProfile.strategy_version;
    plan.setup_id="G18|GOLDI|RESTART|SETUP";
    plan.signal_id="G18|GOLDI|RESTART|SIGNAL";
+   plan.strategy_mode="RANGE";
+   plan.trade_reason="RESTART_RECOVERY_TEST";
    plan.symbol=HarnessProfile.symbol;
    plan.side=ENGINE_SIDE_BUY;
    plan.account_login=AccountInfoInteger(ACCOUNT_LOGIN);
@@ -151,6 +153,8 @@ void OnTick(void)
    expected.ticket=position.ticket;
    expected.identifier=position.identifier;
    expected.signal_id=plan.signal_id;
+   expected.strategy_mode=plan.strategy_mode;
+   expected.trade_reason=plan.trade_reason;
    expected.volume=position.volume;
    expected.entry_price=position.entry_price;
    expected.stop_loss=position.stop_loss;

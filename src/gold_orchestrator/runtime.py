@@ -18,26 +18,26 @@ from goldm_signal.notify.telegram import TelegramBotClient
 from .config import ROOT, OrchestratorConfig, WorkerSpec
 
 PUBLIC_GOLDI_COMMANDS: tuple[dict[str, str], ...] = (
-    {"command": "start", "description": "Minta akses notifikasi GOLD.i"},
+    {"command": "start", "description": "Request GOLD.i notification access"},
 )
 
 
 PENDING_GOLDI_COMMANDS: tuple[dict[str, str], ...] = (
-    {"command": "subscription", "description": "Cek status akses GOLD.i"},
+    {"command": "subscription", "description": "Check GOLD.i access status"},
 )
 
 
 APPROVED_GOLDI_COMMANDS: tuple[dict[str, str], ...] = (
-    {"command": "subscription", "description": "Cek status akses GOLD.i"},
-    {"command": "stop", "description": "Berhenti menerima GOLD.i"},
+    {"command": "subscription", "description": "Check GOLD.i access status"},
+    {"command": "stop", "description": "Stop receiving GOLD.i notifications"},
 )
 
 
 ORCHESTRATOR_BOT_COMMANDS: tuple[dict[str, str], ...] = (
-    {"command": "status", "description": "Status kedua worker GOLD"},
-    {"command": "pending", "description": "Permintaan akses GOLD.i"},
-    {"command": "subscribers", "description": "Subscriber GOLD.i aktif"},
-    {"command": "help", "description": "Daftar perintah orchestrator"},
+    {"command": "status", "description": "Status of both GOLD workers"},
+    {"command": "pending", "description": "Pending GOLD.i access requests"},
+    {"command": "subscribers", "description": "Active GOLD.i subscribers"},
+    {"command": "help", "description": "Orchestrator command list"},
 )
 AUDIT_MAX_BYTES = 5 * 1024 * 1024
 AUDIT_BACKUPS = 3
@@ -139,7 +139,7 @@ class GlobalOrchestrator:
         self._send_all(
             f"🟢 ORCHESTRATOR ONLINE\n"
             f"Worker: {self._desired_summary()}\n"
-            f"Waktu: {self._human_time(now)}"
+            f"Time: {self._human_time(now)}"
         )
         self._state["last_online_notice_at"] = now.isoformat()
         self._save_state()
@@ -219,7 +219,7 @@ class GlobalOrchestrator:
                 callback = update.get("callback_query") or {}
                 self._safe_answer_callback(
                     str(callback.get("id") or ""),
-                    "Aksi gagal diproses. Bot tetap aktif; coba Refresh.",
+                    "The action failed. The bot remains active; try Refresh.",
                     show_alert=True,
                 )
             finally:
@@ -268,7 +268,7 @@ class GlobalOrchestrator:
             response = self._send_subscriber_cards(actor_id)
         elif command in {"/approve", "/deny", "/remove"}:
             if not arguments:
-                response = f"Gunakan {command} <chat_id>."
+                response = f"Use {command} <chat_id>."
             else:
                 self._send_subscription_confirmation(
                     actor_id=actor_id,
@@ -277,7 +277,7 @@ class GlobalOrchestrator:
                 )
                 return
         else:
-            response = "Perintah tidak dikenal. Gunakan /help."
+            response = "Unknown command. Use /help."
         self.telegram.send_message(chat_id=actor_id, text=response)
 
     def handle_callback(self, callback: dict[str, Any]) -> None:
@@ -288,7 +288,7 @@ class GlobalOrchestrator:
         if actor_id not in set(self.config.admin_chat_ids):
             self._safe_answer_callback(
                 callback_id,
-                "Tombol ini khusus admin.",
+                "This button is restricted to administrators.",
                 show_alert=True,
             )
             self._audit("UNAUTHORIZED_CALLBACK", {"actor_id": actor_id})
@@ -315,11 +315,11 @@ class GlobalOrchestrator:
         ):
             self._safe_answer_callback(
                 callback_id,
-                "Aksi tidak dikenal.",
+                "Unknown action.",
                 show_alert=True,
             )
             return
-        self._safe_answer_callback(callback_id, "Diproses…")
+        self._safe_answer_callback(callback_id, "Processing…")
         message = callback.get("message") or {}
         message_chat = message.get("chat") or {}
         message_chat_id = str(message_chat.get("id") or "")
@@ -329,32 +329,32 @@ class GlobalOrchestrator:
         result = ""
         if phase == "prompt":
             label = self._subscription_action_label(action, target_id)
-            text = f"⚠️ KONFIRMASI\n\n{label}\n\nYakin menjalankan tindakan ini?"
+            text = f"⚠️ CONFIRMATION\n\n{label}\n\nProceed with this action?"
             markup = {
                 "inline_keyboard": [
                     [
                         {
-                            "text": "✅ Yakin",
+                            "text": "✅ Confirm",
                             "callback_data": f"goldi_sub:confirm_{action}:{target_id}",
                         },
                         {
-                            "text": "↩️ Batal",
+                            "text": "↩️ Cancel",
                             "callback_data": f"goldi_sub:cancel_{action}:{target_id}",
                         },
                     ]
                 ]
             }
-            result = "Pilih Yakin atau Batal."
+            result = "Select Confirm or Cancel."
         elif phase == "cancel":
             text, markup = self._subscription_card_for_action(action, target_id)
-            result = "Tindakan dibatalkan."
+            result = "Action cancelled."
         else:
             result = self._admin_subscription_action(
                 command=f"/{action}",
                 target_id=target_id,
             )
             icon = "✅" if action in {"approve", "remove"} else "❌"
-            text = f"{icon} STATUS PERMINTAAN\n\n{result}"
+            text = f"{icon} REQUEST STATUS\n\n{result}"
             markup = {"inline_keyboard": []}
         if message_chat_id and message_id:
             self.telegram.edit_message_text(
@@ -392,11 +392,11 @@ class GlobalOrchestrator:
         if command == "/start":
             subscribers = set(self._state.get("goldi_subscribers") or [])
             if actor_id in subscribers:
-                response = "Akses notifikasi GOLD.i sudah aktif."
+                response = "GOLD.i notification access is already active."
             else:
                 pending = dict(self._state.get("goldi_pending") or {})
                 if actor_id in pending:
-                    response = "Permintaan akses GOLD.i masih menunggu keputusan admin."
+                    response = "Your GOLD.i access request is awaiting an administrator decision."
                 else:
                     display_name = str(
                         chat.get("title")
@@ -409,7 +409,7 @@ class GlobalOrchestrator:
                             )
                             if item
                         )
-                        or "Tanpa nama"
+                        or "Unnamed chat"
                     )
                     pending[actor_id] = {
                         "requested_at": datetime.now(UTC).isoformat(),
@@ -419,7 +419,7 @@ class GlobalOrchestrator:
                     self._state["goldi_pending"] = pending
                     self._save_state()
                     self._safe_set_subscription_menu(actor_id, "pending")
-                    response = "Permintaan akses GOLD.i dikirim ke admin."
+                    response = "Your GOLD.i access request was sent to the administrators."
                     self._send_goldi_approval_cards(actor_id, pending[actor_id])
                     self._audit(
                         "GOLDI_SUBSCRIPTION_REQUESTED",
@@ -429,11 +429,11 @@ class GlobalOrchestrator:
             subscribers = set(self._state.get("goldi_subscribers") or [])
             pending = dict(self._state.get("goldi_pending") or {})
             if actor_id in subscribers:
-                response = "Status GOLD.i: APPROVED."
+                response = "GOLD.i access status: APPROVED."
             elif actor_id in pending:
-                response = "Status GOLD.i: PENDING."
+                response = "GOLD.i access status: PENDING."
             else:
-                response = "Status GOLD.i: belum terdaftar. Gunakan /start."
+                response = "GOLD.i access status: NOT REGISTERED. Use /start."
         elif command == "/stop":
             subscribers = set(self._state.get("goldi_subscribers") or [])
             subscribers.discard(actor_id)
@@ -447,10 +447,10 @@ class GlobalOrchestrator:
             self._clear_approval_buttons(actor_id)
             self._safe_set_subscription_menu(actor_id, "unregistered")
             self._save_state()
-            response = "Notifikasi GOLD.i dihentikan."
+            response = "GOLD.i notifications have been stopped."
             self._audit("GOLDI_SUBSCRIPTION_STOPPED", {"chat_id": actor_id})
         else:
-            response = "Perintah publik: /start, /subscription, /stop."
+            response = "Public commands: /start, /subscription, /stop."
             self._audit("UNAUTHORIZED_COMMAND", {"actor_id": actor_id})
         self.telegram.send_message(chat_id=actor_id, text=response)
 
@@ -474,11 +474,11 @@ class GlobalOrchestrator:
     @staticmethod
     def _subscription_action_label(action: str, target_id: str) -> str:
         labels = {
-            "approve": "Setujui akses notifikasi GOLD.i",
-            "deny": "Tolak permintaan akses GOLD.i",
-            "remove": "Hapus akses subscriber GOLD.i",
+            "approve": "Approve GOLD.i notification access",
+            "deny": "Reject GOLD.i access request",
+            "remove": "Remove GOLD.i subscriber access",
         }
-        return f"{labels.get(action, 'Aksi tidak dikenal')}\nChat ID: {target_id}"
+        return f"{labels.get(action, 'Unknown action')}\nChat ID: {target_id}"
 
     def _subscription_card_for_action(
         self,
@@ -498,7 +498,7 @@ class GlobalOrchestrator:
                 "inline_keyboard": [
                     [
                         {
-                            "text": "🗑 Hapus akses",
+                            "text": "🗑 Remove access",
                             "callback_data": f"goldi_sub:prompt_remove:{target_id}",
                         }
                     ]
@@ -517,25 +517,25 @@ class GlobalOrchestrator:
         if normalized is None:
             self.telegram.send_message(
                 chat_id=actor_id,
-                text="Chat ID harus berupa angka positif atau negatif, selain 0.",
+                text="Chat ID must be a non-zero positive or negative integer.",
             )
             return
         self.telegram.send_message(
             chat_id=actor_id,
             text=(
-                "⚠️ KONFIRMASI\n\n"
+                "⚠️ CONFIRMATION\n\n"
                 f"{self._subscription_action_label(action, normalized)}\n\n"
-                "Yakin menjalankan tindakan ini?"
+                "Proceed with this action?"
             ),
             reply_markup={
                 "inline_keyboard": [
                     [
                         {
-                            "text": "✅ Yakin",
+                            "text": "✅ Confirm",
                             "callback_data": f"goldi_sub:confirm_{action}:{normalized}",
                         },
                         {
-                            "text": "↩️ Batal",
+                            "text": "↩️ Cancel",
                             "callback_data": f"goldi_sub:cancel_{action}:{normalized}",
                         },
                     ]
@@ -549,11 +549,11 @@ class GlobalOrchestrator:
         values: dict[str, Any],
     ) -> str:
         return (
-            "🔐 Permintaan akses GOLD.i\n"
-            f"Nama: {values.get('display_name', 'Tanpa nama')}\n"
+            "🔐 GOLD.i ACCESS REQUEST\n"
+            f"Name: {values.get('display_name', 'Unnamed chat')}\n"
             f"Chat ID: {target_id}\n"
-            f"Jenis chat: {values.get('chat_type', 'unknown')}\n"
-            f"Waktu: {self._human_time(values.get('requested_at'))}"
+            f"Chat type: {values.get('chat_type', 'unknown')}\n"
+            f"Requested at: {self._human_time(values.get('requested_at'))}"
         )
 
     @staticmethod
@@ -563,9 +563,9 @@ class GlobalOrchestrator:
     ) -> str:
         return (
             "🔔 Subscriber GOLD.i\n"
-            f"Nama: {values.get('display_name', 'Tanpa nama')}\n"
+            f"Name: {values.get('display_name', 'Unnamed chat')}\n"
             f"Chat ID: {target_id}\n"
-            f"Jenis chat: {values.get('chat_type', 'unknown')}"
+            f"Chat type: {values.get('chat_type', 'unknown')}"
         )
 
     def _send_goldi_approval_cards(
@@ -597,19 +597,19 @@ class GlobalOrchestrator:
     def _send_pending_cards(self, actor_id: str) -> str:
         pending = dict(self._state.get("goldi_pending") or {})
         if not pending:
-            return "Tidak ada permintaan GOLD.i pending."
+            return "There are no pending GOLD.i access requests."
         for target_id, values in sorted(pending.items(), key=lambda item: int(item[0])):
             self._send_goldi_approval_cards(
                 target_id,
                 dict(values or {}),
                 recipients=(actor_id,),
             )
-        return f"{len(pending)} permintaan GOLD.i ditampilkan dengan tombol keputusan."
+        return f"Displayed {len(pending)} GOLD.i request(s) with decision buttons."
 
     def _admin_subscription_action(self, *, command: str, target_id: str) -> str:
         normalized = self._normalize_chat_id(target_id)
         if normalized is None:
-            return "Chat ID harus berupa angka positif atau negatif, selain 0."
+            return "Chat ID must be a non-zero positive or negative integer."
         target_id = normalized
         pending = dict(self._state.get("goldi_pending") or {})
         subscribers = set(self._state.get("goldi_subscribers") or [])
@@ -619,21 +619,21 @@ class GlobalOrchestrator:
             subscribers.add(target_id)
             subscriber_details[target_id] = request_details
             result = f"GOLD.i subscriber APPROVED: {target_id}"
-            target_message = "Akses notifikasi entry GOLD.i telah disetujui."
+            target_message = "Your GOLD.i notification access has been approved."
             event = "GOLDI_SUBSCRIPTION_APPROVED"
         elif command == "/deny":
             pending.pop(target_id, None)
             subscribers.discard(target_id)
             subscriber_details.pop(target_id, None)
-            result = f"Permintaan GOLD.i ditolak: {target_id}"
-            target_message = "Permintaan akses notifikasi GOLD.i ditolak."
+            result = f"GOLD.i access request rejected: {target_id}"
+            target_message = "Your GOLD.i notification access request was rejected."
             event = "GOLDI_SUBSCRIPTION_DENIED"
         else:
             pending.pop(target_id, None)
             subscribers.discard(target_id)
             subscriber_details.pop(target_id, None)
-            result = f"GOLD.i subscriber dihapus: {target_id}"
-            target_message = "Akses notifikasi GOLD.i dihentikan oleh admin."
+            result = f"GOLD.i subscriber removed: {target_id}"
+            target_message = "Your GOLD.i notification access was removed by an administrator."
             event = "GOLDI_SUBSCRIPTION_REMOVED"
         self._state["goldi_pending"] = pending
         self._state["goldi_subscribers"] = sorted(subscribers, key=int)
@@ -692,9 +692,9 @@ class GlobalOrchestrator:
     def pending_text(self) -> str:
         pending = dict(self._state.get("goldi_pending") or {})
         if not pending:
-            return "Tidak ada permintaan GOLD.i pending."
+            return "There are no pending GOLD.i access requests."
         return "GOLD.i PENDING\n" + "\n".join(
-            f"{chat_id} • {values.get('display_name', 'Tanpa nama')} • "
+            f"{chat_id} • {values.get('display_name', 'Unnamed chat')} • "
             f"{self._human_time(values.get('requested_at', '-'))}"
             for chat_id, values in sorted(pending.items(), key=lambda item: int(item[0]))
         )
@@ -702,7 +702,7 @@ class GlobalOrchestrator:
     def subscribers_text(self) -> str:
         subscribers = list(self._state.get("goldi_subscribers") or [])
         if not subscribers:
-            return "Belum ada subscriber GOLD.i."
+            return "There are no GOLD.i subscribers."
         return "GOLD.i SUBSCRIBERS\n" + "\n".join(
             sorted((str(item) for item in subscribers), key=int)
         )
@@ -713,7 +713,7 @@ class GlobalOrchestrator:
             key=int,
         )
         if not subscribers:
-            return "Belum ada subscriber GOLD.i."
+            return "There are no GOLD.i subscribers."
         details = dict(self._state.get("goldi_subscriber_details") or {})
         for target_id in subscribers:
             values = dict(details.get(target_id) or {})
@@ -724,14 +724,14 @@ class GlobalOrchestrator:
                     "inline_keyboard": [
                         [
                             {
-                                "text": "🗑 Hapus akses",
+                                "text": "🗑 Remove access",
                                 "callback_data": f"goldi_sub:prompt_remove:{target_id}",
                             }
                         ]
                     ]
                 },
             )
-        return f"{len(subscribers)} subscriber GOLD.i ditampilkan."
+        return f"Displayed {len(subscribers)} GOLD.i subscriber(s)."
 
     def _worker_panel_markup(self) -> dict[str, Any]:
         desired = dict(self._state.get("desired") or {})
@@ -740,7 +740,7 @@ class GlobalOrchestrator:
         rows = [
             [
                 {
-                    "text": ("⏹ Matikan GOLD.i DEMO" if goldi_on else "▶️ Hidupkan GOLD.i DEMO"),
+                    "text": ("⏹ Stop GOLD.i DEMO" if goldi_on else "▶️ Start GOLD.i DEMO"),
                     "callback_data": (
                         "worker:prompt:goldi_off" if goldi_on else "worker:prompt:goldi_on"
                     ),
@@ -748,7 +748,7 @@ class GlobalOrchestrator:
             ],
             [
                 {
-                    "text": ("⏹ Matikan GOLDm REAL" if goldm_on else "🔴 Hidupkan GOLDm REAL"),
+                    "text": ("⏹ Stop GOLDm REAL" if goldm_on else "🔴 Start GOLDm REAL"),
                     "callback_data": (
                         "worker:prompt:goldm_off" if goldm_on else "worker:prompt:goldm_on"
                     ),
@@ -759,7 +759,7 @@ class GlobalOrchestrator:
             rows.append(
                 [
                     {
-                        "text": "⏹ Matikan Semua",
+                        "text": "⏹ Stop All",
                         "callback_data": "worker:prompt:all_off",
                     }
                 ]
@@ -769,7 +769,7 @@ class GlobalOrchestrator:
 
     def _worker_panel_text(self) -> str:
         desired = dict(self._state.get("desired") or {})
-        lines = ["🎛 KONTROL WORKER GOLD", ""]
+        lines = ["🎛 GOLD WORKER CONTROL", ""]
         for name, label in (("goldi", "GOLD.i DEMO"), ("goldm", "GOLDm REAL")):
             spec = self.config.workers[name]
             process = self._children.get(name)
@@ -784,15 +784,15 @@ class GlobalOrchestrator:
             )
             if health.get("login"):
                 lines.append(
-                    f"   Akun {health['login']} • saldo {float(health.get('balance') or 0):.2f} USD"
+                    f"   Account {health['login']} • balance {float(health.get('balance') or 0):.2f} USD"
                 )
             if health.get("updated_at"):
-                lines.append(f"   Update: {self._human_time(health['updated_at'])}")
+                lines.append(f"   Updated: {self._human_time(health['updated_at'])}")
         lines.extend(
             [
                 "",
-                "Tombol selalu menunjukkan aksi berikutnya.",
-                "GOLDm adalah akun REAL.",
+                "Buttons always show the next available action.",
+                "GOLDm is a REAL account.",
             ]
         )
         return "\n".join(lines)
@@ -806,48 +806,48 @@ class GlobalOrchestrator:
 
     def _handle_worker_callback(self, callback: dict[str, Any]) -> None:
         callback_id = str(callback.get("id") or "")
-        self._safe_answer_callback(callback_id, "Diproses…")
+        self._safe_answer_callback(callback_id, "Processing…")
         data = str(callback.get("data") or "")
         parts = data.split(":")
         message = callback.get("message") or {}
         chat = message.get("chat") or {}
         chat_id = str(chat.get("id") or "")
         message_id = int(message.get("message_id") or 0)
-        result = "Status diperbarui."
+        result = "Status updated."
         if parts == ["worker", "refresh"]:
             text = self._worker_panel_text()
             markup = self._worker_panel_markup()
         elif len(parts) == 3 and parts[0] == "worker" and parts[1] == "prompt":
             action = parts[2]
             label = self._worker_action_label(action)
-            text = f"⚠️ KONFIRMASI\n\n{label}\n\nYakin menjalankan tindakan ini?"
+            text = f"⚠️ CONFIRMATION\n\n{label}\n\nProceed with this action?"
             markup = {
                 "inline_keyboard": [
                     [
                         {
-                            "text": "✅ Yakin",
+                            "text": "✅ Confirm",
                             "callback_data": f"worker:confirm:{action}",
                         },
                         {
-                            "text": "↩️ Batal",
+                            "text": "↩️ Cancel",
                             "callback_data": f"worker:cancel:{action}",
                         },
                     ]
                 ]
             }
-            result = "Pilih Yakin atau Batal."
+            result = "Select Confirm or Cancel."
         elif len(parts) == 3 and parts[0] == "worker" and parts[1] == "cancel":
             text = self._worker_panel_text()
             markup = self._worker_panel_markup()
-            result = "Tindakan dibatalkan."
+            result = "Action cancelled."
         elif len(parts) == 3 and parts[0] == "worker" and parts[1] == "confirm":
             result = self._execute_worker_action(parts[2])
-            text = f"✅ STATUS DIPERBARUI\n{result}\n\n{self._worker_panel_text()}"
+            text = f"✅ STATUS UPDATED\n{result}\n\n{self._worker_panel_text()}"
             markup = self._worker_panel_markup()
         else:
             text = self._worker_panel_text()
             markup = self._worker_panel_markup()
-            result = "Aksi worker tidak dikenal."
+            result = "Unknown worker action."
         if chat_id and message_id:
             self.telegram.edit_message_text(
                 chat_id=chat_id,
@@ -859,13 +859,13 @@ class GlobalOrchestrator:
     @staticmethod
     def _worker_action_label(action: str) -> str:
         labels = {
-            "goldi_on": "Hidupkan worker GOLD.i DEMO",
-            "goldi_off": "Matikan worker GOLD.i DEMO",
-            "goldm_on": "Hidupkan worker GOLDm REAL",
-            "goldm_off": "Matikan worker GOLDm REAL",
-            "all_off": "Matikan semua worker",
+            "goldi_on": "Start the GOLD.i DEMO worker",
+            "goldi_off": "Stop the GOLD.i DEMO worker",
+            "goldm_on": "Start the GOLDm REAL worker",
+            "goldm_off": "Stop the GOLDm REAL worker",
+            "all_off": "Stop all workers",
         }
-        return labels.get(action, "Tindakan worker tidak dikenal")
+        return labels.get(action, "Unknown worker action")
 
     def _execute_worker_action(self, action: str) -> str:
         if action == "goldi_on":
@@ -880,7 +880,7 @@ class GlobalOrchestrator:
             return "\n".join(
                 self.set_desired(name, False, notify_worker=False) for name in ("goldi", "goldm")
             )
-        return "Aksi worker tidak dikenal."
+        return "Unknown worker action."
 
     def set_desired(
         self,
@@ -1017,13 +1017,13 @@ class GlobalOrchestrator:
     def help_text() -> str:
         return (
             "GOLD worker control (admin only)\n"
-            "/workers atau /status - status lengkap\n"
-            "/goldi_on /goldi_off - entry demo GOLD.i\n"
-            "/goldm_on /goldm_off - trading GOLDm real\n"
-            "/all_on /all_off - kedua worker\n"
+            "/workers or /status - full status\n"
+            "/goldi_on /goldi_off - GOLD.i demo entry\n"
+            "/goldm_on /goldm_off - GOLDm real trading\n"
+            "/all_on /all_off - both workers\n"
             "/pending /subscribers - audience GOLD.i\n"
-            "/approve ID /deny ID /remove ID - kelola GOLD.i\n"
-            "/heartbeat - buka panel kontrol worker"
+            "/approve ID /deny ID /remove ID - manage GOLD.i access\n"
+            "/heartbeat - open the worker control panel"
         )
 
     def send_shutdown_notice(self, detail: str = "Windows shutdown event received") -> None:

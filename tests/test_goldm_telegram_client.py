@@ -67,7 +67,7 @@ class TelegramBotClientTests(unittest.TestCase):
         client.edit_message_text(
             chat_id="123",
             message_id=77,
-            text="Status diperbarui",
+            text="Status updated",
             reply_markup={"inline_keyboard": []},
         )
         client.edit_message_reply_markup(chat_id="123", message_id=78)

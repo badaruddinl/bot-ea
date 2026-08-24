@@ -32,3 +32,13 @@ group member cannot gain worker controls.
 
 GOLDm events are always routed only to administrator chat IDs. GOLDm never
 uses the GOLD.i subscriber/group list.
+
+## Message language and trade context
+
+All active Telegram bridge and approval-orchestrator messages are English-only.
+Trade lifecycle messages expose `Strategy`, `Strategy mode`, and `Trade reason`
+as separate fields. The strategy mode identifies the decision path, such as
+`MOMENTUM`, `RANGE`, `SCALPER_MOMENTUM`, or `H1_M5_M1_RETEST`; the trade reason
+records the causal entry decision, such as `MOMENTUM_ENTRY` or
+`STRONG_FIRST_CONFIRMATION`. This context is persisted with an EA-owned
+position and is repeated on partial close, final close, and restart recovery.

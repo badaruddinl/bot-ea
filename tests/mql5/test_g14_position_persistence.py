@@ -15,6 +15,10 @@ def test_position_state_store_is_profile_bound_dual_slot_and_checked() -> None:
     assert "PositionStateChecksum" in source
     assert "field_count<11" in source
     assert 'state.signal_id+="|"+fields[index]' in source
+    assert 'const bool version_two=fields[0]=="2";' in source
+    assert 'const bool version_three=fields[0]=="3";' in source
+    assert "state.strategy_mode" in source
+    assert "state.trade_reason" in source
     assert "POSITION_STATE_INVALID" in source
     assert "PositionStateMatches" in source
     assert "POSITION_STOP_CHANGED" in source
@@ -41,6 +45,9 @@ def test_native_harness_contract_covers_restart_and_manual_intervention() -> Non
     )
 
     assert "fallback_recovered" in source
+    assert "version_two_loaded" in source
+    assert 'state.strategy_mode="MOMENTUM"' in source
+    assert 'state.trade_reason="MOMENTUM_ENTRY"' in source
     assert "manual_detected" in source
     assert "order_authority=DISABLED" in source
     assert "G14_POSITION_PERSISTENCE" in source

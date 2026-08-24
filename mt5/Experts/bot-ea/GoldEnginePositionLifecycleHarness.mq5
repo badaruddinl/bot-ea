@@ -13,6 +13,8 @@ int OnInit(void)
    expected.ticket=7001;
    expected.identifier=9001;
    expected.signal_id="GOLDI:REVISED:1";
+   expected.strategy_mode="MOMENTUM";
+   expected.trade_reason="MOMENTUM_ENTRY";
    expected.volume=0.02;
    expected.entry_price=4400.0;
    expected.stop_loss=4390.0;

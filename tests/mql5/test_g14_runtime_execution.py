@@ -23,6 +23,10 @@ def test_runtime_builds_complete_profile_bound_plans_for_revised_and_bear() -> N
     assert "BuildSignalPlan(ENGINE_SIDE_SELL" in value
     assert "m_last_revised_decision.observation_only" in value
     assert "plan.minimum_executable_rr=minimum_executable_rr;" in value
+    assert "plan.strategy_mode=strategy_mode;" in value
+    assert "plan.trade_reason=trade_reason;" in value
+    assert "RevisedStrategyMode(m_last_revised_decision)" in value
+    assert '"H1_M5_M1_RETEST","M1_ENTRY_CONFIRMATION_READY"' in value
     assert "RevisedMinimumExecutableRr(m_last_revised_decision)" in value
     assert "m_bear_machine.MinimumExecutableRr" in value
 
@@ -44,6 +48,8 @@ def test_runtime_ignores_manual_magic_and_fails_closed_on_owned_identity_conflic
     assert "POSITION_PARTIALLY_CLOSED" in value
     assert "RecoverOwnedPositions(TimeCurrent(),true)" in value
     assert "RecoverOwnedPositions(TimeCurrent(),false)" in value
+    assert 'm_expected_position.strategy_mode="LEGACY_POSITION";' in value
+    assert 'm_expected_position.trade_reason="LEGACY_CONTEXT_UNAVAILABLE";' in value
 
     lifecycle = LIFECYCLE.read_text(encoding="utf-8")
     assert "PositionExitBelongsToExpected" in lifecycle
@@ -77,6 +83,8 @@ def test_runtime_emits_complete_human_trade_payloads() -> None:
     value = RUNTIME.read_text(encoding="utf-8")
     assert "string SignalPlanPayload" in value
     assert '\\"side\\":\\"%s\\"' in value
+    assert '\\"strategy_mode\\":\\"%s\\"' in value
+    assert '\\"trade_reason\\":\\"%s\\"' in value
     assert '\\"planned_entry\\":%.8f' in value
     assert '\\"stop_loss\\":%.8f' in value
     assert '\\"take_profit\\":%.8f' in value
@@ -100,6 +108,8 @@ def test_runtime_emits_complete_human_trade_payloads() -> None:
     assert r"\"remaining_volume\":%.8f" in value
     assert r"\"close_reason\":\"%s\"" in value
     assert r"\"deal_id\":%I64u" in value
+    assert "position.strategy_mode" in value
+    assert "position.trade_reason" in value
     assert "PositionCloseEventReason(close_reason,partial)" in value
     assert 'EmitTransition("POSITION_PARTIALLY_CLOSED"' in value
     assert 'EmitTransition("POSITION_CLOSED"' in value
