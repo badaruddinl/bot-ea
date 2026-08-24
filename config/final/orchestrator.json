@@ -1,8 +1,9 @@
 {
   "orchestrator_id": "GOLD_GLOBAL_ORCHESTRATOR",
-  "bot_token_env": "TELEGRAM_BOT_TOKEN",
-  "admin_chat_ids_env": "TELEGRAM_ADMIN_CHAT_IDS",
-  "fallback_chat_id_env": "TELEGRAM_CHAT_ID",
+  "bot_token_env": "GOLD_NOTIFY_BOT_TOKEN",
+  "admin_chat_ids_env": "GOLD_NOTIFY_ADMIN_CHAT_IDS",
+  "fallback_chat_id_env": "GOLD_NOTIFY_ADMIN_CHAT_ID",
+  "expected_bot_username_env": "GOLD_NOTIFY_EXPECTED_BOT_USERNAME",
   "poll_timeout_seconds": 20,
   "supervision_interval_seconds": 5,
   "heartbeat_seconds": 3600,

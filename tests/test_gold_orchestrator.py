@@ -4,6 +4,7 @@ import json
 import sys
 import tempfile
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from unittest.mock import patch
 
@@ -27,6 +28,10 @@ class FakeTelegram:
         self.callback_answers: list[dict] = []
         self.command_menus: list[tuple[tuple[dict[str, str], ...], set[str]]] = []
         self.next_message_id = 100
+        self.bot_username = "new_gold_notify_bot"
+
+    def get_me(self):
+        return {"id": 1, "username": self.bot_username}
 
     def get_updates(self, *, offset, timeout):
         del offset, timeout
@@ -189,8 +194,9 @@ class GlobalOrchestratorTests(unittest.TestCase):
 
     def test_config_rejects_shared_mt5_executable(self) -> None:
         environment = {
-            "TELEGRAM_BOT_TOKEN": "test",
-            "TELEGRAM_ADMIN_CHAT_IDS": "123",
+            "GOLD_NOTIFY_BOT_TOKEN": "test",
+            "GOLD_NOTIFY_ADMIN_CHAT_IDS": "123",
+            "GOLD_NOTIFY_EXPECTED_BOT_USERNAME": "new_gold_notify_bot",
             "GOLDI_MT5_TERMINAL_PATH": "C:/same/terminal64.exe",
             "GOLDI_MT5_LOGIN": "108098316",
             "GOLDI_MT5_SERVER": "XMGlobal-MT5 5",
@@ -198,16 +204,32 @@ class GlobalOrchestratorTests(unittest.TestCase):
             "GOLDM_REAL_MT5_LOGIN": "391425346",
             "GOLDM_REAL_MT5_SERVER": "XMGlobal-MT5 14",
         }
-        with patch.dict("os.environ", environment, clear=True):
-            with self.assertRaisesRegex(ValueError, "different MT5 paths"):
-                load_orchestrator_config(ROOT / "config/final/orchestrator.json")
+        with (
+            patch.dict("os.environ", environment, clear=True),
+            self.assertRaisesRegex(ValueError, "different MT5 paths"),
+        ):
+            load_orchestrator_config(ROOT / "config/final/orchestrator.json")
+
+    def test_orchestrator_fails_closed_on_wrong_bot_identity(self) -> None:
+        locked = replace(self.config, expected_bot_username="expected_notify_bot")
+        runtime = GlobalOrchestrator(
+            locked,
+            telegram_client=self.telegram,
+            popen_factory=FakeProcess,
+            monotonic=lambda: self.now,
+        )
+
+        with self.assertRaisesRegex(RuntimeError, "identity mismatch"):
+            runtime._validate_bot_identity()
 
     def test_single_instance_lock_rejects_duplicate_worker(self) -> None:
         lock_path = self.root / "worker.lock"
-        with SingleInstanceLock(lock_path):
-            with self.assertRaises(WorkerAlreadyRunning):
-                with SingleInstanceLock(lock_path):
-                    pass
+        with (
+            SingleInstanceLock(lock_path),
+            self.assertRaises(WorkerAlreadyRunning),
+            SingleInstanceLock(lock_path),
+        ):
+            pass
 
     def test_initial_off_state_can_be_persisted_before_polling(self) -> None:
         self.assertFalse(self.config.state_path.exists())
@@ -218,9 +240,7 @@ class GlobalOrchestratorTests(unittest.TestCase):
     def test_online_notice_is_suppressed_during_rapid_restart(self) -> None:
         self.assertTrue(self.runtime._announce_online())
         self.assertFalse(self.runtime._announce_online())
-        online_messages = [
-            text for _, text in self.telegram.sent if "ORCHESTRATOR ONLINE" in text
-        ]
+        online_messages = [text for _, text in self.telegram.sent if "ORCHESTRATOR ONLINE" in text]
         self.assertEqual(len(online_messages), 1)
 
     def test_command_menu_replaces_old_approval_commands(self) -> None:
@@ -390,10 +410,7 @@ class GlobalOrchestratorTests(unittest.TestCase):
         audit = self.config.audit_path.read_text(encoding="utf-8")
         self.assertIn("TELEGRAM_UPDATE_FAILED", audit)
         self.assertTrue(
-            any(
-                item.get("text") == "Diproses…"
-                for item in self.telegram.callback_answers
-            )
+            any(item.get("text") == "Diproses…" for item in self.telegram.callback_answers)
         )
 
 

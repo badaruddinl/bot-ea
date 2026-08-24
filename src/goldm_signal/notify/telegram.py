@@ -7,7 +7,6 @@ from urllib import parse, request
 from ..config import NotificationSideFilter
 from ..storage.database import SignalStore
 
-
 _DIRECTIONAL_STRATEGY_EVENTS = frozenset(
     {
         "SNIPER_EARLY_CANDIDATE",
@@ -38,9 +37,7 @@ ADMIN_BOT_COMMANDS: tuple[dict[str, str], ...] = (
     {"command": "pending", "description": "Daftar permintaan akses"},
 )
 
-PUBLIC_BOT_COMMAND_NAMES = frozenset(
-    f"/{item['command']}" for item in PUBLIC_BOT_COMMANDS
-)
+PUBLIC_BOT_COMMAND_NAMES = frozenset(f"/{item['command']}" for item in PUBLIC_BOT_COMMANDS)
 
 
 class TelegramBotClient:
@@ -61,6 +58,10 @@ class TelegramBotClient:
             payload["offset"] = offset
         result = self._call("getUpdates", payload, timeout_seconds=max(timeout + 5, 10))
         return list(result)
+
+    def get_me(self) -> dict[str, Any]:
+        """Return the authenticated bot identity without exposing its token."""
+        return dict(self._call("getMe", {}))
 
     def send_message(
         self,
@@ -88,16 +89,14 @@ class TelegramBotClient:
 
     def set_commands(self, *, admin_chat_ids: set[str | int]) -> None:
         """Publish a minimal default menu and a richer menu per admin chat."""
-        normalized_admins = normalize_admin_user_ids(
-            admin_chat_ids, require_nonempty=False
-        )
+        normalized_admins = normalize_admin_user_ids(admin_chat_ids, require_nonempty=False)
         self.replace_commands(
             commands=PUBLIC_BOT_COMMANDS,
             chat_ids=(),
         )
         self.replace_commands(
             commands=ADMIN_BOT_COMMANDS,
-            chat_ids=normalized_admins,
+            chat_ids=tuple(sorted(normalized_admins, key=int)),
             include_default=False,
         )
 
@@ -150,8 +149,7 @@ class TelegramBotClient:
             for item in commands
         ]
         if not normalized_commands or any(
-            not item["command"] or not item["description"]
-            for item in normalized_commands
+            not item["command"] or not item["description"] for item in normalized_commands
         ):
             raise ValueError("Telegram command menu cannot be empty")
         if include_default:
@@ -163,14 +161,8 @@ class TelegramBotClient:
         for raw_chat_id in chat_ids:
             text = str(raw_chat_id).strip()
             digits = text[1:] if text.startswith("-") else text
-            if (
-                not text.isascii()
-                or not digits.isdecimal()
-                or int(text) == 0
-            ):
-                raise ValueError(
-                    "Telegram command-scope chat IDs must be non-zero integers"
-                )
+            if not text.isascii() or not digits.isdecimal() or int(text) == 0:
+                raise ValueError("Telegram command-scope chat IDs must be non-zero integers")
             normalized_chat_ids.add(str(int(text)))
         for chat_id in sorted(normalized_chat_ids, key=int):
             self._call(
@@ -198,12 +190,14 @@ class TelegramBotClient:
                 encoded[key] = str(value)
         body = parse.urlencode(encoded).encode("utf-8")
         http_request = request.Request(f"{self._base_url}/{method}", data=body, method="POST")
-        with request.urlopen(  # noqa: S310
+        with request.urlopen(
             http_request, timeout=timeout_seconds or self._timeout_seconds
         ) as response:
             result = json.loads(response.read().decode("utf-8"))
         if not result.get("ok"):
-            raise RuntimeError(f"Telegram rejected {method}: {result.get('description', 'unknown')}")
+            raise RuntimeError(
+                f"Telegram rejected {method}: {result.get('description', 'unknown')}"
+            )
         return result.get("result")
 
 
@@ -211,9 +205,7 @@ class TelegramSender:
     def __init__(self, *, bot_token: str, chat_id: str, timeout_seconds: float = 10.0) -> None:
         if not bot_token or not chat_id:
             raise ValueError("Telegram bot token and chat ID are required")
-        self._client = TelegramBotClient(
-            bot_token=bot_token, timeout_seconds=timeout_seconds
-        )
+        self._client = TelegramBotClient(bot_token=bot_token, timeout_seconds=timeout_seconds)
         self._chat_id = chat_id
 
     def __call__(self, event: dict[str, Any]) -> None:
@@ -253,8 +245,7 @@ class ApprovedTelegramSender:
         admin_only = telegram_event_is_admin_only(payload)
         if (
             not admin_only
-            and str(event.get("event_type") or "").upper()
-            in _DIRECTIONAL_STRATEGY_EVENTS
+            and str(event.get("event_type") or "").upper() in _DIRECTIONAL_STRATEGY_EVENTS
         ):
             settings = self._store.runtime_settings(prefix="trade.")
             raw_profile = settings.get(
@@ -272,9 +263,7 @@ class ApprovedTelegramSender:
                 return
             fields = payload.get("fields")
             field_side = fields.get("side") if isinstance(fields, dict) else None
-            side = str(
-                event.get("side") or payload.get("side") or field_side or ""
-            ).lower()
+            side = str(event.get("side") or payload.get("side") or field_side or "").lower()
             if side not in {"buy", "sell"}:
                 self._send_invalid_direction_warning(
                     event=event,
@@ -287,9 +276,7 @@ class ApprovedTelegramSender:
                 # and all POSITION_* safety/broker events remain intact.
                 return
         chat_ids = (
-            sorted(self._admin_chat_ids)
-            if admin_only
-            else self._store.approved_telegram_chat_ids()
+            sorted(self._admin_chat_ids) if admin_only else self._store.approved_telegram_chat_ids()
         )
         if not chat_ids:
             audience = "root administrators" if admin_only else "approved Telegram subscribers"
@@ -297,9 +284,7 @@ class ApprovedTelegramSender:
 
         failures = 0
         for chat_id in chat_ids:
-            if self._store.telegram_delivery_was_sent(
-                outbox_id=outbox_id, chat_id=chat_id
-            ):
+            if self._store.telegram_delivery_was_sent(outbox_id=outbox_id, chat_id=chat_id):
                 continue
             try:
                 self._client.send_message(chat_id=chat_id, text=text)
@@ -309,9 +294,7 @@ class ApprovedTelegramSender:
                 )
                 failures += 1
             else:
-                self._store.mark_telegram_delivery_sent(
-                    outbox_id=outbox_id, chat_id=chat_id
-                )
+                self._store.mark_telegram_delivery_sent(outbox_id=outbox_id, chat_id=chat_id)
         if failures:
             raise RuntimeError(f"Telegram delivery failed for {failures} approved subscriber(s)")
 
@@ -338,9 +321,7 @@ class ApprovedTelegramSender:
         )
         failures = 0
         for chat_id in sorted(self._admin_chat_ids):
-            if self._store.telegram_delivery_was_sent(
-                outbox_id=outbox_id, chat_id=chat_id
-            ):
+            if self._store.telegram_delivery_was_sent(outbox_id=outbox_id, chat_id=chat_id):
                 continue
             try:
                 self._client.send_message(chat_id=chat_id, text=warning)
@@ -350,9 +331,7 @@ class ApprovedTelegramSender:
                 )
                 failures += 1
             else:
-                self._store.mark_telegram_delivery_sent(
-                    outbox_id=outbox_id, chat_id=chat_id
-                )
+                self._store.mark_telegram_delivery_sent(outbox_id=outbox_id, chat_id=chat_id)
         if failures:
             raise RuntimeError(
                 f"Telegram fail-closed warning failed for {failures} root administrator(s)"
@@ -372,18 +351,14 @@ def telegram_event_is_admin_only(payload: dict[str, Any]) -> bool:
     return not (account_scope == "demo" and audience == "approved")
 
 
-def normalize_admin_user_ids(
-    values: set[str | int], *, require_nonempty: bool = True
-) -> set[str]:
+def normalize_admin_user_ids(values: set[str | int], *, require_nonempty: bool = True) -> set[str]:
     """Validate Telegram administrators as positive private user identifiers."""
 
     normalized: set[str] = set()
     for raw_value in values:
         value = str(raw_value).strip()
         if not value.isascii() or not value.isdecimal() or int(value) <= 0:
-            raise ValueError(
-                "Telegram administrator IDs must be positive private user IDs"
-            )
+            raise ValueError("Telegram administrator IDs must be positive private user IDs")
         normalized.add(str(int(value)))
     if require_nonempty and not normalized:
         raise ValueError("At least one Telegram administrator user ID is required")

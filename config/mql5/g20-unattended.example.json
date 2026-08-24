@@ -50,6 +50,8 @@
     "arguments": "-m gold_event_bridge.cli --goldi-spool REPLACE --goldm-spool REPLACE --database REPLACE",
     "token_secret_path": "%ProgramData%\\bot-ea\\g20\\telegram-token.dpapi",
     "admin_chat_ids": [],
+    "expected_bot_username": "REPLACE_WITH_NEW_BOT_USERNAME",
+    "subscriber_state_path": "%ProgramData%\\bot-ea\\orchestrator\\state.json",
     "health_path": "%ProgramData%\\bot-ea\\bridge\\health.json"
   }
 }

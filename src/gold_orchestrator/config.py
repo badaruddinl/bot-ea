@@ -3,10 +3,9 @@ from __future__ import annotations
 import json
 import os
 import sys
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Mapping
-
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -55,6 +54,7 @@ class OrchestratorConfig:
     bot_token: str
     admin_chat_ids: tuple[str, ...]
     workers: Mapping[str, WorkerSpec]
+    expected_bot_username: str | None = None
 
 
 def load_orchestrator_config(path: str | Path) -> OrchestratorConfig:
@@ -66,6 +66,7 @@ def load_orchestrator_config(path: str | Path) -> OrchestratorConfig:
     token_env = str(payload.get("bot_token_env") or "TELEGRAM_BOT_TOKEN")
     admin_env = str(payload.get("admin_chat_ids_env") or "TELEGRAM_ADMIN_CHAT_IDS")
     fallback_env = str(payload.get("fallback_chat_id_env") or "TELEGRAM_CHAT_ID")
+    expected_bot_env = str(payload.get("expected_bot_username_env") or "").strip()
     bot_token = os.environ.get(token_env, "").strip()
     raw_admins = os.environ.get(admin_env, "").strip()
     if not raw_admins:
@@ -105,8 +106,7 @@ def load_orchestrator_config(path: str | Path) -> OrchestratorConfig:
     from gold_portfolio.config import load_worker_config
 
     terminal_paths = {
-        name: load_worker_config(spec.config_path).terminal.path
-        for name, spec in workers.items()
+        name: load_worker_config(spec.config_path).terminal.path for name, spec in workers.items()
     }
     if terminal_paths["goldi"].casefold() == terminal_paths["goldm"].casefold():
         raise ValueError("GOLD.i and GOLDm workers must use different MT5 paths")
@@ -115,9 +115,7 @@ def load_orchestrator_config(path: str | Path) -> OrchestratorConfig:
         orchestrator_id=str(payload.get("orchestrator_id") or "GOLD_GLOBAL_ORCHESTRATOR"),
         python_executable=executable,
         poll_timeout_seconds=int(payload.get("poll_timeout_seconds") or 20),
-        supervision_interval_seconds=float(
-            payload.get("supervision_interval_seconds") or 5.0
-        ),
+        supervision_interval_seconds=float(payload.get("supervision_interval_seconds") or 5.0),
         heartbeat_seconds=int(payload.get("heartbeat_seconds") or 3600),
         restart_delay_seconds=float(payload.get("restart_delay_seconds") or 15.0),
         health_stale_seconds=int(payload.get("health_stale_seconds") or 120),
@@ -127,4 +125,14 @@ def load_orchestrator_config(path: str | Path) -> OrchestratorConfig:
         bot_token=bot_token,
         admin_chat_ids=admin_chat_ids,
         workers=workers,
+        expected_bot_username=(
+            (
+                os.environ.get(expected_bot_env, "")
+                if expected_bot_env
+                else str(payload.get("expected_bot_username") or "")
+            )
+            .strip()
+            .lstrip("@")
+            or None
+        ),
     )
