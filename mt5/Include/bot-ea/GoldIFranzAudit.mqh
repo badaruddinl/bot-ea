@@ -58,8 +58,8 @@ public:
       const string event_id=setup_id+"|"+event_type+"|"+
          IntegerToString((long)server_time)+"|"+reason;
       const string line=StringFormat(
-         "{\"schema_version\":1,\"event_id\":\"%s\"," 
-         "\"strategy\":\"GOLDI_FRANZ_SHAKEOUT\",\"version\":\"0.1.0\"," 
+         "{\"schema_version\":1,\"event_id\":\"%s\","
+         "\"strategy\":\"GOLDI_FRANZ_SHAKEOUT\",\"version\":\"0.1.0\","
          "\"symbol\":\"GOLD.i#\",\"magic\":26081914,"
          "\"event_type\":\"%s\",\"server_time\":%I64d,"
          "\"state\":%d,\"mode\":\"%s\",\"side\":\"%s\","
