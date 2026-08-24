@@ -1,0 +1,80 @@
+{
+  "authority": {
+    "outside_tester": "forbidden",
+    "tester_default": false
+  },
+  "execution": {
+    "deviation_points": 30,
+    "handgun_lot": 0.01,
+    "maximum_spread": 0.6,
+    "sniper_leg_lot": 0.01
+  },
+  "fibonacci": {
+    "entry_high": 0.146,
+    "entry_low": 0.0,
+    "extension_stop": 1.13,
+    "handgun_target": 0.5,
+    "sniper_target_1": 0.618,
+    "sniper_target_2": 1.0,
+    "sniper_target_extended": 1.272
+  },
+  "identity": {
+    "magic": 26081914,
+    "profile": "GOLDI",
+    "strategy": "GOLDI_FRANZ_SHAKEOUT",
+    "version": "0.1.0"
+  },
+  "market": {
+    "contract_size": 100.0,
+    "leverage": 1000,
+    "symbol": "GOLD.i#",
+    "tick_size": 0.01,
+    "volume_max": 50.0,
+    "volume_min": 0.01,
+    "volume_step": 0.01
+  },
+  "risk": {
+    "cooldown_minutes": 60,
+    "daily_loss_r": 2.0,
+    "daily_profit_r": 3.0,
+    "maximum_equity_fraction": 0.1,
+    "maximum_setups_per_day": 3,
+    "minimum_equity": 4.0
+  },
+  "rules": {
+    "efficiency_ratio_maximum": 0.35,
+    "entry_expiry_m1_bars": 5,
+    "impulse_body_share_minimum": 0.65,
+    "impulse_displacement_median_range": 2.0,
+    "impulse_maximum_bars": 8,
+    "impulse_minimum_bars": 3,
+    "impulse_overlap_maximum": 0.35,
+    "maximum_break_failure_bars": 3,
+    "maximum_cluster_bars": 12,
+    "minimum_cluster_bars": 4,
+    "minimum_direction_changes": 3,
+    "minimum_r_handgun": 1.25,
+    "minimum_r_sniper_tp1": 1.25,
+    "minimum_r_sniper_tp2": 2.0,
+    "rsi_m1_period": 7,
+    "rsi_m5_period": 14,
+    "stochastic_d": 3,
+    "stochastic_k": 5,
+    "stochastic_slowing": 3
+  },
+  "swing_zones": {
+    "base_body_ratio_maximum": 0.55,
+    "base_maximum_bars": 4,
+    "base_overlap_minimum": 0.5,
+    "departure_bars": 3,
+    "departure_displacement_median_range": 1.5,
+    "maximum_age_m15_bars": 240,
+    "maximum_zone_width_median_range": 1.0,
+    "merge_distance_median_range": 0.25
+  },
+  "trendline_zones": {
+    "minimum_anchor_touches": 2,
+    "width_median_range": 0.15,
+    "width_spread_multiple": 2.0
+  }
+}
