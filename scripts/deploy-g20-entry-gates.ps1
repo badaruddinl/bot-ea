@@ -60,7 +60,18 @@ $presetTargets = @{}
 $startupTargets = @{}
 foreach ($terminal in $terminals) {
     $profile = [string]$terminal.profile_id
-    $presetTargets[$profile] = Join-Path ([string]$terminal.data_path) `
+    $dataPath = ''
+    if ($null -ne $terminal.PSObject.Properties['data_path'] -and
+        -not [string]::IsNullOrWhiteSpace([string]$terminal.data_path)) {
+        $dataPath = [IO.Path]::GetFullPath([string]$terminal.data_path)
+    }
+    else {
+        $expertDirectory = Split-Path -Parent ([string]$terminal.ea_binary_path)
+        $expertsDirectory = Split-Path -Parent $expertDirectory
+        $mql5Directory = Split-Path -Parent $expertsDirectory
+        $dataPath = [IO.Path]::GetFullPath((Split-Path -Parent $mql5Directory))
+    }
+    $presetTargets[$profile] = Join-Path $dataPath `
         "MQL5\Presets\G20-$profile.set"
     $argument = [string]$terminal.arguments
     if ($argument -notmatch '^/config:(.+)$') {

@@ -13,6 +13,8 @@ def test_entry_gate_deploy_is_explicit_profile_locked_and_rollback_safe() -> Non
     assert "Symbol binding mismatch" in source
     assert "validate-g21-mql5-build.ps1" in source
     assert "rollback-entry-gate-" in source
+    assert "ea_binary_path" in source
+    assert "Split-Path -Parent $mql5Directory" in source
     assert "production_real_orders = 'GATED'" in source
     assert "goldi_entry_gate=OFF" in source
     assert "goldm_entry_gate=OFF" in source
