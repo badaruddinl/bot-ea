@@ -126,8 +126,8 @@ if ($BridgeEnabled) {
         throw "Bridge DPAPI token secret is missing: $TelegramSecretPath"
     }
     if ($TelegramAdminChatIds.Count -eq 0 -or
-        @($TelegramAdminChatIds | Where-Object { $_ -notmatch '^-?[1-9][0-9]*$' }).Count -gt 0) {
-        throw "Bridge requires valid administrator chat IDs"
+        @($TelegramAdminChatIds | Where-Object { $_ -notmatch '^[1-9][0-9]*$' }).Count -gt 0) {
+        throw "Bridge requires positive private administrator chat IDs"
     }
     $TelegramExpectedBotUsername = $TelegramExpectedBotUsername.Trim().TrimStart('@')
     if ($TelegramExpectedBotUsername -notmatch '^[A-Za-z][A-Za-z0-9_]{4,31}$') {

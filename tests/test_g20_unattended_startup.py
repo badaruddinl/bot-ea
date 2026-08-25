@@ -176,6 +176,20 @@ def test_bridge_token_uses_current_user_dpapi_and_never_enters_process_arguments
     assert "Token=" not in secret_installer
 
 
+def test_telegram_admin_contract_separates_private_admins_from_negative_groups() -> None:
+    supervisor = SUPERVISOR.read_text(encoding="utf-8")
+    preparer = PREPARE.read_text(encoding="utf-8")
+
+    assert "Get-PositivePrivateChatIds" in supervisor
+    assert "Get-PersistedPrivateAdminChatIds" in supervisor
+    assert "admin_private_chat_ids" in supervisor
+    assert "resolved_admin_chat_ids" in supervisor
+    assert "STATE_FALLBACK" in supervisor
+    assert "@($Bridge.resolved_admin_chat_ids) -join ','" in supervisor
+    assert "positive private administrator chat IDs" in preparer
+    assert "'^-?[1-9][0-9]*$'" not in preparer
+
+
 def test_capture_classifies_script_and_module_bridge_names() -> None:
     capture = (ROOT / "scripts/capture-g20-unattended-evidence.ps1").read_text(encoding="utf-8")
 
