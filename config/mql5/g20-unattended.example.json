@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "production_real_orders": "DISABLED",
+  "production_real_orders": "GATED",
   "startup_mode": "PASSWORD_AT_STARTUP",
   "poll_seconds": 15,
   "health_path": "%ProgramData%\\bot-ea\\g20\\health.json",
@@ -38,7 +38,7 @@
       "expected_profile_fingerprint": "704b383f959298c8a1b1dd5c21665ffb7a022dc9831c7498e68cc37f607d4c24",
       "expected_symbol": "GOLDm#",
       "expected_trade_mode": 2,
-      "expected_order_authority": "DISABLED",
+      "expected_order_authority": "ENABLED",
       "data_path": "%APPDATA%\\MetaQuotes\\Terminal\\REPLACE_GOLDM_TERMINAL_ID",
       "startup_chart_repair": false,
       "spool_path": "%APPDATA%\\MetaQuotes\\Terminal\\Common\\Files\\bot-ea\\spool\\GOLDM.jsonl"
@@ -62,6 +62,7 @@
     "state_path": "%ProgramData%\\bot-ea\\orchestrator\\state.json",
     "audit_path": "%ProgramData%\\bot-ea\\orchestrator\\audit.jsonl",
     "poll_timeout_seconds": 20,
-    "order_authority": "NONE"
+    "order_authority": "NONE",
+    "entry_gate_root": "%APPDATA%\\MetaQuotes\\Terminal\\Common\\Files\\bot-ea\\control"
   }
 }

@@ -16,6 +16,7 @@ from typing import Any
 from goldm_signal.notify.telegram import TelegramBotClient
 
 from .config import ROOT, OrchestratorConfig, WorkerSpec
+from .entry_gate import EntryGateController
 
 PUBLIC_GOLDI_COMMANDS: tuple[dict[str, str], ...] = (
     {"command": "start", "description": "Request GOLD.i notification access"},
@@ -41,6 +42,7 @@ ORCHESTRATOR_BOT_COMMANDS: tuple[dict[str, str], ...] = (
 )
 APPROVAL_BOT_COMMANDS: tuple[dict[str, str], ...] = (
     {"command": "status", "description": "Telegram approval service status"},
+    {"command": "entries", "description": "GOLD entry ON/OFF controls"},
     {"command": "pending", "description": "Pending GOLD.i access requests"},
     {"command": "subscribers", "description": "Active GOLD.i subscribers"},
     {"command": "help", "description": "Approval command list"},
@@ -76,6 +78,11 @@ class GlobalOrchestrator:
         self._next_restart: dict[str, float] = {}
         self._failure_counts: dict[str, int] = {}
         self._reported_problem: dict[str, str] = {}
+        self._entry_gates = (
+            EntryGateController(config.entry_gate_root)
+            if config.entry_gate_root is not None
+            else None
+        )
 
     def run_forever(self) -> None:
         self._validate_bot_identity()
@@ -277,7 +284,16 @@ class GlobalOrchestrator:
                 self.supervise_once(now=self._monotonic())
                 self._send_worker_panel(actor_id)
                 return
+            if self._entry_gates is not None:
+                self._send_entry_gate_panel(actor_id)
+                return
             response = self.approval_status_text()
+        elif command == "/entries":
+            if self._entry_gates is None:
+                response = "Entry controls are not configured."
+            else:
+                self._send_entry_gate_panel(actor_id)
+                return
         elif command in {"/goldi_on", "/goldm_on"}:
             if not self.config.worker_control_enabled:
                 response = "Worker control is disabled; native G20 owns execution."
@@ -346,6 +362,16 @@ class GlobalOrchestrator:
                 )
                 return
             self._handle_worker_callback(callback)
+            return
+        if data.startswith("entry_gate:"):
+            if self._entry_gates is None:
+                self._safe_answer_callback(
+                    callback_id,
+                    "Entry controls are not configured.",
+                    show_alert=True,
+                )
+                return
+            self._handle_entry_gate_callback(callback)
             return
         parts = data.split(":", 2)
         if (
@@ -783,6 +809,88 @@ class GlobalOrchestrator:
                 },
             )
         return f"Displayed {len(subscribers)} GOLD.i subscriber(s)."
+
+    def _entry_gate_panel_text(self) -> str:
+        assert self._entry_gates is not None
+        lines = ["🎛 GOLD ENTRY CONTROL", ""]
+        for profile, label in (("GOLDI", "GOLD.i DEMO"), ("GOLDM", "GOLDm REAL")):
+            status = self._entry_gates.status(profile)
+            state = "ON" if status.enabled else "OFF"
+            icon = "🟢" if status.enabled else "🔴" if status.available else "⚫"
+            lines.append(f"{icon} {label}: {state}")
+            if not status.available or not status.authority_enabled:
+                lines.append(f"   {status.reason}")
+        lines.extend(
+            [
+                "",
+                "OFF blocks new entries only.",
+                "Existing EA positions remain managed.",
+                "A terminal restart resets its entry gate to OFF.",
+            ]
+        )
+        return "\n".join(lines)
+
+    def _entry_gate_panel_markup(self) -> dict[str, Any]:
+        assert self._entry_gates is not None
+        rows: list[list[dict[str, str]]] = []
+        for profile, label in (("GOLDI", "GOLD.i DEMO"), ("GOLDM", "GOLDm REAL")):
+            status = self._entry_gates.status(profile)
+            action = "off" if status.enabled else "on"
+            text = f"🔴 Disable {label}" if status.enabled else f"🟢 Enable {label}"
+            rows.append(
+                [
+                    {
+                        "text": text,
+                        "callback_data": f"entry_gate:{action}:{profile.lower()}",
+                    }
+                ]
+            )
+        rows.append([{"text": "🔄 Refresh", "callback_data": "entry_gate:refresh:all"}])
+        return {"inline_keyboard": rows}
+
+    def _send_entry_gate_panel(self, chat_id: str) -> None:
+        self.telegram.send_message(
+            chat_id=chat_id,
+            text=self._entry_gate_panel_text(),
+            reply_markup=self._entry_gate_panel_markup(),
+        )
+
+    def _handle_entry_gate_callback(self, callback: dict[str, Any]) -> None:
+        assert self._entry_gates is not None
+        callback_id = str(callback.get("id") or "")
+        actor_id = str((callback.get("from") or {}).get("id") or "")
+        message = callback.get("message") or {}
+        chat_id = str((message.get("chat") or {}).get("id") or "")
+        message_id = int(message.get("message_id") or 0)
+        parts = str(callback.get("data") or "").split(":")
+        try:
+            if len(parts) == 3 and parts[1] in {"on", "off"}:
+                profile = parts[2].upper()
+                status = self._entry_gates.set_enabled(
+                    profile,
+                    parts[1] == "on",
+                    actor_id=actor_id,
+                )
+                self._audit(
+                    "ENTRY_GATE_CHANGED",
+                    {"profile_id": profile, "enabled": status.enabled, "actor_id": actor_id},
+                )
+                result = f"{profile} new entries {'ENABLED' if status.enabled else 'DISABLED'}."
+            elif parts == ["entry_gate", "refresh", "all"]:
+                result = "Entry status refreshed."
+            else:
+                raise ValueError("Unknown entry gate action")
+            self._safe_answer_callback(callback_id, result)
+        except (OSError, RuntimeError, ValueError) as exc:
+            self._safe_answer_callback(callback_id, str(exc), show_alert=True)
+            self._audit_runtime_failure("ENTRY_GATE_ACTION_FAILED", exc)
+        if chat_id and message_id:
+            self.telegram.edit_message_text(
+                chat_id=chat_id,
+                message_id=message_id,
+                text=self._entry_gate_panel_text(),
+                reply_markup=self._entry_gate_panel_markup(),
+            )
 
     def _worker_panel_markup(self) -> dict[str, Any]:
         desired = dict(self._state.get("desired") or {})

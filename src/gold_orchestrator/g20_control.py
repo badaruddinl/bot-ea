@@ -85,6 +85,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--audit-path", required=True, type=Path)
     parser.add_argument("--poll-timeout", type=int, default=20)
     parser.add_argument("--heartbeat-seconds", type=int, default=3600)
+    parser.add_argument("--entry-gate-root", type=Path)
     parser.add_argument("--check", action="store_true")
     return parser
 
@@ -128,6 +129,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         workers={},
         expected_bot_username=expected_bot,
         worker_control_enabled=False,
+        entry_gate_root=(args.entry_gate_root.resolve() if args.entry_gate_root else None),
     )
     if args.check:
         runtime = GlobalOrchestrator(config)
