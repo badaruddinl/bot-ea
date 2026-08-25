@@ -12,6 +12,39 @@ function Resolve-ConfiguredPath {
     return [Environment]::ExpandEnvironmentVariables($Path)
 }
 
+function Get-PositivePrivateChatIds {
+    param([Parameter(Mandatory = $true)][object[]]$Values)
+    return @(
+        $Values |
+            ForEach-Object { ([string]$_).Trim() } |
+            Where-Object { $_ -match '^[1-9][0-9]*$' } |
+            ForEach-Object { ([long]$_).ToString() } |
+            Sort-Object -Unique
+    )
+}
+
+function Get-PersistedPrivateAdminChatIds {
+    param([Parameter(Mandatory = $true)][string]$StatePath)
+    $resolved = Resolve-ConfiguredPath $StatePath
+    if (-not (Test-Path -LiteralPath $resolved -PathType Leaf)) {
+        return @()
+    }
+    try {
+        $state = Get-Content -LiteralPath $resolved -Raw | ConvertFrom-Json
+    }
+    catch {
+        throw "Telegram subscriber state is invalid: $resolved"
+    }
+    if ($null -eq $state.PSObject.Properties['admin_private_chat_ids']) {
+        return @()
+    }
+    $raw = @($state.admin_private_chat_ids)
+    if (@($raw | Where-Object { ([string]$_).Trim() -notmatch '^[1-9][0-9]*$' }).Count -gt 0) {
+        throw "Persisted Telegram private administrator chat IDs are invalid"
+    }
+    return @(Get-PositivePrivateChatIds -Values $raw)
+}
+
 function Get-ExactProcess {
     param([Parameter(Mandatory = $true)][string]$ExecutablePath)
     $expected = [IO.Path]::GetFullPath($ExecutablePath)
@@ -310,8 +343,7 @@ function Read-G20Config {
             throw "Bridge DPAPI token secret is missing: $secretPath"
         }
         $adminIds = @($value.bridge.admin_chat_ids)
-        if ($adminIds.Count -eq 0 -or
-            @($adminIds | Where-Object { [string]$_ -notmatch '^-?[1-9][0-9]*$' }).Count -gt 0) {
+        if (@($adminIds | Where-Object { [string]$_ -notmatch '^-?[1-9][0-9]*$' }).Count -gt 0) {
             throw "Bridge administrator chat IDs are invalid"
         }
         if ([string]$value.bridge.expected_bot_username -notmatch
@@ -337,6 +369,19 @@ function Read-G20Config {
             )) {
             throw "telegram_control and bridge must share the same subscriber state path"
         }
+        $privateAdminIds = @(Get-PositivePrivateChatIds -Values $adminIds)
+        $privateAdminSource = 'CONFIG'
+        if ($privateAdminIds.Count -eq 0) {
+            $privateAdminIds = @(Get-PersistedPrivateAdminChatIds -StatePath $controlState)
+            $privateAdminSource = 'STATE_FALLBACK'
+        }
+        if ($privateAdminIds.Count -eq 0) {
+            throw "Telegram control requires a positive private administrator chat ID; no trusted state fallback is available"
+        }
+        $value.bridge | Add-Member -NotePropertyName resolved_admin_chat_ids `
+            -NotePropertyValue $privateAdminIds -Force
+        $value.bridge | Add-Member -NotePropertyName resolved_admin_source `
+            -NotePropertyValue $privateAdminSource -Force
         if ([string]::IsNullOrWhiteSpace([string]$control.runner_path)) {
             throw "telegram_control runner_path is required"
         }
@@ -366,7 +411,7 @@ function Start-TelegramProcess {
     $previousExpectedBot = $env:TELEGRAM_EXPECTED_BOT_USERNAME
     try {
         $env:TELEGRAM_BOT_TOKEN = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($pointer)
-        $env:TELEGRAM_ADMIN_CHAT_IDS = @($Bridge.admin_chat_ids) -join ','
+        $env:TELEGRAM_ADMIN_CHAT_IDS = @($Bridge.resolved_admin_chat_ids) -join ','
         $env:TELEGRAM_EXPECTED_BOT_USERNAME = [string]$Bridge.expected_bot_username
         return Start-Process -FilePath $ExecutablePath -ArgumentList $Arguments `
             -WindowStyle Hidden -PassThru
@@ -544,6 +589,9 @@ while ($true) {
         state = "DISABLED"
         pid = $null
         order_authority = "NONE"
+        admin_source = if ([bool]$config.bridge.enabled) {
+            [string]$config.bridge.resolved_admin_source
+        } else { "DISABLED" }
     }
     if ([bool]$config.telegram_control.enabled) {
         try {
@@ -582,7 +630,14 @@ while ($true) {
         }
     }
 
-    $bridgeHealth = [ordered]@{ enabled = [bool]$config.bridge.enabled; state = "DISABLED"; pid = $null }
+    $bridgeHealth = [ordered]@{
+        enabled = [bool]$config.bridge.enabled
+        state = "DISABLED"
+        pid = $null
+        admin_source = if ([bool]$config.bridge.enabled) {
+            [string]$config.bridge.resolved_admin_source
+        } else { "DISABLED" }
+    }
     if ([bool]$config.bridge.enabled) {
         try {
             $bridgeExe = Resolve-ConfiguredPath ([string]$config.bridge.executable_path)

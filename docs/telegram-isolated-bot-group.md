@@ -34,6 +34,13 @@ Group IDs are negative Telegram chat IDs and are valid subscription targets.
 Administrator authority remains bound to positive private user chat IDs, so a
 group member cannot gain worker controls.
 
+After one successful startup with an explicit positive administrator ID, the
+approval poller stores that normalized private ID in the shared subscriber
+state. A later legacy configuration containing only negative group IDs may use
+that trusted state value as a migration fallback. A fresh installation with no
+trusted private administrator state still fails closed; a group ID is never
+converted into administrator authority.
+
 GOLDm events are always routed only to administrator chat IDs. GOLDm never
 uses the GOLD.i subscriber/group list.
 
