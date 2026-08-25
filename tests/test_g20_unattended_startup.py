@@ -46,7 +46,7 @@ def test_supervisor_runs_only_native_terminals_and_optional_delivery_bridge() ->
     assert "Get-PortableProcessId" in value
     assert "Assert-FileHash" in value
     assert "Ensure-ParentDirectory -Path $auditPath" in value
-    assert 'production_real_orders -ne "DISABLED"' in value
+    assert 'production_real_orders -notin @("DISABLED", "GATED")' in value
     assert "Exactly two terminal profiles are required" in value
     assert "GOLDI,GOLDM" in value
     assert "distinct terminal installations" in value
@@ -63,14 +63,14 @@ def test_supervisor_runs_only_native_terminals_and_optional_delivery_bridge() ->
 def test_example_config_is_non_secret_and_requires_certified_binary_hashes() -> None:
     payload = json.loads(EXAMPLE.read_text(encoding="utf-8"))
 
-    assert payload["production_real_orders"] == "DISABLED"
+    assert payload["production_real_orders"] == "GATED"
     assert payload["startup_mode"] == "PASSWORD_AT_STARTUP"
     assert [item["profile_id"] for item in payload["terminals"]] == ["GOLDI", "GOLDM"]
     assert all("ea_sha256" in item for item in payload["terminals"])
     assert [item["expected_trade_mode"] for item in payload["terminals"]] == [0, 2]
     assert [item["expected_order_authority"] for item in payload["terminals"]] == [
         "ENABLED",
-        "DISABLED",
+        "ENABLED",
     ]
     assert all("expected_profile_fingerprint" in item for item in payload["terminals"])
     assert all("spool_path" in item for item in payload["terminals"])
@@ -98,7 +98,8 @@ def test_native_ea_emits_bounded_internal_health_evidence() -> None:
     assert "EventSetTimer(1)" in runtime
     assert "EventKillTimer()" in runtime
     assert "void OnTimer(void)" in runtime
-    assert "MaybeEmitHeartbeat(TimeCurrent())" in runtime
+    assert "MaybeEmitHeartbeat(server_time)" in runtime
+    assert "RefreshEntryGate(server_time)" in runtime
     assert all("void OnTimer(void)" in source for source in entrypoints)
     assert all("Runtime.OnTimer();" in source for source in entrypoints)
     assert "account_login" in runtime
@@ -119,7 +120,7 @@ def test_supervisor_performs_only_one_profile_locked_startup_repair_restart() ->
     assert "$profileId PROFILE_EA_STARTUP_RECEIPT_MISSING" in supervisor
 
 
-def test_startup_configs_enable_demo_execution_only_and_keep_real_disabled() -> None:
+def test_startup_configs_enable_authority_behind_session_entry_gates() -> None:
     goldi = GOLDI_STARTUP.read_text(encoding="utf-8")
     goldm = GOLDM_STARTUP.read_text(encoding="utf-8")
     goldi_preset = GOLDI_PRESET.read_text(encoding="utf-8")
@@ -127,8 +128,8 @@ def test_startup_configs_enable_demo_execution_only_and_keep_real_disabled() -> 
 
     assert "AllowLiveTrading=1" in goldi
     assert "InpEnableOrderAuthority=true" in goldi_preset
-    assert "AllowLiveTrading=0" in goldm
-    assert "InpEnableOrderAuthority=false" in goldm_preset
+    assert "AllowLiveTrading=1" in goldm
+    assert "InpEnableOrderAuthority=true" in goldm_preset
     assert "Expert=bot-ea\\GoldEngine-GOLDi" in goldi
     assert "Expert=bot-ea\\GoldEngine-GOLDm" in goldm
 
@@ -141,7 +142,7 @@ def test_vm_preparer_installs_only_native_engines_and_optional_bridge() -> None:
     assert "GoldEngine-GOLDi.ex5" in value
     assert "GoldEngine-GOLDm.ex5" in value
     assert 'order_authority = "ENABLED"' in value
-    assert 'order_authority = "DISABLED"' in value
+    assert 'production_real_orders = "GATED"' in value
     assert "TelegramSecretPath" in value
     assert "TelegramAdminChatIds" in value
     assert "TelegramExpectedBotUsername" in value
@@ -233,11 +234,13 @@ def test_autologon_path_is_explicit_interactive_and_immediately_locked() -> None
     assert "CN=Microsoft Corporation" in verifier
 
 
-def test_real_disabled_profile_has_only_the_manual_intervention_boot_exception() -> None:
+def test_gated_real_profile_has_no_postboot_engine_error_exception() -> None:
     preparer = PREPARE.read_text(encoding="utf-8")
     supervisor = SUPERVISOR.read_text(encoding="utf-8")
 
-    assert 'allowed_postboot_engine_error_reasons = @("MANUAL_INTERVENTION_DETECTED")' in preparer
+    assert (
+        'allowed_postboot_engine_error_reasons = @("MANUAL_INTERVENTION_DETECTED")' not in preparer
+    )
     assert "PSObject.Properties['allowed_postboot_engine_error_reasons']" in supervisor
     assert (
         "Postboot ENGINE_ERROR exceptions require GOLDM REAL with authority DISABLED" in supervisor

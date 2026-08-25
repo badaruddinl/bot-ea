@@ -12,6 +12,7 @@
 #include "GoldEngineOutbox.mqh"
 #include "GoldEngineInstanceLease.mqh"
 #include "GoldEngineScheduler.mqh"
+#include "GoldEngineEntryGate.mqh"
 
 class CGoldEngineRuntime
   {
@@ -36,6 +37,7 @@ private:
    bool                m_initialized;
    bool                m_data_healthy;
    CExecutionBroker    m_execution_broker;
+   CEntryGate          m_entry_gate;
    ExecutionReceipt    m_last_execution_receipt;
    bool                m_has_execution_receipt;
    ManagedPosition     m_owned_positions[];
@@ -55,11 +57,13 @@ private:
      {
       return StringFormat(
          "{\"account_login\":%I64d,\"account_server\":\"%s\","
-         "\"trade_mode\":%d,\"order_authority\":\"%s\"}",
+         "\"trade_mode\":%d,\"order_authority\":\"%s\","
+         "\"new_entries\":\"%s\"}",
          AccountInfoInteger(ACCOUNT_LOGIN),
          OutboxJsonEscape(AccountInfoString(ACCOUNT_SERVER)),
          (int)AccountInfoInteger(ACCOUNT_TRADE_MODE),
-         m_execution_broker.AuthorityEnabled() ? "ENABLED" : "DISABLED");
+         m_execution_broker.AuthorityEnabled() ? "ENABLED" : "DISABLED",
+         m_entry_gate.Enabled() ? "ENABLED" : "DISABLED");
      }
 
    string SideText(const EngineSide side) const
@@ -338,12 +342,33 @@ private:
       plan.engineering_tester=(bool)MQLInfoInteger(MQL_TESTER);
      }
 
+   void RefreshEntryGate(const datetime server_time)
+     {
+      bool changed=false;
+      if(!m_entry_gate.Refresh(changed))
+        {
+         m_data_healthy=false;
+         SetEvent(ENGINE_EVENT_ERROR,server_time,"ENTRY_GATE_REFRESH_FAILED");
+         return;
+        }
+      if(changed)
+         SetEvent(ENGINE_EVENT_BAR_CLOSED,server_time,
+            m_entry_gate.Enabled() ? "NEW_ENTRY_GATE_ENABLED" :
+            "NEW_ENTRY_GATE_DISABLED");
+     }
+
    void SubmitSignalPlan(const SignalPlan &plan,
                          const datetime server_time,
                          const ulong entry_ready_started_us)
      {
       if(!RecoverOwnedPositions(server_time))
          return;
+      if(!m_entry_gate.Enabled())
+        {
+         SetEvent(ENGINE_EVENT_BAR_CLOSED,server_time,
+            "NEW_ENTRY_GATE_DISABLED");
+         return;
+        }
       if(ArraySize(m_owned_positions)>0)
         {
          SetEvent(ENGINE_EVENT_BAR_CLOSED,server_time,
@@ -957,6 +982,13 @@ public:
                " reason=",reason);
          return INIT_FAILED;
         }
+      if(!m_entry_gate.Initialize(
+            m_profile,m_execution_broker.AuthorityEnabled()))
+        {
+         Print("GOLD_ENGINE_INIT_REJECT profile=",m_profile.profile_id,
+               " reason=ENTRY_GATE_INIT_FAILED");
+         return INIT_FAILED;
+        }
       m_position_store.Initialize(
          m_profile.profile_id,m_profile.profile_fingerprint);
       m_outbox_initialized=m_outbox.Initialize(m_profile);
@@ -1013,7 +1045,9 @@ public:
       Print("GOLD_ENGINE_READY profile=",m_profile.profile_id,
             " fingerprint=",m_profile.profile_fingerprint,
             " order_authority=",
-            m_execution_broker.AuthorityEnabled() ? "ENABLED" : "DISABLED");
+            m_execution_broker.AuthorityEnabled() ? "ENABLED" : "DISABLED",
+            " new_entries=",
+            m_entry_gate.Enabled() ? "ENABLED" : "DISABLED");
       return INIT_SUCCEEDED;
      }
 
@@ -1035,6 +1069,9 @@ public:
       tick.ask=raw_tick.ask;
       tick.last=raw_tick.last;
 
+      RefreshEntryGate(raw_tick.time);
+      if(!m_data_healthy)
+         return;
       MaybeEmitHeartbeat(raw_tick.time);
 
       EngineBar closed_bars[];
@@ -1075,7 +1112,10 @@ public:
      {
       if(!m_initialized || !m_data_healthy)
          return;
-      MaybeEmitHeartbeat(TimeCurrent());
+      const datetime server_time=TimeCurrent();
+      RefreshEntryGate(server_time);
+      if(m_data_healthy)
+         MaybeEmitHeartbeat(server_time);
      }
 
    void Deinitialize(const int reason)
@@ -1214,6 +1254,11 @@ public:
    bool OrderAuthorityEnabled(void) const
      {
       return m_execution_broker.AuthorityEnabled();
+     }
+
+   bool NewEntriesEnabled(void) const
+     {
+      return m_entry_gate.Enabled();
      }
 
    bool OwnershipConflictDetected(void) const

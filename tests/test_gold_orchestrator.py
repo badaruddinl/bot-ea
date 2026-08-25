@@ -420,7 +420,7 @@ class GlobalOrchestratorTests(unittest.TestCase):
         self.assertEqual(chat_ids, {"123"})
         self.assertEqual(
             {item["command"] for item in admin_commands},
-            {"status", "pending", "subscribers", "help"},
+            {"status", "entries", "pending", "subscribers", "help"},
         )
         runtime.handle_callback(
             {
@@ -431,6 +431,45 @@ class GlobalOrchestratorTests(unittest.TestCase):
         )
         self.assertTrue(self.telegram.callback_answers[-1]["show_alert"])
         self.assertEqual(runtime._children, {})
+
+    def test_admin_entry_gate_button_is_one_click_and_session_bound(self) -> None:
+        gate_root = self.root / "entry-gates"
+        gate_root.mkdir()
+        fingerprint = "a" * 64
+        (gate_root / "GOLDI.entry-session").write_text(
+            f"1|GOLDI|{fingerprint}|123|session-1|ENABLED\n",
+            encoding="ascii",
+        )
+        locked = replace(
+            self.config,
+            workers={},
+            worker_control_enabled=False,
+            entry_gate_root=gate_root,
+        )
+        runtime = GlobalOrchestrator(
+            locked,
+            telegram_client=self.telegram,
+            popen_factory=FakeProcess,
+            monotonic=lambda: self.now,
+        )
+
+        runtime.handle_callback(
+            {
+                "id": "entry-on",
+                "from": {"id": 123},
+                "data": "entry_gate:on:goldi",
+                "message": {"message_id": 7, "chat": {"id": 123}},
+            }
+        )
+
+        self.assertIn("GOLD.i DEMO: ON", self.telegram.edited_texts[-1]["text"])
+        self.assertIn("ENTRY_GATE_CHANGED", self.config.audit_path.read_text(encoding="utf-8"))
+
+        (gate_root / "GOLDI.entry-session").write_text(
+            f"1|GOLDI|{fingerprint}|123|session-2|ENABLED\n",
+            encoding="ascii",
+        )
+        self.assertFalse(runtime._entry_gates.status("GOLDI").enabled)
 
     def test_failed_callback_isolated_and_later_update_still_processed(self) -> None:
         original_edit = self.telegram.edit_message_text

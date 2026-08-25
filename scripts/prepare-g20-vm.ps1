@@ -72,9 +72,9 @@ $bindings = @(
         fingerprint = "704b383f959298c8a1b1dd5c21665ffb7a022dc9831c7498e68cc37f607d4c24"
         symbol = "GOLDm#"
         trade_mode = 2
-        order_authority = "DISABLED"
+        order_authority = "ENABLED"
         startup_chart_repair = $false
-        allowed_postboot_engine_error_reasons = @("MANUAL_INTERVENTION_DETECTED")
+        allowed_postboot_engine_error_reasons = @()
         spool_name = "GOLDM.jsonl"
     }
 )
@@ -154,10 +154,11 @@ $bridgeArguments = '"{0}" --goldi-spool "{1}" --goldm-spool "{2}" --database "{3
 $controlRoot = Join-Path $env:ProgramData "bot-ea\orchestrator"
 $controlRunner = Join-Path $PSScriptRoot "run-g20-telegram-control.py"
 $controlAudit = Join-Path $controlRoot "audit.jsonl"
+$entryGateRoot = Join-Path $env:APPDATA "MetaQuotes\Terminal\Common\Files\bot-ea\control"
 
 $config = [ordered]@{
     schema_version = 2
-    production_real_orders = "DISABLED"
+    production_real_orders = "GATED"
     startup_mode = $StartupMode
     poll_seconds = 15
     ea_startup_grace_seconds = 180
@@ -191,6 +192,7 @@ $config = [ordered]@{
         audit_path = $controlAudit
         poll_timeout_seconds = 20
         order_authority = "NONE"
+        entry_gate_root = $entryGateRoot
     }
 }
 $configPath = Join-Path $OutputRoot "g20-unattended.json"
@@ -207,4 +209,4 @@ Write-Output "config_path=$configPath"
 Write-Output "goldi_sha256=$($terminalConfigs[0].ea_sha256)"
 Write-Output "goldm_sha256=$($terminalConfigs[1].ea_sha256)"
 Write-Output "bridge_enabled=$BridgeEnabled"
-Write-Output "production_real_orders=DISABLED"
+Write-Output "production_real_orders=GATED"

@@ -56,6 +56,7 @@ class OrchestratorConfig:
     workers: Mapping[str, WorkerSpec]
     expected_bot_username: str | None = None
     worker_control_enabled: bool = True
+    entry_gate_root: Path | None = None
 
 
 def load_orchestrator_config(path: str | Path) -> OrchestratorConfig:

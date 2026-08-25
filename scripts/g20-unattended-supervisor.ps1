@@ -223,8 +223,8 @@ function Read-G20Config {
     if ([int]$value.schema_version -notin @(1, 2)) {
         throw "Unsupported G20 config schema_version"
     }
-    if ([string]$value.production_real_orders -ne "DISABLED") {
-        throw "G20 requires production_real_orders=DISABLED"
+    if ([string]$value.production_real_orders -notin @("DISABLED", "GATED")) {
+        throw "G20 requires production_real_orders=DISABLED or GATED"
     }
     if ([string]$value.startup_mode -notin @(
             'PASSWORD_AT_STARTUP',
@@ -299,8 +299,15 @@ function Read-G20Config {
         if ([string]$terminal.expected_order_authority -notin @('ENABLED', 'DISABLED')) {
             throw "$($terminal.profile_id) expected_order_authority is invalid"
         }
-        if ($terminal.profile_id -eq 'GOLDM' -and $terminal.expected_order_authority -ne 'DISABLED') {
-            throw "GOLDM REAL order authority must remain DISABLED"
+        if ($terminal.profile_id -eq 'GOLDM' -and
+            [string]$value.production_real_orders -eq 'GATED' -and
+            $terminal.expected_order_authority -ne 'ENABLED') {
+            throw "GOLDM GATED mode requires order authority ENABLED"
+        }
+        if ($terminal.profile_id -eq 'GOLDM' -and
+            [string]$value.production_real_orders -eq 'DISABLED' -and
+            $terminal.expected_order_authority -ne 'DISABLED') {
+            throw "GOLDM DISABLED mode requires order authority DISABLED"
         }
         $allowedErrors = @()
         if ($null -ne $terminal.PSObject.Properties['allowed_postboot_engine_error_reasons']) {
@@ -388,6 +395,9 @@ function Read-G20Config {
         if ([string]::IsNullOrWhiteSpace([string]$control.audit_path)) {
             throw "telegram_control audit_path is required"
         }
+        if ([string]::IsNullOrWhiteSpace([string]$control.entry_gate_root)) {
+            throw "telegram_control entry_gate_root is required"
+        }
         if ([int]$control.poll_timeout_seconds -lt 0 -or
             [int]$control.poll_timeout_seconds -gt 50) {
             throw "telegram_control poll_timeout_seconds must be between 0 and 50"
@@ -460,7 +470,7 @@ if ($ValidateOnly) {
         status = "VALID"
         config_path = $resolvedConfig
         profiles = @($config.terminals | ForEach-Object { [string]$_.profile_id })
-        production_real_orders = "DISABLED"
+        production_real_orders = [string]$config.production_real_orders
     } | ConvertTo-Json -Compress
     exit 0
 }
@@ -599,6 +609,7 @@ while ($true) {
             $controlRunner = Resolve-ConfiguredPath ([string]$config.telegram_control.runner_path)
             $controlState = Resolve-ConfiguredPath ([string]$config.telegram_control.state_path)
             $controlAudit = Resolve-ConfiguredPath ([string]$config.telegram_control.audit_path)
+            $controlGateRoot = Resolve-ConfiguredPath ([string]$config.telegram_control.entry_gate_root)
             if (-not (Test-Path -LiteralPath $controlExe -PathType Leaf)) {
                 throw "Telegram control executable is missing: $controlExe"
             }
@@ -611,11 +622,12 @@ while ($true) {
                 $controlProcess = Get-ExactManagedProcess `
                     -ExecutablePath $controlExe -RunnerPath $controlRunner
                 if ($null -eq $controlProcess) {
-                    $controlArguments = '"{0}" --state-path "{1}" --audit-path "{2}" --poll-timeout {3}' -f `
+                    $controlArguments = '"{0}" --state-path "{1}" --audit-path "{2}" --poll-timeout {3} --entry-gate-root "{4}"' -f `
                         $controlRunner,
                         $controlState,
                         $controlAudit,
-                        [int]$config.telegram_control.poll_timeout_seconds
+                        [int]$config.telegram_control.poll_timeout_seconds,
+                        $controlGateRoot
                     $controlProcess = Start-TelegramProcess -Bridge $config.bridge `
                         -ExecutablePath $controlExe -Arguments $controlArguments
                     $restartCounts.CONTROL = [int]$restartCounts.CONTROL + 1
@@ -679,7 +691,7 @@ while ($true) {
         interactive_session = [Environment]::UserInteractive
         session_id = [Diagnostics.Process]::GetCurrentProcess().SessionId
         startup_mode = [string]$config.startup_mode
-        production_real_orders = "DISABLED"
+        production_real_orders = [string]$config.production_real_orders
         terminals = $profileHealth
         telegram_control = $controlHealth
         bridge = $bridgeHealth

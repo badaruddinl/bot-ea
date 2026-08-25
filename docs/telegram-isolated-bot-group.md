@@ -44,6 +44,24 @@ converted into administrator authority.
 GOLDm events are always routed only to administrator chat IDs. GOLDm never
 uses the GOLD.i subscriber/group list.
 
+## Admin entry controls
+
+`/entries` displays one-click controls for GOLD.i DEMO and GOLDm REAL. These
+buttons change only the admission of new EA entries. They do not stop either
+terminal and do not disable modification or closure of an EA-owned position.
+
+Each EA publishes a profile-, account-, fingerprint-, and process-session-bound
+entry session under the MT5 Common Files control directory. A Telegram action
+is accepted only for the current session. Restarting an EA changes its session
+identity, invalidates any older enable command, and therefore starts with new
+entries OFF. Missing, malformed, mismatched, or stale control files also mean
+OFF.
+
+`production_real_orders=GATED` means the GOLDm EA has broker authority for
+position lifecycle operations, while new entries still require the independent
+session gate to be ON. This is distinct from `ENABLED` without a gate, which the
+G20 supervisor does not accept.
+
 ## Message language and trade context
 
 All active Telegram bridge and approval-orchestrator messages are English-only.
